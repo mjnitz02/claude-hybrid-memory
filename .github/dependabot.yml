@@ -1,0 +1,44 @@
+---
+# Dependabot version updates.
+# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+#
+# The aim is one pull request a week that nobody has to touch: both ecosystems
+# share a multi-ecosystem group, so their updates arrive together, and
+# dependabot-automerge.yml merges that PR once the required checks pass.
+#
+# Security updates can't join that group (multi-ecosystem groups are
+# version-updates only) and otherwise open one PR per vulnerable package. The
+# `applies-to: security-updates` group on each entry folds them into one PR per
+# ecosystem, and those auto-merge too.
+version: 2
+multi-ecosystem-groups:
+  dependencies:
+    schedule:
+      interval: weekly
+updates:
+  # Python — uv resolves from pyproject.toml and writes uv.lock. The pre-commit
+  # hooks for ruff and pytest run through uv, so this covers them too.
+  - package-ecosystem: uv
+    directory: /
+    # `patterns` is required on every member of a multi-ecosystem group.
+    patterns: ['*']
+    multi-ecosystem-group: dependencies
+    # Nobody reviews these PRs before they merge, so wait a week after a
+    # release: time for a compromised or broken version to be yanked upstream.
+    # Security updates ignore the cooldown.
+    cooldown:
+      default-days: 7
+    groups:
+      python-security:
+        applies-to: security-updates
+        patterns: ['*']
+  - package-ecosystem: github-actions
+    directory: /
+    patterns: ['*']
+    multi-ecosystem-group: dependencies
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions-security:
+        applies-to: security-updates
+        patterns: ['*']

@@ -31,7 +31,7 @@ check: pre-commit test ## What CI runs
 pre-commit: ## Every pre-commit hook over every file
 	uv run pre-commit run --all-files
 
-hooks: ## Install the git hooks: lint on commit, tests on push
+hooks: ## Install the git hooks: lint + secret scan on commit, tests on push
 	uv run pre-commit install
 
 install: ## Install `mem`, then set up or repair the store, skills and Claude Code hooks
