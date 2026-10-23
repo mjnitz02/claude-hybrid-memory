@@ -1,4 +1,4 @@
-"""Fast adoption stages 1 and 2 (fast-adoption §4-5): inventory, and the summarizer, faked.
+"""Fast adoption (fast-adoption §4-8): inventory, the summarizer (faked), map, apply, queue.
 
 No test here calls a model. The fake summarizer answers in `claude -p --output-format json`
 shape, from the schema it is handed, and logs its argv so the isolation flags are checked.
@@ -48,6 +48,13 @@ else:
         out["territory_hint"] = "the resume"
     if "GOOD-DESC" in data:
         out["description_verdict"] = "good"
+    if "STANDING-MARK" in data:
+        out["kind"] = "standing-candidate"
+    if "VERIFY-MARK" in data:
+        out["verify"] = [{"claim": "the fix is uncommitted", "why": "it may have landed",
+                          "identifier": "abc1234"}]
+    if "LOW-CONF" in data:
+        out["confidence"] = "low"
 print(json.dumps({"type": "result", "is_error": False, "structured_output": out,
                   "usage": {"input_tokens": 100, "cache_creation_input_tokens": 20,
                             "output_tokens": 7},
@@ -422,3 +429,73 @@ def test_apply_refuses_an_unapproved_plan(landed: Fixture, fake: Path):
     rc, _, err = apply_cli(landed, fake, "apply")
     assert rc == 1 and "not approved" in err
     assert not (landed.store / "territories/fixture").exists()
+
+
+def test_refine_queue_derives_and_drops(landed: Fixture, fake: Path):
+    """Every item comes from the store, the summaries or the audit, and working it is what
+    removes it: there is no done-list to keep in step."""
+    from claude_hybrid_memory.migrate import plan as P
+    from claude_hybrid_memory.migrate import queue
+
+    fx = landed
+    md = fx.projects / ALPHA / "memory"
+    p = md / "deploy-notes.md"
+    p.write_text(p.read_text() + "VERIFY-MARK\n")
+    (md / "house-rule.md").write_text(
+        "---\nname: house-rule\ndescription: d\n---\n\nSTANDING-MARK LOW-CONF\n")
+    plan, _ = plan_for(fx)
+    for s in plan["silos"]:                     # keep one names-subject description as it was
+        for e in s["files"]:
+            if e["file"] == "house-rule.md":
+                e["description"] = "keep"
+    P.write(fx.store, P.approve(plan))
+    rc, out, err = apply_cli(fx, fake, "apply")
+    assert rc == 0, out + err
+
+    def items() -> dict[str, dict]:
+        return {i["key"]: i for i in queue.build(fx.store, fx.projects)["items"]}
+
+    alpha = "territories/fixture/alpha"
+    q = items()
+    dn, hr = f"{alpha}/deploy-notes.md", f"{alpha}/house-rule.md"
+    assert q[f"verify:{dn}"]["source"] == "summary+heuristic"      # abc1234 in the body too
+    assert "abc1234" in q[f"verify:{dn}"]["detail"]
+    assert {f"shape:{dn}", f"standing-candidate:{hr}", f"description:{hr}",
+            f"low-confidence:{hr}"} <= q.keys()
+    assert not any(k.endswith("launch-record.md") and k.startswith("verify") for k in q)
+    ranks = [i["rank"] for i in queue.build(fx.store, fx.projects)["items"]]
+    assert ranks == sorted(ranks)
+    assert next(iter(q)) == f"standing-candidate:{hr}"             # promotions lead
+
+    # working an item is what drops it
+    f = fx.store / dn
+    f.write_text(f.read_text().replace("---\n\n", "---\n\nRewritten. ", 1)
+                 .replace("name: deploy-notes", "name: deploy-notes\nverify: true", 1))
+    h = fx.store / hr
+    h.write_text(h.read_text().replace("description: d", "description: A house rule"))
+    q = items()
+    assert f"shape:{dn}" not in q and f"verify:{dn}" not in q
+    assert f"description:{hr}" not in q and f"standing-candidate:{hr}" in q
+    (fx.store / "standing").mkdir(exist_ok=True)
+    h.replace(fx.store / "standing" / "house-rule.md")             # promoted
+    assert not any(k.endswith(hr) for k in items())
+
+    # a declined item is suppressed by its key in RETRO.md, and counted
+    key = next(iter(items()))
+    (fx.store / "RETRO.md").write_text(f"- `refine:{key}` - Matt: fine as it is\n")
+    q = queue.build(fx.store, fx.projects)
+    assert key not in {i["key"] for i in q["items"]} and q["declined"] == 1
+
+
+def test_refine_queue_cli(landed: Fixture, fake: Path):
+    fx = landed
+    apply_cli(fx, fake, "apply")
+    env = fx.env()
+    base = ["--root", str(fx.store), "--legacy", str(fx.projects)]
+    rc, out, err = run(mem_cmd("refine", "queue", *base), env)
+    assert rc == 0, err
+    assert "item(s)" in out and "[shape] territories/fixture/alpha/" in out
+    assert (fx.store / ".cache/migrate/queue.json").is_file()
+    rc, out, _ = run(mem_cmd("refine", "queue", "--territory", "home/lab", "--json", *base), env)
+    q = json.loads(out)
+    assert rc == 0 and q["items"] and all(i["territory"] == "home/lab" for i in q["items"])

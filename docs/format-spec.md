@@ -293,6 +293,11 @@ boundary is probably wrong.
 Always loaded. Its job is to answer "does anything I am not currently looking at matter
 right now". It is a map, never a container.
 
+Every territory must appear in it (`router-missing-territory` is an error). The `(N)` after a
+territory's name on its line is the one derived part: the count of its memory files, kept
+true by `mem render` and the SessionEnd hook, and `router-count` until then. The rest is
+hand-written.
+
     # MEMORY ROUTER
     machine: work-mac
     last_retrospective: 2026-09-04
@@ -400,7 +405,12 @@ memory's optional `group:` field, headings ordered by the territory's
 or `status: HISTORICAL` memory shares its group's one `Records and history:` line. **Edit
 the description or `group:`, never the rendered lines**: `mem render` (and the SessionEnd
 hook) rewrite them, and `mem audit` flags a section that differs as `render-stale`.
-Everything outside the markers stays hand-written. Until a territory is adopted its index
+Everything outside the markers stays hand-written, with one exception: an entry line for
+one of the territory's own memories *below* the end marker is taken into the section
+(`index-hand-entry` until then). That is where the harness's auto-memory puts the pointer it
+appends after writing a file through a migrated silo's symlink, and leaving it would list
+the memory twice. A memory its index does not list at all is `router-unlisted`, an error in
+the store, since the index is how a session finds it. Until a territory is adopted its index
 is hand-written as below. Either way `mem audit` budgets the `## MEMORIES` section, warning
 past 100 lines and erroring past 150; the hand-written head above it is not counted. The
 whole file still errors past 200 lines or 25,000 bytes, because the harness truncates there,

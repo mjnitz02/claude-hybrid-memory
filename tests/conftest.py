@@ -25,7 +25,7 @@ FILES = {
     "GATES.md": "# GATES\n\n- **The lab box is READ-ONLY.** → `home/lab`\n",
     "ROUTER.md": (
         "# MEMORY ROUTER\n\nmachine: fixture-mac\nlast_retrospective: 2026-08-01\n\n"
-        "## home — the lab\n- home/lab (3) : lab-config.\n  PULL WHEN: the lab box.\n\n"
+        "## home — the lab\n- home/lab (2) : lab-config.\n  PULL WHEN: the lab box.\n\n"
         "## console — the kit\n- console/kit (6) : kit-tools.\n  PULL WHEN: card work.\n"
     ),
     "RETRO.md": "# RETRO\n",

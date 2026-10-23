@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from pathlib import Path
 
 from conftest import Fixture, hook_cmd, mem_cmd, run
 from test_storegit import git, init
@@ -170,3 +171,38 @@ def test_the_byte_cap_warns_a_kilobyte_early(fx: Fixture):
     lab.write_text(head)
     [f] = render.check(fx.store)
     assert (f.level, f.code) == ("warn", "index-near-cap")
+
+
+def test_an_appended_pointer_is_taken_into_the_section(fx: Fixture):
+    """The harness's auto-memory writes a file, then appends its pointer to MEMORY.md, which
+    in an adopted index lands below the end marker (cbz-tagger, 2026-10-23)."""
+    grouped(fx)
+    render.write_adoption(fx.store, render.adopt(fx.store, "console/kit"))
+    (fx.store / KIT / "kit-new-probe.md").write_text(
+        "---\nname: kit-new-probe\ndescription: The probe says it works.\nmetadata:\n"
+        "  type: project\n---\n\nBody.\n")
+    index = fx.store / KIT / "MEMORY.md"
+    index.write_text(index.read_text() + "- [kit-new-probe](kit-new-probe.md) — hand line\n"
+                     "- [elsewhere](../other.md) — not ours, kept\n")
+    codes = {(f.code, Path(f.path).name) for f in render.check(fx.store)}
+    assert ("index-hand-entry", "kit-new-probe.md") in codes
+    assert ("router-count", "ROUTER.md") in codes                 # console/kit (6) -> 7
+    rc, _, _ = run(mem_cmd("render"), fx.env())
+    assert rc == 0
+    text = index.read_text()
+    assert text.count("kit-new-probe.md") == 1 and "hand line" not in text
+    assert text.index("kit-new-probe.md") < text.index(render.END)
+    assert "not ours, kept" in text
+    assert "- console/kit (7) :" in (fx.store / "ROUTER.md").read_text()
+    assert render.check(fx.store) == []
+
+
+def test_every_territory_is_on_the_map_and_every_memory_in_its_index(fx: Fixture):
+    (fx.store / "territories/home/attic").mkdir()
+    (fx.store / "territories/home/attic/MEMORY.md").write_text("# home/attic\n\n## MEMORIES\n")
+    rc, out, _ = run(mem_cmd("audit", "--json", "--scan", "store"), fx.env())
+    found = {(f["level"], f["code"], "/".join(f["path"].split("/")[-2:]))
+             for f in json.loads(out)}
+    assert rc == 1
+    assert ("error", "router-missing-territory", "attic/MEMORY.md") in found
+    assert ("error", "router-unlisted", "kit/kit-unlisted-orphan.md") in found

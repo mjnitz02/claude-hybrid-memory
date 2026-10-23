@@ -30,7 +30,16 @@ from pathlib import Path
 from claude_hybrid_memory import storegit
 from claude_hybrid_memory.fix import desired_slug
 from claude_hybrid_memory.migrate import plan as P
-from claude_hybrid_memory.render import BEGIN_LINE, END, clip, markers, one_line, render, set_field
+from claude_hybrid_memory.render import (
+    BEGIN_LINE,
+    END,
+    clip,
+    markers,
+    members,
+    one_line,
+    render,
+    set_field,
+)
 from claude_hybrid_memory.store import parse_frontmatter, scan_store
 
 MODES = ("active", "parked")
@@ -166,8 +175,7 @@ def router_line(root: Path, territory: str, subject: str) -> str | None:
     if not f.is_file():
         return None
     text = f.read_text(encoding="utf-8")
-    n = sum(1 for p in (root / "territories" / territory).glob("*.md")
-            if p.name not in ("MEMORY.md", "EXPORTS.md"))
+    n = len(members(root / "territories" / territory / "MEMORY.md"))
     have = re.compile(rf"^(- {re.escape(territory)}) (\[legacy\]|\(\d+\))", re.M)
     m = have.search(text)
     if m:

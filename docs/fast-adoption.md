@@ -1,7 +1,8 @@
 # Fast adoption: land first, refine after
 
 Status: ACCEPTED, 2026-10-23, on Matt's direction. Stages 1 to 4 built and run on the
-personal Mac: every pending silo there is landed (§12). Stage 5 not yet. Replaces the per-territory
+personal Mac: every pending silo there is landed (§12). Stage 5's queue and skill are built
+(§8); its exit, one session working ten items, is not yet met. Replaces the per-territory
 procedure in `migration.md` for bulk adoption, and is what Phase 6 (the remaining silos)
 and Phase 7 (the work Mac) of `direction.md` run on.
 
@@ -291,6 +292,29 @@ finishing an item and re-running `queue` drops it by derivation and there is no 
 drift. An item Matt declines is recorded in `RETRO.md` with the reason, and suppressed by
 its key.
 
+**As built (2026-10-23), and where it departs from the above:**
+
+- **The heuristic only ranks.** It flags a summarizer claim `summary+heuristic`, which moves
+  it up the queue, and adds nothing by itself. Run as specified on this store it produced
+  113 heuristic-only items out of 159, mostly provenance footnotes ("paths checked against
+  `25983e9`", repeated across 34 cards/archive files). That is the §14 case of a source
+  that is mostly noise, so it was cut at the source rather than tuned.
+- **"As landed" is the file at the silo's decisions commit** (or its landing commit when
+  there was nothing to decide), read with `git show`. A summary flag drops once the body
+  (shape, low confidence) or the description has changed since then, or the file has left
+  that path (promotions, relocations, archives, index-only). Using the landing commit
+  instead would wrongly count the decisions commit's link rewrites as refinement.
+- **Summaries are found by inventory id, not cache key.** After landing, a silo's memory dir
+  is a symlink to the territory, so a re-computed key no longer matches.
+- **Declining** is a backticked `refine:<key>` anywhere in `RETRO.md`, so the reason sits
+  in the prose of the retrospective that made the call.
+- **The per-type subagent directives live in the skill**, not in `agents/`, since they are
+  one sentence each and only the skill uses them.
+
+First real build, 2026-10-23: 144 items: 46 verify, 45 shape, 17 split-candidate, 16
+standing-candidate, 9 frontmatter-not-yaml, 8 stale-live, 3 index-only. No description items,
+because the map replaced every non-`good` description at landing.
+
 Stage 5 has no end date. The retrospective (`/memory-retro`) starts reporting queue length
 as its health number, in place of reading through territories.
 
@@ -397,6 +421,10 @@ events, and its isolation (§5) keeps it out of Phase 2's measurements.
    and links inside each silo followed. Archiving cbz-tagger's built spec rewrote 5 links into it.
    For Matt to tidy by hand: the router's solo line still says "All [legacy]", and its
    header still says "migrated: 9 of 19".
+
+   *Stage 5 built 2026-10-23:* `mem refine queue`, `skills/memory-refine/SKILL.md`, and
+   fixture tests for derivation, dropping and declining. The exit (one session works ten
+   items) is still open.
 3. **Map and apply**, fixture-tested, then one real silo end to end. *Exit:* `silo-migrated`,
    two commits, no new audit errors, `mem migrate undo` restores it exactly.
 4. **The remaining silos here**, through the one checkpoint. *Exit:* `mem status` shows no

@@ -26,6 +26,15 @@ Budget: the MEMORIES section warns past 100 lines and errors past 150; the hand-
 head above it is not counted. The whole file still errors past the harness's 200 lines,
 since that is truncation, not policy.
 
+An entry line for one of the territory's own memories BELOW the end marker is taken into
+the section: the harness's auto-memory writes a file and then appends a pointer to
+MEMORY.md, and through a migrated silo's symlink that append lands after the end marker
+(cbz-tagger, 2026-10-23). Left there, the next render would list the memory twice.
+
+ROUTER.md is hand-written except for the `(N)` after a territory's name on its line, which
+counts that territory's memory files. Rendering keeps it true; nothing else did, and six
+territories had drifted by 2026-10-23.
+
 Adoption (`--adopt`) is the one-off migration of a hand-written index. The dry run lists
 every hand-written line whose words the description lacks. That is for information:
 the description carries the meaning, and a detail it drops is a read of the memory away.
@@ -165,25 +174,78 @@ def rendered(root: Path) -> list[str]:
             if markers(p.read_text(encoding="utf-8", errors="replace"))]
 
 
+def members(index: Path) -> set[str]:
+    """The memory files a territory's MEMORY.md is the index of."""
+    return {f.name for f in index.parent.glob("*.md") if f.name not in ("MEMORY.md", "EXPORTS.md")}
+
+
+def hand_entries(text: str, own: set[str]) -> tuple[str, list[str]]:
+    """`text` past the end marker without its entry lines for `own` files, and those files.
+    The rest of the tail is hand-written and stays as it is."""
+    end = text.find(END) + len(END)
+    keep, took = [], []
+    for ln in text[end:].split("\n"):
+        m = ENTRY_RE.match(ln)
+        if m and m.group("file") in own:
+            took.append(m.group("file"))
+        else:
+            keep.append(ln)
+    tail = "\n".join(keep)
+    return text[:end] + (tail if tail.strip() else "\n"), took
+
+
 def render(root: Path, name: str, write: bool = True,
            superseded: set[str] | None = None) -> tuple[str, str]:
     """(current text, rendered text) of an adopted territory's MEMORY.md; writes when
     they differ and `write` is set."""
     t = load(root, name, superseded)
     text = t.index.read_text(encoding="utf-8")
-    s, e = markers(text)
-    new = text[:s] + render_section(t) + text[e:]
+    s, _ = markers(text)
+    rest, _ = hand_entries(text, members(t.index))
+    _, e = markers(rest)
+    new = text[:s] + render_section(t) + rest[e:]
     if write and new != text:
         t.index.write_text(new, encoding="utf-8")
     return text, new
 
 
+ROUTER_COUNT_RE = re.compile(r"^(- (?P<t>[a-z0-9-]+(?:/[a-z0-9-]+)+) )\((?P<n>\d+)\)", re.M)
+
+
+def router_counts(root: Path, write: bool = True) -> list[tuple[str, int, int]]:
+    """(territory, ROUTER.md's count, real count) for every count that is wrong; rewrites
+    them when `write` is set. A line with no count, or naming no territory, is left alone."""
+    f = root / "ROUTER.md"
+    if not f.is_file():
+        return []
+    text = f.read_text(encoding="utf-8")
+    wrong = []
+
+    def fix(m: re.Match) -> str:
+        d = root / "territories" / m.group("t")
+        if not (d / "MEMORY.md").is_file():
+            return m.group(0)
+        n = len(members(d / "MEMORY.md"))
+        if n == int(m.group("n")):
+            return m.group(0)
+        wrong.append((m.group("t"), int(m.group("n")), n))
+        return f"{m.group(1)}({n})"
+
+    new = ROUTER_COUNT_RE.sub(fix, text)
+    if write and new != text:
+        f.write_text(new, encoding="utf-8")
+    return wrong
+
+
 def render_all(root: Path) -> list[str]:
-    """Re-render ALWAYS.md and every adopted territory; the names of those that changed."""
+    """Re-render ROUTER.md's counts, then ALWAYS.md (which carries ROUTER.md), then every
+    adopted territory; the names of those that changed."""
     from claude_hybrid_memory.audit.relations import store_graph
     from claude_hybrid_memory.hooks import session_start
 
-    changed = [session_start.ALWAYS] if session_start.write_always(root) else []
+    changed = ["ROUTER.md"] if router_counts(root) else []
+    if session_start.write_always(root):
+        changed.append(session_start.ALWAYS)
     names = rendered(root)
     if not names:
         return changed
@@ -213,6 +275,8 @@ def check(root: Path, names: list[str] | None = None) -> list[Finding]:
     tdir = root / "territories"
     if not tdir.is_dir():
         return out
+    if not names:
+        out += check_router(root)
     adopted = set(rendered(root))
     sup = store_graph(root).superseded() if adopted else set()
     for p in sorted(tdir.rglob("MEMORY.md")):
@@ -221,6 +285,11 @@ def check(root: Path, names: list[str] | None = None) -> list[Finding]:
             continue
         text = p.read_text(encoding="utf-8", errors="replace")
         if name in adopted:
+            for f in hand_entries(text, members(p))[1]:
+                out.append(Finding(WARN, "index-hand-entry", str(p.parent / f),
+                                   "listed by hand below the rendered section, as the "
+                                   "harness's auto-memory appends it; `mem render` takes it "
+                                   "in from the memory's description"))
             _, new = render(root, name, False, sup)
             if new != text:
                 out.append(Finding(WARN, "render-stale", str(p),
@@ -229,6 +298,25 @@ def check(root: Path, names: list[str] | None = None) -> list[Finding]:
                                    "the section was hand-edited); `mem render` rewrites it"))
             text = new
         out += budget(p, text)
+    return out
+
+
+def check_router(root: Path) -> list[Finding]:
+    """Every territory is on the map, and the map's counts are true."""
+    f = root / "ROUTER.md"
+    if not f.is_file():
+        return []
+    text = f.read_text(encoding="utf-8")
+    out = []
+    for p in sorted((root / "territories").rglob("MEMORY.md")):
+        name = str(p.parent.relative_to(root / "territories"))
+        if not re.search(rf"(?<![\w/-]){re.escape(name)}(?![\w/-])", text):
+            out.append(Finding(ERROR, "router-missing-territory", str(p),
+                               f"{name} is not in ROUTER.md, so no session outside its own "
+                               "repos can find it; add a line under its area"))
+    for t, was, n in router_counts(root, write=False):
+        out.append(Finding(WARN, "router-count", str(f),
+                           f"{t} says ({was}), has {n} memories; `mem render` corrects it"))
     return out
 
 
