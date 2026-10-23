@@ -181,6 +181,15 @@ def build(base: Path, oversized: bool = False) -> Fixture:
     return Fixture(home, store, projects, repo, elsewhere)
 
 
+@pytest.fixture(autouse=True)
+def _no_outer_repo(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Run as a pre-push hook, the suite inherits GIT_DIR and GIT_INDEX_FILE from the repo
+    being pushed, and every fixture `git init` or commit would land in that repo instead."""
+    from claude_hybrid_memory.storegit import REPO_ENV
+    for k in REPO_ENV:
+        monkeypatch.delenv(k, raising=False)
+
+
 @pytest.fixture
 def fx(tmp_path: Path) -> Fixture:
     return build(tmp_path / "fx")
