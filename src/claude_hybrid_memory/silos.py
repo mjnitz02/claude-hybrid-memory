@@ -80,7 +80,10 @@ def do_link(root: Path, legacy: Path, territory: str, target_dir: Path,
     silo = legacy / silo_name(str(target_dir))
     md = silo / "memory"
 
-    if md.is_symlink():
+    # A link whose territory is gone (renamed, archived) holds nothing, so re-pointing it
+    # strands nothing; only a link to a live territory needs a deliberate unlink.
+    dangling = md.is_symlink() and not md.exists()
+    if md.is_symlink() and not dangling:
         cur = Path(os.path.realpath(md))
         if cur == tpath.resolve():
             out.append(Finding(INFO, "link-already", silo.name, f"already -> {territory}"))
@@ -104,7 +107,9 @@ def do_link(root: Path, legacy: Path, territory: str, target_dir: Path,
         return out
 
     silo.mkdir(parents=True, exist_ok=True)
-    if md.is_dir():
+    if dangling:
+        md.unlink()
+    elif md.is_dir():
         md.rename(silo / "memory.premigration")
     md.symlink_to(tpath)
     out.append(Finding(INFO, "link-done", silo.name, f"-> {territory}"))

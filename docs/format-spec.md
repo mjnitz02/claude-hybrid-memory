@@ -142,6 +142,35 @@ judgment call into a command, which is the same move `verify:` makes everywhere 
 `mem.py status` reports a silo whose directory does not resolve as `silo-not-checked-out`,
 not as an archive candidate, and `mem.py link --territory <path>` re-points a restored
 checkout in one command so step 4 costs nothing.
+A silo linked to a territory that is gone (renamed or archived) is `silo-dangling`, an
+error: the repo silently loads no memory. `mem.py link` re-points it without the
+manual unlink a live link needs.
+
+`mem mv-territory OLD NEW` renames a territory or moves it to another area. It moves the
+directory and repoints every silo linked to it. It rewrites the territory's own header,
+its ROUTER.md entry (moving it under the new area's section), other territories'
+`consumes:`/`consumed_by:`, `container/slug` refs in `supersedes:`, and the migration
+plan, keeping an approval the rename did not change. Prose that names the old path is
+listed, not rewritten. Without `--write` it only shows the plan; with it, it makes a
+checkpoint commit first and reports any audit error the move introduced.
+
+`mem mv SLUG... TERRITORY` moves memories into another territory. A memory is named by
+slug, by `area/name/slug` when the slug is ambiguous, or by path. Both indexes follow: a
+rendered one re-renders, and a hand-written one keeps the line as written, placed after
+the destination's last entry. `container/slug` refs in `supersedes:` follow too. Moving a
+`role: gate` memory warns, since gate text is inlined in the territory's head. The
+dry run, checkpoint and error report work as for `mv-territory`.
+
+`mem archive TARGET... --why TEXT` retires a whole territory, or some memories, to
+`archive/<area>-<name>/` (`--as` names another group). A territory goes as it is, index
+included. Its ROUTER.md entry and every `consumes:`/`consumed_by:` naming it are removed,
+and every silo linked to it is unlinked, so no repo keeps loading retired memory.
+Bringing it back is a deliberate step: move it into `territories/`, then `mem link`.
+Retired memories leave their index. A `[[slug]]` pointing at one becomes its archive path,
+and `supersedes:` refs follow it. Each call adds a dated line with the reason to the
+group's `WHY-ARCHIVED.md`.
+Merging, splitting and dissolving territories compose these three commands; `/memory-restructure`
+walks through each.
 
 ## Kinds
 
@@ -298,8 +327,13 @@ territory's name on its line is the one derived part: the count of its memory fi
 true by `mem render` and the SessionEnd hook, and `router-count` until then. The rest is
 hand-written.
 
+The reverse holds too: an entry naming a territory with no `MEMORY.md` is
+`router-unknown-territory`, an error, unless the entry says `NOT YET WRITTEN`, which
+marks it planned. A territory's `consumes:` and `consumed_by:` follow the same rule
+(`territory-ref-unknown`); a glob such as `home/*` passes while it matches a territory.
+
     # MEMORY ROUTER
-    machine: work-mac
+    machine: machine-a
     last_retrospective: 2026-09-04
     territories: 13
 

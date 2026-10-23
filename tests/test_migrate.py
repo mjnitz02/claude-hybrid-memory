@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 from conftest import Fixture, mem_cmd, run
 
-from claude_hybrid_memory.migrate import inventory, summarize
+from claude_hybrid_memory.migrate import apply, inventory, summarize
 
 FAKE = r'''
 import json, os, sys
@@ -499,3 +499,45 @@ def test_refine_queue_cli(landed: Fixture, fake: Path):
     rc, out, _ = run(mem_cmd("refine", "queue", "--territory", "home/lab", "--json", *base), env)
     q = json.loads(out)
     assert rc == 0 and q["items"] and all(i["territory"] == "home/lab" for i in q["items"])
+
+
+def test_refine_queue_finds_undated_memories_in_active_territories(fx: Fixture):
+    """No status, never verified, no recipe: the audit calls that `slow` and only `stale`,
+    and with no summary nothing else queues it, so a territory carried over from an early
+    store looked clean while most of it was undated."""
+    from claude_hybrid_memory.migrate import queue
+
+    index = fx.store / "territories/console/kit/MEMORY.md"
+    head = "---\nterritory: console/kit\n"
+    index.write_text(index.read_text().replace(
+        head, head + "members:\n  kit-repo: {owner: self, mode: active}\n", 1))
+
+    def undated() -> set[str]:
+        return {i["path"].rsplit("/", 1)[-1] for i in queue.build(fx.store, fx.projects)["items"]
+                if i["type"] == "unverified"}
+
+    # kit-sync-v1 is undated too, but superseded; home/lab has no active member
+    assert undated() == {"kit_raw_notes.md", "kit-unlisted-orphan.md"}
+    orphan = fx.store / "territories/console/kit/kit-unlisted-orphan.md"
+    orphan.write_text(orphan.read_text().replace("volatility: live", "last_verified: 2026-10-01"))
+    assert undated() == {"kit_raw_notes.md"}
+    index.write_text(index.read_text().replace("mode: active", "mode: parked"))
+    assert undated() == set()
+
+
+@pytest.mark.parametrize("entry", ["- home/kiln : The kiln. PULL WHEN: any of it.",
+                                   "- home/lathe, home/kiln : PULL WHEN: in that repo."])
+def test_router_line_leaves_a_hand_written_entry_alone(tmp_path: Path, entry: str):
+    router = f"# MEMORY ROUTER\n\n## home\nStandalone.\n\n{entry}\n\n## fixture\n"
+    (tmp_path / "ROUTER.md").write_text(router)
+    (tmp_path / "territories/home/kiln").mkdir(parents=True)
+    (tmp_path / "territories/home/kiln/MEMORY.md").write_text("# home/kiln\n")
+    assert apply.router_line(tmp_path, "home/kiln", "subject") is None
+    assert (tmp_path / "ROUTER.md").read_text() == router
+
+
+def test_router_line_does_not_mistake_a_longer_name(tmp_path: Path):
+    (tmp_path / "ROUTER.md").write_text("# MEMORY ROUTER\n\n## home\n- home/kiln-old : x.\n")
+    (tmp_path / "territories/home/kiln").mkdir(parents=True)
+    assert apply.router_line(tmp_path, "home/kiln", "subject") == "ROUTER.md: added home/kiln"
+    assert "- home/kiln (0) : subject." in (tmp_path / "ROUTER.md").read_text()

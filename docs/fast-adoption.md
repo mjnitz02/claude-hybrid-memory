@@ -1,10 +1,10 @@
 # Fast adoption: land first, refine after
 
 Status: ACCEPTED, 2026-10-23, on Matt's direction. Stages 1 to 4 built and run on the
-personal Mac: every pending silo there is landed (§12). Stage 5's queue and skill are built
+first machine: every pending silo there is landed (§12). Stage 5's queue and skill are built
 (§8); its exit, one session working ten items, is not yet met. Replaces the per-territory
 procedure in `migration.md` for bulk adoption, and is what Phase 6 (the remaining silos)
-and Phase 7 (the work Mac) of `direction.md` run on.
+and Phase 7 (the second machine) of `direction.md` run on.
 
 ## 1. The short version
 
@@ -431,7 +431,7 @@ events, and its isolation (§5) keeps it out of Phase 2's measurements.
    pending silos (direction.md Phase 6's exit).
 5. **Queue and `/memory-refine`.** *Exit:* one session works ten items and the queue shrinks
    by derivation.
-6. **The work Mac** (direction.md Phase 7): the same run against its own store. Its silo summaries
+6. **The second machine** (direction.md Phase 7): the same run against its own store. Its silo summaries
    also get the chain topology (layers, `consumes:`), so the map can propose `consumes:`
    edges for new territories.
 

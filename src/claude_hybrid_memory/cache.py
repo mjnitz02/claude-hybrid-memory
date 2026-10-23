@@ -350,7 +350,7 @@ def _search(conn, q: str, territory: str | None) -> list[Hit]:
 
 # --- near duplicates --------------------------------------------------------------------
 
-# Calibrated 2026-10-21 by querying each of the personal Mac's 310 live memories against
+# Calibrated 2026-10-21 by querying each of a real store's 310 live memories against
 # the rest: similarity (below) had median 0.41, p95 0.63, max 0.90. Pairs at 0.70+ were
 # real overlaps (a closed project and its status file telling the same story; an overview
 # restating a migration); 0.55-0.65 were distinct memories on one topic. 9 of 310 clear it.

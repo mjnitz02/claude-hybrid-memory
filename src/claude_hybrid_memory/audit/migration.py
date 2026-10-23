@@ -22,6 +22,15 @@ def check_silos(legacy_root: Path, store_root: Path) -> list[Finding]:
             store_slugs[f.stem] = str(f.parent.relative_to(tdir))
     for silo in sorted(legacy_root.iterdir()):
         md = silo / "memory"
+        if md.is_symlink() and not (md / "MEMORY.md").is_file():
+            # exists() follows the link, so a territory renamed or archived out from under
+            # this silo would otherwise vanish from the audit without a word
+            fix = ("repoint it with `mem link`" if not md.exists() else
+                   "the target still exists, so remove the link by hand, then `mem link`")
+            out.append(Finding(ERROR, "silo-dangling", silo.name,
+                               f"-> {os.readlink(md)}, which is not a territory; the "
+                               f"repo loads no memory. {fix}"))
+            continue
         if not md.exists():
             continue
         if md.is_symlink():

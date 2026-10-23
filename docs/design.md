@@ -38,7 +38,7 @@ produces better memories and fewer of them is a net loss.
 
 ## Machine scoping
 
-Matt runs Claude on a work Mac and a personal Mac and keeps them independent. So:
+Matt runs Claude on two machines and keeps them independent. So:
 
 | Layer | Crosses machines? | Lives where |
 |---|---|---|

@@ -109,3 +109,12 @@ def test_link_names_the_silo_the_harness_reads(fx: Fixture, tmp_path: Path):
     do_link(fx.store, fx.projects, "home/lab", d, write=True)
     assert (fx.projects / silo_name(str(d)) / "memory").is_symlink()
     assert "console-tools" in silo_name(str(d))
+
+
+def test_link_repoints_a_silo_whose_territory_is_gone(fx: Fixture):
+    silo = fx.projects / silo_name(str(fx.elsewhere))
+    silo.mkdir(parents=True, exist_ok=True)
+    (silo / "memory").symlink_to(fx.store / "territories" / "home" / "gone")
+    f = do_link(fx.store, fx.projects, "home/lab", fx.elsewhere, write=True)
+    assert [x.code for x in f] == ["link-done"]
+    assert (silo / "memory" / "MEMORY.md").is_file()

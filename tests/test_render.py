@@ -206,3 +206,33 @@ def test_every_territory_is_on_the_map_and_every_memory_in_its_index(fx: Fixture
     assert rc == 1
     assert ("error", "router-missing-territory", "attic/MEMORY.md") in found
     assert ("error", "router-unlisted", "kit/kit-unlisted-orphan.md") in found
+
+
+def test_the_map_and_consumes_name_only_real_or_planned_territories(fx: Fixture):
+    router = fx.store / "ROUTER.md"
+    router.write_text(router.read_text()
+                      + "- home/gone (3) : renamed away, line left behind.\n"
+                      + "- console/next, console/later : NOT YET WRITTEN.\n"
+                      + "  The plan.\n")
+    lab = fx.store / "territories/home/lab/MEMORY.md"
+    # a glob is fine while it matches something
+    refs = "console/kit, console/next, home/old, home/*, attic/*"
+    lab.write_text(lab.read_text().replace("consumed_by: console/kit", f"consumed_by: {refs}"))
+    checked = render.check_router(fx.store)
+    found = {(f.level, f.code, f.message.split(",")[0].split(" ")[0]) for f in checked}
+    assert ("error", "router-unknown-territory", "home/gone") in found
+    assert ("info", "router-planned-territory", "console/next") in found
+    assert ("info", "router-planned-territory", "console/later") in found
+    assert ("info", "territory-ref-planned", "consumed_by:") in found
+    unknown = [f.message.split(",")[0] for f in checked if f.code == "territory-ref-unknown"]
+    assert unknown == ["consumed_by: home/old", "consumed_by: attic/*"]
+    assert not any(f.code == "router-unknown-territory" and "home/lab" in f.message
+                   for f in checked)
+
+
+def test_router_entries_reads_lists_counts_and_continuations():
+    text = ("## home\n- home/a, home/B-c (2) : one.\n  more.\n- home/d : two.\n\n"
+            "## EXPORTS\n- [lab-policy] not an entry\n")
+    e = render.router_entries(text)
+    assert sorted(e) == ["home/B-c", "home/a", "home/d"]
+    assert e["home/a"].endswith("more.") and e["home/d"] == "- home/d : two."

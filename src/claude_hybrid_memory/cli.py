@@ -30,6 +30,9 @@ Enforces docs/format-spec.md.
     mem migrate apply [--silo S ...] [--dry-run]
     mem migrate undo --silo S
     mem refine queue [--territory T] [--limit N] [--json]
+    mem mv-territory OLD NEW [--write]
+    mem mv SLUG... TERRITORY [--write]
+    mem archive TERRITORY|SLUG... --why TEXT [--as GROUP] [--write]
 
 Exit codes: 0 clean, 1 findings at error level, 2 tool error.
 """
@@ -1046,6 +1049,88 @@ def _refine(argv: list[str]) -> int:
     return 0
 
 
+def _mv_territory(argv: list[str]) -> int:
+    import argparse
+    from pathlib import Path
+
+    from claude_hybrid_memory import move
+    from claude_hybrid_memory.findings import report
+    from claude_hybrid_memory.store import LEGACY, STORE
+
+    ap = argparse.ArgumentParser(prog="mem mv-territory",
+                                 description="Rename a territory or move it to another area: "
+                                             "directory, silo links, router, refs and plan.")
+    ap.add_argument("old")
+    ap.add_argument("new")
+    ap.add_argument("--write", action="store_true", help="apply it (default: show the plan)")
+    ap.add_argument("--root", type=Path, default=STORE)
+    ap.add_argument("--legacy", type=Path, default=LEGACY)
+    ap.add_argument("--json", action="store_true")
+    a = ap.parse_args(argv)
+    mv = move.plan_territory(a.root, a.legacy, a.old, a.new)
+    if isinstance(mv, list):
+        return report(mv, a.json)
+    if not a.write:
+        return report(move.describe(a.root, mv, False), a.json)
+    return report(move.apply_territory(a.root, a.legacy, mv), a.json)
+
+
+def _mv(argv: list[str]) -> int:
+    import argparse
+    from pathlib import Path
+
+    from claude_hybrid_memory import move
+    from claude_hybrid_memory.findings import report
+    from claude_hybrid_memory.store import LEGACY, STORE
+
+    ap = argparse.ArgumentParser(prog="mem mv",
+                                 description="Move memories into another territory: the files, "
+                                             "both indexes and `supersedes:` refs.")
+    ap.add_argument("memories", nargs="+", metavar="SLUG",
+                    help="slug, area/name/slug, or a path to the file")
+    ap.add_argument("territory")
+    ap.add_argument("--write", action="store_true", help="apply it (default: show the plan)")
+    ap.add_argument("--root", type=Path, default=STORE)
+    ap.add_argument("--legacy", type=Path, default=LEGACY)
+    ap.add_argument("--json", action="store_true")
+    a = ap.parse_args(argv)
+    fm = move.plan_files(a.root, a.memories, a.territory)
+    if isinstance(fm, list):
+        return report(fm, a.json)
+    if not a.write:
+        return report(move.describe_files(a.root, fm, False), a.json)
+    return report(move.apply_files(a.root, a.legacy, fm), a.json)
+
+
+def _archive(argv: list[str]) -> int:
+    import argparse
+    from pathlib import Path
+
+    from claude_hybrid_memory import move
+    from claude_hybrid_memory.findings import report
+    from claude_hybrid_memory.store import LEGACY, STORE
+
+    ap = argparse.ArgumentParser(prog="mem archive",
+                                 description="Retire a whole territory, or some memories, to "
+                                             "archive/. Silos linked to a retired territory "
+                                             "are unlinked; relinking is a separate step.")
+    ap.add_argument("targets", nargs="+", metavar="TARGET",
+                    help="one territory (area/name), or memories (slug, area/name/slug, path)")
+    ap.add_argument("--why", required=True, help="the reason, kept in WHY-ARCHIVED.md")
+    ap.add_argument("--as", dest="group", help="archive group (default: area-name of the source)")
+    ap.add_argument("--write", action="store_true", help="apply it (default: show the plan)")
+    ap.add_argument("--root", type=Path, default=STORE)
+    ap.add_argument("--legacy", type=Path, default=LEGACY)
+    ap.add_argument("--json", action="store_true")
+    a = ap.parse_args(argv)
+    ar = move.plan_archive(a.root, a.legacy, a.targets, a.why, a.group)
+    if isinstance(ar, list):
+        return report(ar, a.json)
+    if not a.write:
+        return report(move.describe_archive(a.root, ar, False), a.json)
+    return report(move.apply_archive(a.root, a.legacy, ar), a.json)
+
+
 def main(argv: list[str] | None = None) -> int:
     import time
     t0 = time.perf_counter()
@@ -1069,6 +1154,12 @@ def main(argv: list[str] | None = None) -> int:
             return _migrate(args[1:])
         if args[:1] == ["refine"]:
             return _refine(args[1:])
+        if args[:1] == ["mv-territory"]:
+            return _mv_territory(args[1:])
+        if args[:1] == ["mv"]:
+            return _mv(args[1:])
+        if args[:1] == ["archive"]:
+            return _archive(args[1:])
         return _run(args)
     except KeyboardInterrupt:
         return 130

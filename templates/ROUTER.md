@@ -1,6 +1,6 @@
 # MEMORY ROUTER
 
-machine: <work-mac | personal-mac>
+machine: <a short name for this machine, e.g. laptop>
 last_retrospective: <YYYY-MM-DD>
 territories: <n>
 
@@ -19,7 +19,7 @@ Product dependency chain. A change at a layer breaks the layer below it.
 Cuts across every layer.
 
 - utility/dep-policy : PULL WHEN: <trigger>
-- utility/github-actions : PULL WHEN: <trigger>
+- utility/ci-workflows : PULL WHEN: <trigger>
 
 ## mine
 Your own tooling. Not part of the product chain; these cannot break each other.

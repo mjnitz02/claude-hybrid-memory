@@ -161,3 +161,13 @@ def test_budget_checks_delivery_not_just_tokens(fx: Fixture, tmp_path: Path, mon
     assert audit.budget.check_delivery(fx.store, md) == []
     monkeypatch.setattr(session_start, "HOOK_OUTPUT_LIMIT", 50)
     assert "budget-hook-output" in codes(audit.budget.check_delivery(fx.store, md), "error")
+
+
+def test_a_silo_whose_territory_was_renamed_is_an_error(fx: Fixture):
+    # A territory renamed by hand, its silo not repointed: exists() follows the dead link,
+    # so the audit used to say nothing.
+    silo = fx.projects / "-Users-nobody-renamed-repo"
+    silo.mkdir()
+    (silo / "memory").symlink_to(fx.store / "territories" / "home" / "gone")
+    by = {x.code: x for x in audit.check_silos(fx.projects, fx.store)}
+    assert by["silo-dangling"].level == "error" and by["silo-dangling"].path == silo.name

@@ -85,7 +85,7 @@ _Loader.yaml_implicit_resolvers = {
 def parse_frontmatter(text: str) -> tuple[dict, str, list[str]]:
     """YAML frontmatter, read so that no text is ever lost silently.
 
-    Returns (meta, body, problems). Measured on the personal Mac's 409 real blocks
+    Returns (meta, body, problems). Measured on a real store's 409 blocks
     (2026-10-21), strict YAML alone would have:
       - rejected 5 blocks outright: a line with no key (`tag-test-fodder-corpus.md`) or an
         unquoted `: ` inside a value. Those fall back to the forgiving parser;

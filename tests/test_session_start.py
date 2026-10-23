@@ -5,6 +5,7 @@ from pathlib import Path
 
 from conftest import Fixture
 
+from claude_hybrid_memory.harness import silo_name
 from claude_hybrid_memory.hooks import session_start
 
 
@@ -109,3 +110,13 @@ def test_a_stale_always_md_is_rewritten_and_announced(fx: Fixture, tmp_path: Pat
     gates.write_text(gates.read_text() + "- **A new gate.**\n")
     assert "re-rendered" in session_start.output(fx.store, fx.elsewhere, md)
     assert "A new gate." in (fx.store / "ALWAYS.md").read_text()
+
+
+def test_a_silo_pointing_at_a_gone_territory_is_said(fx: Fixture, tmp_path: Path, monkeypatch):
+    link = fx.projects / silo_name(str(fx.repo)) / "memory"
+    link.unlink()
+    link.symlink_to(fx.store / "territories" / "console" / "renamed-away")
+    monkeypatch.setattr(session_start, "PROJECTS", fx.projects)
+    out = session_start.output(fx.store, fx.repo, imports(fx, tmp_path))
+    assert "points at console/renamed-away, which no longer exists" in out
+    assert "Territory for this directory" not in out

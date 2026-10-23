@@ -33,6 +33,7 @@ from claude_hybrid_memory.migrate import plan as P
 from claude_hybrid_memory.render import (
     BEGIN_LINE,
     END,
+    SECTION_RE,
     clip,
     markers,
     members,
@@ -183,6 +184,9 @@ def router_line(root: Path, territory: str, subject: str) -> str | None:
             return None
         f.write_text(have.sub(rf"\1 ({n})", text, count=1), encoding="utf-8")
         return f"ROUTER.md: {territory} {m.group(2)} -> ({n})"
+    # A hand-written entry (`- t : ...`, or grouped `- a, t : ...`) is Matt's; never duplicate it.
+    if re.search(rf"^- (?:[\w./-]+, )*{re.escape(territory)}(?=[\s,:]|$)", text, re.M):
+        return None
     line = f"- {territory} ({n}) : {subject or territory}."
     area = territory.split("/", 1)[0]
     m = re.search(rf"^## {re.escape(area)}\b.*$", text, re.M)
@@ -220,9 +224,22 @@ def reindex(root: Path, territory: str, moved: frozenset[str] = frozenset()) -> 
         meta, _, _ = parse_frontmatter(f.read_text(encoding="utf-8"))
         new.append(f"- [{f.stem}]({f.name}) — {clip(one_line(meta.get('description')))}")
     if new:
-        text = text.rstrip("\n") + ("\n" if "## MEMORIES" in text else "\n\n## MEMORIES\n")
-        text += "\n".join(new) + "\n"
+        text = after_last_entry(text, new)
     index.write_text(text, encoding="utf-8")
+
+
+def after_last_entry(text: str, lines: list[str]) -> str:
+    """`lines` after a hand-written index's last entry. Most hand-written indexes group
+    entries under topic headings with no `## MEMORIES`, so a new section at the end would
+    strand the lines away from the rest."""
+    entries = list(re.finditer(r"^- \[[^\]]*\]\([^)/]+\.md\).*$", text, re.M))
+    if entries:
+        end = entries[-1].end()
+    elif m := SECTION_RE.search(text):
+        end = m.end()
+    else:
+        return text.rstrip("\n") + "\n\n## MEMORIES\n" + "\n".join(lines) + "\n"
+    return text[:end] + "\n" + "\n".join(lines) + text[end:]
 
 
 def errors(root: Path, legacy_dir: Path | None) -> set[tuple[str, str]]:

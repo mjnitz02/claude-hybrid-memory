@@ -31,6 +31,7 @@ feedback against manufactured insight.
 | `budget-high`, `standing-cap` | an always-loaded layer near the hook's truncation limit, or past its file-count cap |
 | `silo-workdir-gone` | memory for a directory that no longer exists |
 | `silo-mixed-state` | a slug living in two homes |
+| `silo-dangling`, `router-unknown-territory`, `territory-ref-unknown` | a territory renamed or archived while something still points at it |
 | `possible-duplicate` | the same description in two territories. **A hint, not a verdict.** |
 
 **Claude, reading the report:**
