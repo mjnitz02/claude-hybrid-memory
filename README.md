@@ -138,7 +138,7 @@ To see exactly what a session is handed:
 
 ## Skills
 
-`/memory-setup`, `/memory-migrate`, `/memory-refine` and `/memory-retro` are symlinked from `skills/` into
+`/memory-setup`, `/memory-migrate`, `/memory-refine`, `/memory-retro` and `/memory-restructure` are symlinked from `skills/` into
 `~/.claude/skills/`, so editing this repo changes live behavior immediately.
 
 ## Two rules worth knowing before touching anything

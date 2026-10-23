@@ -388,17 +388,6 @@ def plan_files(root: Path, specs: list[str], dest: str) -> FileMove | list[Findi
     return fm
 
 
-def _after_last_entry(text: str, lines: list[str]) -> str:
-    """`lines` after a hand-written index's last entry. Most hand-written indexes group
-    entries under topic headings with no `## MEMORIES`, so a new section at the end would
-    strand the lines away from the rest."""
-    entries = list(re.finditer(r"^- \[[^\]]*\]\([^)/]+\.md\).*$", text, re.M))
-    last = entries[-1] if entries else None
-    if last is None:
-        return text.rstrip("\n") + "\n\n## MEMORIES\n" + "\n".join(lines) + "\n"
-    return text[:last.end()] + "\n" + "\n".join(lines) + text[last.end():]
-
-
 def describe_files(root: Path, fm: FileMove, done: bool) -> list[Finding]:
     verb = "moved" if done else "would move"
     out = [Finding(INFO, "mv-file", f"territories/{src}/{f.name}",
@@ -425,7 +414,7 @@ def apply_files(root: Path, legacy: Path, fm: FileMove) -> list[Finding]:
             from claude_hybrid_memory.render import markers
             text = index.read_text(encoding="utf-8")
             if not markers(text):
-                index.write_text(_after_last_entry(text, fm.carried), encoding="utf-8")
+                index.write_text(apply.after_last_entry(text, fm.carried), encoding="utf-8")
         for src in dict.fromkeys(s for s, _ in fm.files):
             apply.reindex(root, src, frozenset(f.name for s, f in fm.files if s == src))
         apply.reindex(root, fm.dest)
@@ -492,6 +481,8 @@ def _router_drop(ar: Archive, router: Path, name: str) -> None:
 def _retire_refs(ar: Archive, tdir: Path, leaving: set[Path]) -> None:
     """For every file staying behind: `[[slug]]` into an archived file becomes its archive
     path (as `migrate apply` does), and `container/slug` in `supersedes:` follows it."""
+    if not ar.files:  # an emptied territory: an empty alternation would match everywhere
+        return
     gone = {f.stem: f"archive/{ar.group}/{f.name}" for _, f in ar.files}
     sup = {f"{src}/{f.stem}": f"archive/{ar.group}/{f.stem}" for src, f in ar.files}
     sup_tok = re.compile(rf"(?<![\w.-])(?:{'|'.join(map(re.escape, sup))})(?![\w-])")

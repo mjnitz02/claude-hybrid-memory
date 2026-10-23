@@ -169,6 +169,8 @@ Bringing it back is a deliberate step: move it into `territories/`, then `mem li
 Retired memories leave their index. A `[[slug]]` pointing at one becomes its archive path,
 and `supersedes:` refs follow it. Each call adds a dated line with the reason to the
 group's `WHY-ARCHIVED.md`.
+Merging, splitting and dissolving territories compose these three commands; `/memory-restructure`
+walks through each.
 
 ## Kinds
 

@@ -82,7 +82,7 @@ the user or on their go-ahead.
 Symlinked rather than copied, so editing this repo changes live behavior immediately.
 
     mkdir -p ~/.claude/skills
-    for s in memory-setup memory-migrate memory-retro memory-refine; do
+    for s in memory-setup memory-migrate memory-retro memory-refine memory-restructure; do
       ln -sfn "$PWD/skills/$s" ~/.claude/skills/$s
     done
 

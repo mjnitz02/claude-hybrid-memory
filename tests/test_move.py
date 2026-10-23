@@ -10,6 +10,7 @@ from conftest import Fixture, mem_cmd, run
 from test_storegit import git, init
 
 from claude_hybrid_memory import move
+from claude_hybrid_memory.migrate import apply
 from claude_hybrid_memory.migrate import plan as P
 
 
@@ -151,10 +152,24 @@ def test_mv_carries_the_index_line_and_the_container_refs(store: Fixture):
 
 def test_carried_lines_follow_the_last_entry_under_any_heading():
     text = "# t\n\n## Topic\n- [A](a.md) — a\n\n## Notes\nprose\n"
-    assert move._after_last_entry(text, ["- [B](b.md) — b"]) == \
+    assert apply.after_last_entry(text, ["- [B](b.md) — b"]) == \
         "# t\n\n## Topic\n- [A](a.md) — a\n- [B](b.md) — b\n\n## Notes\nprose\n"
-    assert move._after_last_entry("# t\n", ["- [B](b.md) — b"]) == \
+    assert apply.after_last_entry("# t\n", ["- [B](b.md) — b"]) == \
         "# t\n\n## MEMORIES\n- [B](b.md) — b\n"
+    # an empty section takes the lines rather than gaining a twin
+    assert apply.after_last_entry("# t\n\n## MEMORIES\n\n## Notes\n", ["- [B](b.md) — b"]) == \
+        "# t\n\n## MEMORIES\n- [B](b.md) — b\n\n## Notes\n"
+
+
+def test_reindex_adds_unlisted_files_beside_topic_entries(tmp_path: Path):
+    tdir = tmp_path / "territories/home/lab"
+    tdir.mkdir(parents=True)
+    (tdir / "MEMORY.md").write_text("# home/lab\n\n## Topic\n- [A](a.md) — a\n\n## Notes\nprose\n")
+    (tdir / "a.md").write_text("---\nname: a\ndescription: a\n---\n")
+    (tdir / "b.md").write_text("---\nname: b\ndescription: the b one\n---\n")
+    apply.reindex(tmp_path, "home/lab")
+    assert (tdir / "MEMORY.md").read_text() == \
+        "# home/lab\n\n## Topic\n- [A](a.md) — a\n- [b](b.md) — the b one\n\n## Notes\nprose\n"
 
 
 def test_mv_into_a_rendered_index_renders_it(store: Fixture):
@@ -223,6 +238,19 @@ def test_archiving_a_territory_retires_it_whole_and_unlinks_its_silos(store: Fix
     assert "supersedes: archive/console-kit/kit-fodder-corpus" in text
     assert "Design: `archive/console-kit/kit-sync-design.md`." in text
     assert git(fx.store, "log", "--format=%s", "-1").strip() == "archive: console/kit"
+
+
+def test_a_merge_archives_the_emptied_territory(store: Fixture):
+    # merging home/lab into console/kit: move every memory, then retire the bare index
+    fx = store
+    lab = fx.store / "territories/home/lab"
+    slugs = [f"home/lab/{p.stem}" for p in sorted(lab.glob("*.md"))
+             if p.name not in ("MEMORY.md", "EXPORTS.md")]
+    move.apply_files(fx.store, fx.projects, move.plan_files(fx.store, slugs, "console/kit"))
+    out = archived(fx, ["home/lab"], why="merged into console/kit")
+    assert "mv-new-error" not in {f.code for f in out}, out
+    assert (fx.store / "archive/home-lab/MEMORY.md").is_file()
+    assert not lab.exists()
 
 
 def test_archiving_memories_reindexes_and_logs_each_call(store: Fixture):
