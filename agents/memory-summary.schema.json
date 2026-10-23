@@ -1,0 +1,107 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "conclusion",
+    "description_verdict",
+    "kind",
+    "subject_repos",
+    "territory_hint",
+    "shape",
+    "verify",
+    "obsolete",
+    "confidence"
+  ],
+  "properties": {
+    "conclusion": {
+      "type": "string",
+      "description": "One line, stated as a conclusion, not a topic."
+    },
+    "description_verdict": {
+      "enum": [
+        "good",
+        "names-subject",
+        "stale",
+        "missing"
+      ]
+    },
+    "kind": {
+      "enum": [
+        "territory",
+        "standing-candidate",
+        "gate-candidate",
+        "machine-fact",
+        "record"
+      ]
+    },
+    "subject_repos": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "territory_hint": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "shape": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "build-diary",
+          "dated-snapshot",
+          "accreted",
+          "index-only"
+        ]
+      }
+    },
+    "verify": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "claim",
+          "why",
+          "identifier"
+        ],
+        "properties": {
+          "claim": {
+            "type": "string"
+          },
+          "why": {
+            "type": "string"
+          },
+          "identifier": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "obsolete": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "likely",
+        "why"
+      ],
+      "properties": {
+        "likely": {
+          "type": "boolean"
+        },
+        "why": {
+          "type": "string"
+        }
+      }
+    },
+    "confidence": {
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ]
+    }
+  }
+}

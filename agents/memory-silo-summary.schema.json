@@ -1,0 +1,51 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "subject",
+    "summary",
+    "territory_existing",
+    "territory_new",
+    "why",
+    "mode",
+    "confidence"
+  ],
+  "properties": {
+    "subject": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "territory_existing": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "territory_new": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "why": {
+      "type": "string"
+    },
+    "mode": {
+      "enum": [
+        "active",
+        "parked",
+        "dead",
+        "unknown"
+      ]
+    },
+    "confidence": {
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ]
+    }
+  }
+}
