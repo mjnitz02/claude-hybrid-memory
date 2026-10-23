@@ -74,7 +74,8 @@ in `~/.claude/memory/MACHINE.md` and adopt your existing silos with fast adoptio
     mem migrate apply
 
 Each silo lands in its own pair of commits in the store, and `mem migrate undo --silo S`
-reverts one.
+reverts one. After that, `mem refine queue` lists what to improve and `/memory-refine` works
+through it.
 
 ## Documents
 
@@ -137,7 +138,7 @@ To see exactly what a session is handed:
 
 ## Skills
 
-`/memory-setup`, `/memory-migrate` and `/memory-retro` are symlinked from `skills/` into
+`/memory-setup`, `/memory-migrate`, `/memory-refine` and `/memory-retro` are symlinked from `skills/` into
 `~/.claude/skills/`, so editing this repo changes live behavior immediately.
 
 ## Two rules worth knowing before touching anything

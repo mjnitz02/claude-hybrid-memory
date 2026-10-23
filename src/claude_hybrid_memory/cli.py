@@ -29,6 +29,7 @@ Enforces docs/format-spec.md.
     mem migrate map [--rebuild] [--approve]
     mem migrate apply [--silo S ...] [--dry-run]
     mem migrate undo --silo S
+    mem refine queue [--territory T] [--limit N] [--json]
 
 Exit codes: 0 clean, 1 findings at error level, 2 tool error.
 """
@@ -212,6 +213,8 @@ def _render(argv: list[str]) -> int:
     from claude_hybrid_memory.audit.relations import store_graph
     from claude_hybrid_memory.hooks import session_start
     if not a.territory:
+        for terr, was, now in render.router_counts(a.root):
+            print(f"ROUTER.md: {terr} ({was}) -> ({now})")
         changed = session_start.write_always(a.root)
         print(f"{session_start.ALWAYS}: {'re-rendered' if changed else 'unchanged'}")
     sup = store_graph(a.root).superseded()
@@ -1006,6 +1009,43 @@ def _run_at(a, argv: list[str]) -> int:
     return rc
 
 
+def _refine(argv: list[str]) -> int:
+    """`mem refine queue`: build the stage 5 queue (fast-adoption §8) and show its head."""
+    import argparse
+    import json
+    from pathlib import Path
+
+    from claude_hybrid_memory.migrate import queue
+    from claude_hybrid_memory.store import LEGACY, STORE
+
+    ap = argparse.ArgumentParser(prog="mem refine")
+    ap.add_argument("action", choices=["queue"])
+    ap.add_argument("--root", type=Path, default=STORE, help=f"store root (default {STORE})")
+    ap.add_argument("--legacy", type=Path, default=LEGACY, help="legacy projects dir")
+    ap.add_argument("--territory", help="only items in this territory (or below it)")
+    ap.add_argument("--limit", type=int, default=20, help="items to print (default 20)")
+    ap.add_argument("--json", action="store_true", help="print the whole queue as JSON")
+    a = ap.parse_args(argv)
+
+    q = queue.build(a.root, a.legacy, territory=a.territory)
+    f = queue.write(a.root, q)
+    if a.json:
+        print(json.dumps(q, indent=1, ensure_ascii=False))
+        return 0
+    items = q["items"]
+    by_type: dict[str, int] = {}
+    for i in items:
+        by_type[i["type"]] = by_type.get(i["type"], 0) + 1
+    print(f"{len(items)} item(s)" + (f" in {a.territory}" if a.territory else "")
+          + f", {q['declined']} declined in RETRO.md; written to {f}")
+    print("  " + ", ".join(f"{t} {n}" for t, n in sorted(by_type.items(), key=lambda x: -x[1])))
+    for n, i in enumerate(items[:a.limit], 1):
+        print(f"\n{n:>3}. [{i['type']}] {i['path']}\n     {i['detail'][:200]}")
+    if len(items) > a.limit:
+        print(f"\n... and {len(items) - a.limit} more (--limit, or --json)")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     import time
     t0 = time.perf_counter()
@@ -1027,6 +1067,8 @@ def main(argv: list[str] | None = None) -> int:
             return _install(args[1:])
         if args[:1] == ["migrate"]:
             return _migrate(args[1:])
+        if args[:1] == ["refine"]:
+            return _refine(args[1:])
         return _run(args)
     except KeyboardInterrupt:
         return 130

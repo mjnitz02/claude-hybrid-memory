@@ -51,8 +51,9 @@ def test_session_end_commits_memory_and_events(fx: Fixture):
     assert end(fx, payload) == (0, "", "")
     subject, base = subjects(fx.store)
     assert base == "Baseline"
-    assert subject == ("mem: 1 added, 1 modified, 1 deleted in standing, console/kit, "
-                       "home/lab; 3 events")
+    # ROUTER.md too: session end keeps its counts true (console/kit lost one, home/lab gained one)
+    assert subject == ("mem: 1 added, 2 modified, 1 deleted in ROUTER.md, standing, "
+                       "console/kit +1 more; 3 events")
     body = git(fx.store, "log", "-1", "--format=%b")
     assert "Trigger: session end (clear) · session sess-1" in body
     assert "A  territories/home/lab/lab-new-note.md" in body

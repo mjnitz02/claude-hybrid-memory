@@ -86,7 +86,12 @@ def check_router_drift(mems: list[Memory], routers: dict,
         for missing in sorted(listed - present):
             out.append(Finding(ERROR, "router-ghost", f"{container}/MEMORY.md",
                                f"lists {missing} which does not exist"))
+        # In the store an index is how a session finds a memory at all, so a memory missing
+        # from it is lost, not untidy. Legacy silos keep the warning.
+        level = ERROR if r.scope == "store" else WARN
         for unlisted in sorted(present - mentioned - exempt.get(container, set())):
-            out.append(Finding(WARN, "router-unlisted", f"{container}/{unlisted}",
+            out.append(Finding(level, "router-unlisted", f"{container}/{unlisted}",
+                               "exists but its index does not list it, so no session will "
+                               "find it" if level == ERROR else
                                "exists but the router does not list it"))
     return out

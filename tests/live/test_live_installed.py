@@ -28,7 +28,7 @@ if not MEM.exists():
 READ_ONLY = [
     ["audit"], ["audit", "--json"], ["audit", "--scan", "legacy"], ["fix"], ["links"],
     ["fresh"], ["budget", "--json"], ["drift"], ["dup"], ["status", "--json"],
-    ["log", "-n", "3"], ["render", "--check"],
+    ["log", "-n", "3"], ["render", "--check"], ["refine", "queue", "--limit", "3"],
 ]
 
 
@@ -37,7 +37,7 @@ def test_cli_runs_on_real_store(args: list[str]):
     rc, out, err = run([str(MEM), *args], dict(os.environ))
     assert rc in (0, 1), err
     assert "Traceback" not in err
-    assert out
+    assert out or err.startswith("no memory files found")   # legacy, once every silo migrated
 
 
 CWDS = [REPO, Path.home() / "workspaces" / "console_tools", Path.home() / "workspaces",
