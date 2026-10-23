@@ -116,10 +116,10 @@ alone lists the other targets.
 There is one dependency, `pyyaml`, for frontmatter, and it is never on the hook path.
 `--json` gives machine output.
 
-    make check               # pre-commit (ruff, whitespace, lockfile) + tests; what CI runs
+    make check               # pre-commit (ruff, whitespace, lockfile, secrets) + tests; what CI runs
     make test                # fixture stores: synthetic content, real shapes
     make test-live           # the installed `mem`, read-only, against this machine's real store
-    make hooks               # git hooks: lint on commit, tests on push
+    make hooks               # git hooks: lint + secret scan on commit, tests on push
 
 Three hooks are installed:
 - `SessionStart` injects the always-loaded layer, names the territory for the current

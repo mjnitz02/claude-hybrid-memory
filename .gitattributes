@@ -1,0 +1,6 @@
+# Normalize line endings on checkin; check out with LF everywhere.
+* text=auto eol=lf
+
+# Lockfiles are generated. Suppress them from diffs and from language stats so
+# a dependency bump doesn't bury the real change in a review.
+uv.lock  -diff linguist-generated

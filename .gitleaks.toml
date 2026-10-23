@@ -1,0 +1,19 @@
+# gitleaks config — extends the built-in default ruleset.
+# https://github.com/gitleaks/gitleaks#configuration
+title = "claude-hybrid-memory gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Generated or vendored paths, which only produce false positives on lockfile hashes, and one planted test value."
+paths = [
+  '''(^|/)\.venv/''',
+  '''(^|/)__pycache__/''',
+  '''(^|/)uv\.lock$''',
+]
+# The fake key the `mem audit` secret-scanner tests plant in a fixture store to
+# prove the scanner fires. Matched by value so the old commits pass too.
+regexes = [
+  '''9f8e7d6c5b4a39281706f5e4''',
+]
