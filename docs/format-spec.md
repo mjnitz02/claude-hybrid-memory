@@ -317,8 +317,11 @@ gate on admitting a new always-loaded directive, and it does not move.
 
 **`STANDING_CAP` and `MAX_CHARS` are different things, and conflating them caused a real
 failure.** `STANDING_CAP` is the admission gate: a count, deliberately unraisable, still at its
-original 20. `MAX_CHARS` is the hook's rendering ceiling — **not a platform limit**, nothing in
-the harness enforces it. Treating the second as if it carried the first's "never move it"
+original 20. `MAX_CHARS` is the ceiling on the rendered layer (`ALWAYS.md`) and is the store's
+own number, not the platform's. The platform's is `HOOK_OUTPUT_LIMIT`, 10,000 chars on any one
+hook's output, which this spec missed until 2026-10-23: the layer was being injected from the
+hook, the harness was reducing it to a 2 KB preview, and every check here passed (setup.md
+step 3d). Treating the second as if it carried the first's "never move it"
 property is why the layer was allowed to sit 19% past it for three weeks: raising it felt like
 cheating, so three retrospectives trimmed nothing and raised nothing, and the hook quietly ate
 the gates instead.
@@ -346,9 +349,9 @@ The token figure beside it is a secondary signal, and two things about it are de
   directive as `## <description>` plus its body and discards the rest of the frontmatter, so
   counting raw files over-reported the real cost by eleven frontmatter blocks. `mem.py`
   reuses the hook's own renderer; if the two disagree, the tool is what is wrong.
-- **The warn is anchored to the hook's truncation point**, `MAX_CHARS`, not set by taste.
-  Past that limit injected context is silently dropped, so warning at ~83% of it means "you
-  are approaching real content loss." A flat number could not survive the design: the
+- **The warn is anchored to the degrade point**, `MAX_CHARS`, not set by taste. Past it the
+  rendered layer starts losing content, so warning at ~83% of it means "you are approaching
+  real content loss." A flat number could not survive the design: the
   un-migrated territories still have to add themselves to `ROUTER.md`, so the layer grows as
   the system works, and a warn that trips on correct behaviour gets ignored — the same failure
   this spec refuses to accept from `last_verified`.
@@ -379,7 +382,7 @@ to importance so that the cheapest thing is always what is lost:
 3. The `ROUTER.md` map is cut **last**, on whole-section boundaries, never mid-word. A missing
    map entry costs a lookup; a missing gate costs a mistake.
 
-Every degradation names itself in the injected `MEMORY STATUS` block, so a session is never
+Every degradation names itself in a `LAYER NOTES` block at the end of `ALWAYS.md`, so a session is never
 quietly handed less context than it believes it has.
 
 ## Territory MEMORY.md

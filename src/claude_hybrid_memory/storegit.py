@@ -264,6 +264,9 @@ GITIGNORE = """\
 # Claude Code's relevant-memories recall index (2.1.306, flag-gated, dormant 2026-10-21).
 # Written into whichever memory dir it indexes, i.e. a territory. Derived; never commit.
 .bm25-index.json
+
+# The always-loaded layer as CLAUDE.md imports it, rendered from the files it is made of.
+ALWAYS.md
 """
 
 

@@ -136,7 +136,7 @@ Exactly three things enter context, at three different times.
 
 | When | What | Mechanism | Budget |
 |---|---|---|---|
-| Every session, before the first prompt | `MACHINE.md` + `GATES.md` + `standing/` + `ROUTER.md` | `SessionStart` hook | measured in **tokens**; `standing/` capped by **file count**, `GATES.md` by **five entries** |
+| Every session, before the first prompt | `MACHINE.md` + `GATES.md` + `standing/` + `ROUTER.md`, rendered into `ALWAYS.md` | `~/.claude/CLAUDE.md` imports `ALWAYS.md`; the `SessionStart` hook keeps it current | measured in **tokens**; `standing/` capped by **file count**, `GATES.md` by **five entries**; the hook's own output under the harness's **10,000 chars** |
 | Every session, automatically | this cwd's territory `MEMORY.md` | harness auto-memory | 200 lines / 25 KB (harness limit) |
 | On demand, during the session | individual memory files | Claude reads them, guided by the routers | none |
 
@@ -151,7 +151,12 @@ because line length varies too much to budget honestly.
 
 The `SessionStart` hook is cwd-aware, and does four jobs:
 
-1. Inject the always-loaded layer.
+1. Render the always-loaded layer into `ALWAYS.md`, which `~/.claude/CLAUDE.md` imports.
+   Until 2026-10-23 the hook injected the layer itself. Claude Code persists any one hook
+   output over 10,000 chars to a file and gives the model a 2 KB preview, so for three weeks
+   every session had `MACHINE.md`'s opening and nothing after it, while `mem budget` passed.
+   The hook now prints only its status, and `mem budget` checks that size and the import
+   (setup.md step 3d).
 2. Report which territory this cwd maps to, and say so loudly when a cwd maps to nothing.
    An unmapped cwd is a finding, not a silent default.
 3. Print one line when the last retrospective is overdue.

@@ -10,6 +10,7 @@ import pytest
 from conftest import REPO, mem_cmd, run
 
 from claude_hybrid_memory import install
+from claude_hybrid_memory.hooks import session_start
 
 MEM = "/opt/fixture/bin/mem"
 
@@ -63,6 +64,7 @@ def test_second_run_changes_nothing(home: Path):
     settings = (home / ".claude" / "settings.json").read_text()
     f = do(home)
     assert codes(f) <= {"install-ok", "install-mem-missing", "install-git-exception",
+                        "install-import",
                         "install-check-skipped"}, f
     assert (home / ".claude" / "settings.json").read_text() == settings
     assert not list((home / ".claude").glob("settings.json.bak-*"))
@@ -133,7 +135,8 @@ def test_existing_gitignore_gets_missing_patterns(home: Path):
     ignore = home / ".claude" / "memory" / ".gitignore"
     ignore.write_text(".cache/\n")
     do(home)
-    assert ignore.read_text().splitlines() == [".cache/", ".DS_Store", ".bm25-index.json"]
+    assert ignore.read_text().splitlines() == [".cache/", ".DS_Store", ".bm25-index.json",
+                                               "ALWAYS.md"]
 
 
 def test_cli(home: Path, tmp_path: Path):
@@ -174,3 +177,16 @@ def test_claude_md_exception_is_checked_never_written(home: Path):
     md.write_text("# Git\n\nOnly touch git when asked.\n\n"
                   + (REPO / "templates" / "CLAUDE-git-exception.md").read_text())
     assert "install-git-exception" not in codes(do(home))
+
+
+def test_claude_md_import_is_checked_never_written(home: Path):
+    md = home / ".claude" / "CLAUDE.md"
+    md.parent.mkdir(parents=True)
+    md.write_text("# Git\n")
+    assert "install-import" in codes(do(home))
+    assert md.read_text() == "# Git\n"
+    template = (REPO / "templates" / "CLAUDE-memory-import.md").read_text()
+    assert "@~/.claude/memory/ALWAYS.md" in template
+    line = session_start.import_line(home / ".claude" / "memory")  # this home is not ~
+    md.write_text("# Git\n\n" + template.replace("@~/.claude/memory/ALWAYS.md", line))
+    assert "install-import" not in codes(do(home))

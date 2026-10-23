@@ -50,7 +50,10 @@ def test_hook_injects_the_layer(cwd: Path):
     rc, out, err = run([str(MEM), "hook", "session-start"], env, cwd)
     assert (rc, err) == (0, "")
     ctx = json.loads(out)["hookSpecificOutput"]["additionalContext"]
-    assert ctx.startswith("# MACHINE") and "# MEMORY ROUTER" in ctx
+    # status only: past 10,000 chars the harness hands the model a 2 KB preview
+    assert ctx.startswith("# MEMORY STATUS") and len(ctx) < 10_000
+    always = (STORE / "ALWAYS.md").read_text(encoding="utf-8")
+    assert "# GATES" in always and "# MEMORY ROUTER" in always
 
 
 def test_index_counts_match_the_audit(tmp_path: Path):

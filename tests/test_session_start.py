@@ -68,3 +68,44 @@ def test_territory_for_matches_harness_encoding(fx: Fixture, monkeypatch, tmp_pa
     (silo / "memory").symlink_to(fx.store / "territories" / "home" / "lab")
     monkeypatch.setattr(session_start, "PROJECTS", fx.projects)
     assert session_start.territory_for(repo, fx.store)[0] == "home/lab"
+
+
+def imports(fx: Fixture, tmp_path: Path) -> Path:
+    md = tmp_path / "CLAUDE.md"
+    md.write_text(f"# Git\n\nrules\n\n{session_start.import_line(fx.store)}\n")
+    return md
+
+
+def test_output_is_status_only_and_the_layer_goes_to_always_md(fx: Fixture, tmp_path: Path,
+                                                               monkeypatch):
+    # 2026-10-23: a 24.7 KB injection reached the model as a 2 KB preview. The hook's output
+    # now carries none of the layer, and the layer is whole in the file CLAUDE.md imports.
+    monkeypatch.setattr(session_start, "PROJECTS", fx.projects)
+    md = imports(fx, tmp_path)
+    session_start.write_always(fx.store)
+    out = session_start.output(fx.store, fx.repo, md)
+    assert out.startswith("# MEMORY STATUS") and "console/kit" in out
+    assert "READ-ONLY" not in out and len(out) < session_start.HOOK_OUTPUT_LIMIT
+    always = (fx.store / "ALWAYS.md").read_text()
+    assert always.startswith(session_start.ALWAYS_HEAD)
+    assert all(s in always for s in ("# MACHINE", "# GATES", "READ-ONLY", "STANDING DIRECTIVES",
+                                     "Every Python invocation", "# MEMORY ROUTER"))
+    assert "MEMORY STATUS" not in always
+
+
+def test_a_missing_import_is_said_first(fx: Fixture, tmp_path: Path):
+    md = tmp_path / "CLAUDE.md"
+    md.write_text("# Git\n\nmention of @~/.claude/memory/ALWAYS.md inline is not an import\n")
+    out = session_start.output(fx.store, fx.elsewhere, md)
+    first = out.split("\n- ", 2)[1]
+    assert "NOT in context" in first and str(fx.store / "ALWAYS.md") in first
+
+
+def test_a_stale_always_md_is_rewritten_and_announced(fx: Fixture, tmp_path: Path):
+    md = imports(fx, tmp_path)
+    session_start.write_always(fx.store)
+    assert "re-rendered" not in session_start.output(fx.store, fx.elsewhere, md)
+    gates = fx.store / "GATES.md"
+    gates.write_text(gates.read_text() + "- **A new gate.**\n")
+    assert "re-rendered" in session_start.output(fx.store, fx.elsewhere, md)
+    assert "A new gate." in (fx.store / "ALWAYS.md").read_text()

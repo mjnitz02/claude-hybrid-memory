@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from pathlib import Path
 
 import pytest
 from conftest import Fixture
@@ -146,3 +147,17 @@ def test_split_candidates_rank_by_size_markers_and_reads(fx: Fixture):
     assert f[0].path.endswith("kit-big-plain.md") and "read 5x" in f[0].message
     acc = [x for x in audit.check_split(mems, Counter(), fx.store) if x.code == "accretion"]
     assert acc and acc[0].message.startswith("1 of ")
+
+
+def test_budget_checks_delivery_not_just_tokens(fx: Fixture, tmp_path: Path, monkeypatch):
+    from claude_hybrid_memory.hooks import session_start
+
+    md = tmp_path / "CLAUDE.md"
+    md.write_text("# Git\n")
+    f = audit.budget.check_delivery(fx.store, md)
+    assert {"budget-not-imported", "budget-always-stale"} <= codes(f)
+    md.write_text(f"{session_start.import_line(fx.store)}\n")
+    session_start.write_always(fx.store)
+    assert audit.budget.check_delivery(fx.store, md) == []
+    monkeypatch.setattr(session_start, "HOOK_OUTPUT_LIMIT", 50)
+    assert "budget-hook-output" in codes(audit.budget.check_delivery(fx.store, md), "error")

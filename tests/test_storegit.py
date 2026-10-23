@@ -20,7 +20,7 @@ def init(root) -> None:
     git(root, "init", "-q")
     git(root, "config", "user.email", "fixture@example.invalid")
     git(root, "config", "user.name", "Fixture")
-    (root / ".gitignore").write_text(".cache/\n", encoding="utf-8")
+    (root / ".gitignore").write_text(".cache/\nALWAYS.md\n", encoding="utf-8")
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "Baseline")
 
