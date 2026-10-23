@@ -183,6 +183,9 @@ def router_line(root: Path, territory: str, subject: str) -> str | None:
             return None
         f.write_text(have.sub(rf"\1 ({n})", text, count=1), encoding="utf-8")
         return f"ROUTER.md: {territory} {m.group(2)} -> ({n})"
+    # A hand-written entry (`- t : ...`, or grouped `- a, t : ...`) is Matt's; never duplicate it.
+    if re.search(rf"^- (?:[\w./-]+, )*{re.escape(territory)}(?=[\s,:]|$)", text, re.M):
+        return None
     line = f"- {territory} ({n}) : {subject or territory}."
     area = territory.split("/", 1)[0]
     m = re.search(rf"^## {re.escape(area)}\b.*$", text, re.M)

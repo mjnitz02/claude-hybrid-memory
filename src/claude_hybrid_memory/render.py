@@ -41,12 +41,13 @@ the description carries the meaning, and a detail it drops is a read of the memo
 """
 from __future__ import annotations
 
+import fnmatch
 import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from claude_hybrid_memory.findings import ERROR, WARN, Finding
+from claude_hybrid_memory.findings import ERROR, INFO, WARN, Finding
 from claude_hybrid_memory.store import load_file, parse_frontmatter
 
 BEGIN = "<!-- mem:render begin"
@@ -301,19 +302,78 @@ def check(root: Path, names: list[str] | None = None) -> list[Finding]:
     return out
 
 
+_TNAME = r"[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)+"
+ROUTER_ENTRY_RE = re.compile(rf"^- (?P<names>{_TNAME}(?:,\s*{_TNAME})*)(?: \(\d+\))? :")
+# A router entry for a territory with no MEMORY.md yet says this, so it reads as a plan
+# rather than a line left behind by a rename or an archive.
+PLANNED = "NOT YET WRITTEN"
+
+
+def router_entries(text: str) -> dict[str, str]:
+    """Territory name -> its whole ROUTER.md entry, continuation lines included."""
+    out: dict[str, str] = {}
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        m = ROUTER_ENTRY_RE.match(line)
+        if not m:
+            continue
+        entry = [line]
+        for nxt in lines[i + 1:]:
+            if not nxt.startswith((" ", "\t")):
+                break
+            entry.append(nxt)
+        for name in re.split(r",\s*", m.group("names")):
+            out[name] = "\n".join(entry)
+    return out
+
+
 def check_router(root: Path) -> list[Finding]:
-    """Every territory is on the map, and the map's counts are true."""
+    """Every territory is on the map, the map names only territories that exist (or says
+    they are planned), and the map's counts are true. A territory's `consumes:` and
+    `consumed_by:` are held to the same rule, since a rename strands them silently."""
     f = root / "ROUTER.md"
     if not f.is_file():
         return []
     text = f.read_text(encoding="utf-8")
+    tdir = root / "territories"
     out = []
-    for p in sorted((root / "territories").rglob("MEMORY.md")):
-        name = str(p.parent.relative_to(root / "territories"))
+    for p in sorted(tdir.rglob("MEMORY.md")):
+        name = str(p.parent.relative_to(tdir))
         if not re.search(rf"(?<![\w/-]){re.escape(name)}(?![\w/-])", text):
             out.append(Finding(ERROR, "router-missing-territory", str(p),
                                f"{name} is not in ROUTER.md, so no session outside its own "
                                "repos can find it; add a line under its area"))
+    entries = router_entries(text)
+    planned = set()
+    for name, entry in sorted(entries.items()):
+        if (tdir / name / "MEMORY.md").is_file():
+            continue
+        if PLANNED in entry:
+            planned.add(name)
+            out.append(Finding(INFO, "router-planned-territory", str(f),
+                               f"{name} is on the map as {PLANNED}"))
+        else:
+            out.append(Finding(ERROR, "router-unknown-territory", str(f),
+                               f"{name} has no territories/{name}/MEMORY.md; fix the line "
+                               f"if it moved or was archived, or say {PLANNED} if it is "
+                               "planned"))
+    indexes = sorted(tdir.rglob("MEMORY.md"))
+    names = [str(p.parent.relative_to(tdir)) for p in indexes]
+    for p in indexes:
+        meta, _, _ = parse_frontmatter(p.read_text(encoding="utf-8", errors="replace"))
+        for key in ("consumes", "consumed_by"):
+            v = meta.get(key)
+            refs = v if isinstance(v, list) else re.split(r",\s*", str(v or ""))
+            for ref in (str(r).strip() for r in refs):
+                if not ref or ref == "none" or fnmatch.filter(names, ref):
+                    continue
+                if ref in planned:
+                    out.append(Finding(INFO, "territory-ref-planned", str(p),
+                                       f"{key}: {ref}, which the router marks {PLANNED}"))
+                else:
+                    out.append(Finding(ERROR, "territory-ref-unknown", str(p),
+                                       f"{key}: {ref}, which is not a territory; it moved, "
+                                       "was archived, or needs a router entry"))
     for t, was, n in router_counts(root, write=False):
         out.append(Finding(WARN, "router-count", str(f),
                            f"{t} says ({was}), has {n} memories; `mem render` corrects it"))

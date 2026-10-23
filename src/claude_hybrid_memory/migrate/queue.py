@@ -13,6 +13,8 @@ How each item drops:
   territory-hint, index-only
   verify                    the memory carries `verify:`, or is `tier: record`. Only the
                             summarizer's claims queue; the §8 heuristic ranks them
+  unverified                the memory gains `status:`, `last_verified:` or `verify:`, or is
+                            `tier: record`, or its territory has no `active` member left
 Every item also drops when its memory is superseded. One Matt declines is suppressed by
 writing its key, in backticks as `refine:<key>`, into RETRO.md with the reason.
 
@@ -44,7 +46,7 @@ SHAPES = ("build-diary", "dated-snapshot", "accreted")
 RANK = {"gate-candidate": 0, "standing-candidate": 1, "verify-both": 2, "stale-live": 3,
         "description": 4, "frontmatter-not-yaml": 5, "superseded-still-indexed": 5,
         "budget-high": 5, "budget-always-stale": 5, "split-candidate": 6, "shape": 7,
-        "possible-duplicate": 8, "verify-summary": 9, "index-only": 10,
+        "possible-duplicate": 8, "verify-summary": 9, "unverified": 9, "index-only": 10,
         "low-confidence": 11, "territory-hint": 12}
 
 DECLINED_RE = re.compile(r"`refine:([^`]+)`")
@@ -221,6 +223,34 @@ def _verify_items(root: Path, claims: dict[str, list], superseded: set[str]) -> 
     return out
 
 
+def _active(router) -> bool:
+    members = router.meta.get("members")
+    return isinstance(members, dict) and any(
+        isinstance(v, dict) and str(v.get("mode") or "").strip() == "active"
+        for v in members.values())
+
+
+def _unverified_items(root: Path, superseded: set[str]) -> list[Item]:
+    """Memories nothing can date: no status, never verified, no recipe. The audit calls them
+    `slow` and only `stale`, and a file that skipped fast adoption has no summary, so a
+    territory carried over from an early store looked clean while most of it was undated.
+    Only territories with an `active` member queue them; a parked or reference territory's
+    age is expected."""
+    mems, routers = scan_store(root)
+    out = []
+    for m in mems:
+        rel = _rel(root, m.path)
+        r = routers.get(m.container)
+        if (r is None or not _active(r) or rel in superseded
+                or any(m.meta.get(k) for k in ("status", "last_verified", "verify"))
+                or str(m.meta.get("tier") or "") == "record"):
+            continue
+        out.append(Item(f"unverified:{rel}", "unverified", rel, m.container,
+                        RANK["unverified"], "no status, never verified, no verify: recipe, "
+                        "in a territory with an active member", "audit"))
+    return out
+
+
 def build(root: Path, legacy: Path, today: dt.date | None = None,
           territory: str | None = None) -> dict:
     from claude_hybrid_memory import audit
@@ -234,6 +264,7 @@ def build(root: Path, legacy: Path, today: dt.date | None = None,
         more, claims = _summary_items(root, plan, superseded)
         items += more
     items += _verify_items(root, claims, superseded)
+    items += _unverified_items(root, superseded)
     skip = declined(root)
     open_ = [i for i in items if i.key not in skip]
     kept = [i for i in open_ if not territory or i.territory == territory

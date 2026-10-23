@@ -142,6 +142,9 @@ judgment call into a command, which is the same move `verify:` makes everywhere 
 `mem.py status` reports a silo whose directory does not resolve as `silo-not-checked-out`,
 not as an archive candidate, and `mem.py link --territory <path>` re-points a restored
 checkout in one command so step 4 costs nothing.
+A silo linked to a territory that is gone (renamed or archived) is `silo-dangling`, an
+error: the repo silently loads no memory. `mem.py link` re-points it without the
+manual unlink a live link needs.
 
 ## Kinds
 
@@ -297,6 +300,11 @@ Every territory must appear in it (`router-missing-territory` is an error). The 
 territory's name on its line is the one derived part: the count of its memory files, kept
 true by `mem render` and the SessionEnd hook, and `router-count` until then. The rest is
 hand-written.
+
+The reverse holds too: an entry naming a territory with no `MEMORY.md` is
+`router-unknown-territory`, an error, unless the entry says `NOT YET WRITTEN`, which
+marks it planned. A territory's `consumes:` and `consumed_by:` follow the same rule
+(`territory-ref-unknown`); a glob such as `home/*` passes while it matches a territory.
 
     # MEMORY ROUTER
     machine: work-mac

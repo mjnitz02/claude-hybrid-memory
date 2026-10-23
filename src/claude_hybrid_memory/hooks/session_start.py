@@ -308,7 +308,12 @@ def output(store: Path, cwd: Path, claude_md: Path = CLAUDE_MD, write: bool = Tr
                      "Re-read it before relying on GATES, standing or the router.")
 
     terr, all_t = territory_for(cwd, store)
-    if terr:
+    if terr and terr not in all_t:
+        notes.append(f"**This directory's silo points at {terr}, which no longer exists.** "
+                     f"({cwd}) No territory MEMORY.md loaded. It was probably renamed or "
+                     "archived: find where in ROUTER.md, then repoint it from the repo with "
+                     "`mem link --territory <new> --write`.")
+    elif terr:
         notes.append(f"Territory for this directory: **{terr}**. Its MEMORY.md is "
                      "auto-loaded; read its internals on demand.")
     elif all_t:
