@@ -7,9 +7,14 @@ territories' `consumes:`/`consumed_by:`, `container/slug` refs in `supersedes:`,
 migration plan (the refine queue finds landed files through it). Forgetting a silo is the
 worst of them: the repo silently loads no memory.
 
-`move_territory` does all of that in one store commit, with a checkpoint commit before it.
-Prose that names the old path is reported, never rewritten: whether a sentence should
-follow the rename is a judgment call. RETRO.md and archive/ are history and left alone.
+Moving single memories between territories is smaller but has its own traps: both
+indexes, and `container/slug` refs in `supersedes:`. A moved file that landed through
+`mem migrate` drops out of the refine queue's summary items, since the plan still says
+where it landed; its audit items follow it.
+
+Each move is one store commit, with a checkpoint commit before it. Prose that names the
+old path is reported, never rewritten: whether a sentence should follow the move is a
+judgment call. RETRO.md and archive/ are history and left alone.
 """
 from __future__ import annotations
 
@@ -32,18 +37,29 @@ def _token(name: str) -> re.Pattern:
 
 
 @dataclass
-class Move:
-    old: str
-    new: str
+class Change:
     edits: dict[Path, str] = field(default_factory=dict)    # path (pre-move) -> new text
-    links: list[Path] = field(default_factory=list)          # silo memory symlinks to repoint
-    plan: dict | None = None
     notes: list[Finding] = field(default_factory=list)
 
 
-def _text(mv: Move, p: Path) -> str:
-    """The text of `p` with this move's edits so far."""
-    return mv.edits.get(p) if p in mv.edits else p.read_text(encoding="utf-8")
+@dataclass
+class Move(Change):
+    old: str = ""
+    new: str = ""
+    links: list[Path] = field(default_factory=list)          # silo memory symlinks to repoint
+    plan: dict | None = None
+
+
+@dataclass
+class FileMove(Change):
+    dest: str = ""
+    files: list[tuple[str, Path]] = field(default_factory=list)   # (source territory, file)
+    carried: list[str] = field(default_factory=list)   # hand-written index lines to carry
+
+
+def _text(ch: Change, p: Path) -> str:
+    """The text of `p` with this change's edits so far."""
+    return ch.edits.get(p) if p in ch.edits else p.read_text(encoding="utf-8")
 
 
 def _frontmatter_span(text: str) -> tuple[int, int]:
@@ -186,16 +202,15 @@ def _silos(mv: Move, legacy: Path, old_dir: Path) -> None:
             mv.links.append(md)
 
 
-def _prose(mv: Move, root: Path) -> None:
-    """Every remaining mention of the old path, after this move's edits."""
-    tok = _token(mv.old)
+def _prose(ch: Change, root: Path, tok: re.Pattern) -> None:
+    """Every remaining mention of the old path, after this change's edits."""
     for p in sorted(root.rglob("*.md")):
         rel = p.relative_to(root)
         if rel.parts[0] in ("archive", "events", ".cache", ".git") or rel.name in SKIP_PROSE:
             continue
-        for n, ln in enumerate(_text(mv, p).split("\n"), 1):
+        for n, ln in enumerate(_text(ch, p).split("\n"), 1):
             if tok.search(ln):
-                mv.notes.append(Finding(WARN, "mv-prose", f"{rel}:{n}", ln.strip()[:120]))
+                ch.notes.append(Finding(WARN, "mv-prose", f"{rel}:{n}", ln.strip()[:120]))
 
 
 def plan_territory(root: Path, legacy: Path, old: str, new: str) -> Move | list[Finding]:
@@ -211,13 +226,13 @@ def plan_territory(root: Path, legacy: Path, old: str, new: str) -> Move | list[
                             "already exists; merging territories is a different operation"))
     if errs:
         return errs
-    mv = Move(old, new)
+    mv = Move(old=old, new=new)
     _own_index(mv, tdir / old / "MEMORY.md")
     _refs(mv, tdir, tdir / old / "MEMORY.md")
     _router(mv, root / "ROUTER.md")
     _plan(mv, root)
     _silos(mv, legacy, tdir / old)
-    _prose(mv, root)
+    _prose(mv, root, _token(old))
     return mv
 
 
@@ -240,37 +255,189 @@ def apply_territory(root: Path, legacy: Path, mv: Move) -> list[Finding]:
     """Write the move: checkpoint commit, the changes, re-render, commit. Audit errors the
     move introduced are reported with the move that reverses it (a git revert would leave
     the silo symlinks, which live outside the store, pointing at nothing)."""
+    tdir = root / "territories"
+
+    def write() -> None:
+        old_dir, new_dir = tdir / mv.old, tdir / mv.new
+        for p, text in mv.edits.items():
+            p.write_text(text, encoding="utf-8")
+        new_dir.parent.mkdir(parents=True, exist_ok=True)
+        old_dir.rename(new_dir)
+        if old_dir.parent != tdir and not any(old_dir.parent.iterdir()):
+            old_dir.parent.rmdir()
+        for md in mv.links:
+            md.unlink()
+            md.symlink_to(new_dir)
+        if mv.plan:
+            P.write(root, mv.plan)
+
+    tok = _token(mv.old)
+    return _committed(root, legacy, "mem mv-territory", f"mv-territory: {mv.old} -> {mv.new}",
+                      write, lambda path: tok.sub(mv.new, path),
+                      f"`mem mv-territory {mv.new} {mv.old} --write` reverses it",
+                      lambda: describe(root, mv, True))
+
+
+def _committed(root: Path, legacy: Path, trigger: str, subject: str, write, remap, undo: str,
+               done) -> list[Finding]:
+    """Checkpoint commit, `write()`, re-render, commit; then any audit error that was not
+    there before. `remap` carries an old error path to where the move put it, so the same
+    error under a new path is not new."""
     from claude_hybrid_memory import render
     from claude_hybrid_memory.migrate import apply
 
-    snap = storegit.commit(root, "mem mv-territory", subject="before mem mv-territory")
+    snap = storegit.commit(root, trigger, subject=f"before {trigger}")
     if snap.status not in ("committed", "clean"):
         return [Finding(ERROR, "mv-unsafe", str(root),
                         f"safety commit {snap.status}: {snap.detail}; nothing moved")]
-    before = apply.errors(root, legacy)
-    tdir = root / "territories"
-    old_dir, new_dir = tdir / mv.old, tdir / mv.new
-    for p, text in mv.edits.items():
-        p.write_text(text, encoding="utf-8")
-    new_dir.parent.mkdir(parents=True, exist_ok=True)
-    old_dir.rename(new_dir)
-    if old_dir.parent != tdir and not any(old_dir.parent.iterdir()):
-        old_dir.parent.rmdir()
-    for md in mv.links:
-        md.unlink()
-        md.symlink_to(new_dir)
-    if mv.plan:
-        P.write(root, mv.plan)
+    before = {(code, remap(path)) for code, path in apply.errors(root, legacy)}
+    write()
     render.render_all(root)
-    c = storegit.commit(root, "mem mv-territory", subject=f"mv-territory: {mv.old} -> {mv.new}")
-    out = describe(root, mv, True)
+    c = storegit.commit(root, trigger, subject=subject)
+    out = done()
     if c.status == "committed":
         out.append(Finding(INFO, "mv-committed", c.sha, c.detail))
-    # the same errors under their new paths are not new
-    tok = _token(mv.old)
-    before = {(code, tok.sub(mv.new, path)) for code, path in before}
-    new_errs = apply.errors(root, legacy) - before
-    out += [Finding(ERROR, "mv-new-error", path, f"{code} appeared after the move; "
-                    f"`mem mv-territory {mv.new} {mv.old} --write` reverses it")
-            for code, path in sorted(new_errs)]
+    out += [Finding(ERROR, "mv-new-error", path, f"{code} appeared after the move; {undo}")
+            for code, path in sorted(apply.errors(root, legacy) - before)]
     return out
+
+
+ENTRY_LINE = r"^- \[[^\]]*\]\({}\).*$"
+
+
+def _resolve(tdir: Path, spec: str) -> tuple[str, Path] | Finding:
+    """`slug`, `area/name/slug` or a path to a territory memory -> (territory, file)."""
+    p = Path(spec).expanduser()
+    if p.suffix == ".md" and p.is_file():
+        p = p.resolve()
+        try:
+            rel = p.relative_to(tdir.resolve())
+        except ValueError:
+            return Finding(ERROR, "mv-not-territory", spec,
+                           "not under territories/; standing and archive moves are other "
+                           "operations")
+        return str(rel.parent), tdir / rel
+    slug = spec.removesuffix(".md")
+    container, _, name = slug.rpartition("/")
+    if name in ("MEMORY", "EXPORTS"):
+        return Finding(ERROR, "mv-not-memory", spec, "an index, not a memory")
+    hits = [f for f in tdir.rglob(f"{name}.md")
+            if not container or str(f.parent.relative_to(tdir)) == container]
+    if not hits:
+        return Finding(ERROR, "mv-no-memory", spec, "no territory memory by that name")
+    if len(hits) > 1:
+        return Finding(ERROR, "mv-ambiguous", spec, "in " + ", ".join(
+            str(f.parent.relative_to(tdir)) for f in hits) + "; say which as area/name/slug")
+    return str(hits[0].parent.relative_to(tdir)), hits[0]
+
+
+def plan_files(root: Path, specs: list[str], dest: str) -> FileMove | list[Finding]:
+    """Everything moving these memories into `dest` would change, or why it can't happen."""
+    from claude_hybrid_memory.render import markers
+    from claude_hybrid_memory.store import parse_frontmatter
+
+    tdir = root / "territories"
+    errs: list[Finding] = []
+    if not (tdir / dest / "MEMORY.md").is_file():
+        errs.append(Finding(ERROR, "mv-no-territory", dest, "no such territory"))
+    fm = FileMove(dest=dest)
+    for spec in specs:
+        got = _resolve(tdir, spec)
+        if isinstance(got, Finding):
+            errs.append(got)
+            continue
+        src, f = got
+        if src == dest:
+            errs.append(Finding(ERROR, "mv-same-territory", spec, f"already in {dest}"))
+        elif (tdir / dest / f.name).exists():
+            errs.append(Finding(ERROR, "mv-target-exists", spec, f"{dest} has a {f.name}"))
+        elif any(f == g for _, g in fm.files):
+            errs.append(Finding(ERROR, "mv-duplicate", spec, "named twice"))
+        else:
+            fm.files.append((src, f))
+    if errs:
+        return errs
+
+    pats = []
+    for src, f in fm.files:
+        old, new = f"{src}/{f.stem}", f"{dest}/{f.stem}"
+        tok = _token(old)
+        pats.append(re.escape(old))
+        for p in sorted(tdir.rglob("*.md")):
+            text = _text(fm, p)
+            _, end = _frontmatter_span(text)
+            lines = text[:end].split("\n")
+            in_sup = False
+            for i, ln in enumerate(lines):
+                if key := re.match(r"^\s*([\w-]+):", ln):
+                    in_sup = key.group(1) == "supersedes"
+                if in_sup:
+                    lines[i] = tok.sub(new, ln)
+            if end and (edited := "\n".join(lines) + text[end:]) != text:
+                fm.edits[p] = edited
+        index = (tdir / src / "MEMORY.md").read_text(encoding="utf-8")
+        if not markers(index) and (
+                m := re.search(ENTRY_LINE.format(re.escape(f.name)), index, re.M)):
+            fm.carried.append(m.group(0))
+        meta, _, _ = parse_frontmatter(f.read_text(encoding="utf-8"))
+        if str(meta.get("role") or "").strip() == "gate":
+            fm.notes.append(Finding(WARN, "mv-gate", f"territories/{src}/{f.name}",
+                                    f"a gate: move its text from {src}'s GATES section to "
+                                    f"{dest}'s, and check GATES.md's pointer"))
+    _prose(fm, root, re.compile(rf"(?<![\w.-])(?:{'|'.join(pats)})(?![\w-])"))
+    return fm
+
+
+def _after_last_entry(text: str, lines: list[str]) -> str:
+    """`lines` after a hand-written index's last entry. Most hand-written indexes group
+    entries under topic headings with no `## MEMORIES`, so a new section at the end would
+    strand the lines away from the rest."""
+    entries = list(re.finditer(r"^- \[[^\]]*\]\([^)/]+\.md\).*$", text, re.M))
+    last = entries[-1] if entries else None
+    if last is None:
+        return text.rstrip("\n") + "\n\n## MEMORIES\n" + "\n".join(lines) + "\n"
+    return text[:last.end()] + "\n" + "\n".join(lines) + text[last.end():]
+
+
+def describe_files(root: Path, fm: FileMove, done: bool) -> list[Finding]:
+    verb = "moved" if done else "would move"
+    out = [Finding(INFO, "mv-file", f"territories/{src}/{f.name}",
+                   f"{verb} to territories/{fm.dest}/{f.name}") for src, f in fm.files]
+    out += [Finding(INFO, "mv-edit", str(p.relative_to(root)),
+                    "rewritten" if done else "would rewrite") for p in sorted(fm.edits)]
+    return out + fm.notes
+
+
+def apply_files(root: Path, legacy: Path, fm: FileMove) -> list[Finding]:
+    """Write the move. Each index is reindexed: a rendered one re-renders, a hand-written
+    one loses the moved lines and the destination gains them as they were written."""
+    from claude_hybrid_memory.migrate import apply
+
+    tdir = root / "territories"
+
+    def write() -> None:
+        for p, text in fm.edits.items():
+            p.write_text(text, encoding="utf-8")
+        for _, f in fm.files:
+            f.rename(tdir / fm.dest / f.name)
+        index = tdir / fm.dest / "MEMORY.md"
+        if fm.carried:
+            from claude_hybrid_memory.render import markers
+            text = index.read_text(encoding="utf-8")
+            if not markers(text):
+                index.write_text(_after_last_entry(text, fm.carried), encoding="utf-8")
+        for src in dict.fromkeys(s for s, _ in fm.files):
+            apply.reindex(root, src, frozenset(f.name for s, f in fm.files if s == src))
+        apply.reindex(root, fm.dest)
+
+    moves = {f"{src}/{f.stem}": f"{fm.dest}/{f.stem}" for src, f in fm.files}
+    tok = re.compile(rf"(?<![\w.-])(?:{'|'.join(map(re.escape, moves))})(?![\w-])")
+    names = " ".join(f"{fm.dest}/{f.stem}" for _, f in fm.files)
+    srcs = sorted({s for s, _ in fm.files})
+    back = (f"`mem mv {names} {srcs[0]} --write` moves it back" if len(srcs) == 1
+            else f"`mem mv` each back to {', '.join(srcs)}")
+    subject = (f"mv: {fm.files[0][1].stem} -> {fm.dest}" if len(fm.files) == 1
+               else f"mv: {len(fm.files)} memories -> {fm.dest}")
+    return _committed(root, legacy, "mem mv", subject, write,
+                      lambda path: tok.sub(lambda m: moves[m.group(0)], path), back,
+                      lambda: describe_files(root, fm, True))

@@ -154,6 +154,13 @@ plan, keeping an approval the rename did not change. Prose that names the old pa
 listed, not rewritten. Without `--write` it only shows the plan; with it, it makes a
 checkpoint commit first and reports any audit error the move introduced.
 
+`mem mv SLUG... TERRITORY` moves memories into another territory. A memory is named by
+slug, by `area/name/slug` when the slug is ambiguous, or by path. Both indexes follow: a
+rendered one re-renders, and a hand-written one keeps the line as written, placed after
+the destination's last entry. `container/slug` refs in `supersedes:` follow too. Moving a
+`role: gate` memory warns, since gate text is inlined in the territory's head. The
+dry run, checkpoint and error report work as for `mv-territory`.
+
 ## Kinds
 
 ### `standing`

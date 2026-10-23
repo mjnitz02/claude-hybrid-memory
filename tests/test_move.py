@@ -117,3 +117,76 @@ def test_an_error_the_move_creates_is_reported_with_the_way_back(store: Fixture)
     new = [f for f in moved(fx, "console/kit", "shop/kit") if f.code == "mv-new-error"]
     assert len(new) == 1 and "territory-ref-unknown" in new[0].message
     assert "mem mv-territory shop/kit console/kit --write" in new[0].message
+
+
+def test_mv_carries_the_index_line_and_the_container_refs(store: Fixture):
+    fx = store
+    kit = fx.store / "territories/console/kit"
+    (kit / "kit-backup-followup.md").write_text(
+        "---\nname: kit-backup-followup\nkind: territory\nsupersedes: home/lab/lab-backup-plan\n"
+        "description: The backup plan, redone.\nstatus: SHIPPED\nlast_verified: 2026-10-01\n"
+        "---\n\nWas `home/lab/lab-backup-plan`.\n")
+    git(fx.store, "add", "-A")
+    git(fx.store, "commit", "-qm", "followup")
+    fm = move.plan_files(fx.store, ["lab-backup-plan"], "console/kit")
+    out = move.apply_files(fx.store, fx.projects, fm)
+    assert "mv-new-error" not in {f.code for f in out}, out
+
+    lab = fx.store / "territories/home/lab"
+    assert not (lab / "lab-backup-plan.md").exists() and (kit / "lab-backup-plan.md").is_file()
+    assert "lab-backup-plan" not in (lab / "MEMORY.md").read_text()
+    # the hand-written line travels as written, not regenerated from the description
+    # ...and lands beside the index's other entries, not in a new section
+    idx = (kit / "MEMORY.md").read_text()
+    assert ("- [Gone file](kit-gone-file.md) — listed, but deleted.\n"
+            "- [Backup plan](lab-backup-plan.md) — nightly, verified by hand.\n") in idx
+    assert idx.count("## MEMORIES") == 1
+    follow = (kit / "kit-backup-followup.md").read_text()
+    assert "supersedes: console/kit/lab-backup-plan" in follow
+    assert "Was `home/lab/lab-backup-plan`." in follow          # prose: reported only
+    assert any(f.code == "mv-prose" and "kit-backup-followup" in f.path for f in out)
+    assert git(fx.store, "log", "--format=%s", "-1").strip() == \
+        "mv: lab-backup-plan -> console/kit"
+
+
+def test_carried_lines_follow_the_last_entry_under_any_heading():
+    text = "# t\n\n## Topic\n- [A](a.md) — a\n\n## Notes\nprose\n"
+    assert move._after_last_entry(text, ["- [B](b.md) — b"]) == \
+        "# t\n\n## Topic\n- [A](a.md) — a\n- [B](b.md) — b\n\n## Notes\nprose\n"
+    assert move._after_last_entry("# t\n", ["- [B](b.md) — b"]) == \
+        "# t\n\n## MEMORIES\n- [B](b.md) — b\n"
+
+
+def test_mv_into_a_rendered_index_renders_it(store: Fixture):
+    fx = store
+    rc, _, err = run(mem_cmd("render", "console/kit", "--adopt", "--write"), fx.env())
+    assert rc == 0, err
+    git(fx.store, "commit", "-qam", "adopt")
+    move.apply_files(fx.store, fx.projects,
+                     move.plan_files(fx.store, ["home/lab/lab-backup-plan"], "console/kit"))
+    text = (fx.store / "territories/console/kit/MEMORY.md").read_text()
+    section = text[text.index("<!-- mem:render begin"):]
+    assert "(lab-backup-plan.md)" in section and "(lab-backup-plan.md)" not in text[
+        text.index("<!-- mem:render end"):]
+
+
+def test_mv_refuses_and_warns(store: Fixture):
+    fx = store
+    (fx.store / "territories/console/kit/lab-twin.md").write_text("---\nname: lab-twin\n---\n")
+    (fx.store / "territories/home/lab/lab-twin.md").write_text("---\nname: lab-twin\n---\n")
+    for specs, dest, code in ((["lab-twin"], "home/lab", "mv-ambiguous"),
+                              (["lab-backup-plan"], "home/lab", "mv-same-territory"),
+                              (["home/lab/lab-twin"], "console/kit", "mv-target-exists"),
+                              (["no-such-slug"], "console/kit", "mv-no-memory"),
+                              (["home/lab/MEMORY"], "console/kit", "mv-not-memory"),
+                              (["lab-backup-plan", "lab-backup-plan"], "console/kit",
+                               "mv-duplicate"),
+                              (["lab-backup-plan"], "home/none", "mv-no-territory")):
+        got = move.plan_files(fx.store, specs, dest)
+        assert isinstance(got, list) and code in {f.code for f in got}, (specs, got)
+    fm = move.plan_files(fx.store, ["lab-ssh-read-only"], "console/kit")
+    assert "mv-gate" in {f.code for f in fm.notes}
+    rc, out, _ = run(mem_cmd("mv", "lab-backup-plan", "console/kit", "--root", str(fx.store),
+                             "--legacy", str(fx.projects)), fx.env())
+    assert rc == 0 and "would move to territories/console/kit/lab-backup-plan.md" in out
+    assert (fx.store / "territories/home/lab/lab-backup-plan.md").is_file()

@@ -31,6 +31,7 @@ Enforces docs/format-spec.md.
     mem migrate undo --silo S
     mem refine queue [--territory T] [--limit N] [--json]
     mem mv-territory OLD NEW [--write]
+    mem mv SLUG... TERRITORY [--write]
 
 Exit codes: 0 clean, 1 findings at error level, 2 tool error.
 """
@@ -1073,6 +1074,33 @@ def _mv_territory(argv: list[str]) -> int:
     return report(move.apply_territory(a.root, a.legacy, mv), a.json)
 
 
+def _mv(argv: list[str]) -> int:
+    import argparse
+    from pathlib import Path
+
+    from claude_hybrid_memory import move
+    from claude_hybrid_memory.findings import report
+    from claude_hybrid_memory.store import LEGACY, STORE
+
+    ap = argparse.ArgumentParser(prog="mem mv",
+                                 description="Move memories into another territory: the files, "
+                                             "both indexes and `supersedes:` refs.")
+    ap.add_argument("memories", nargs="+", metavar="SLUG",
+                    help="slug, area/name/slug, or a path to the file")
+    ap.add_argument("territory")
+    ap.add_argument("--write", action="store_true", help="apply it (default: show the plan)")
+    ap.add_argument("--root", type=Path, default=STORE)
+    ap.add_argument("--legacy", type=Path, default=LEGACY)
+    ap.add_argument("--json", action="store_true")
+    a = ap.parse_args(argv)
+    fm = move.plan_files(a.root, a.memories, a.territory)
+    if isinstance(fm, list):
+        return report(fm, a.json)
+    if not a.write:
+        return report(move.describe_files(a.root, fm, False), a.json)
+    return report(move.apply_files(a.root, a.legacy, fm), a.json)
+
+
 def main(argv: list[str] | None = None) -> int:
     import time
     t0 = time.perf_counter()
@@ -1098,6 +1126,8 @@ def main(argv: list[str] | None = None) -> int:
             return _refine(args[1:])
         if args[:1] == ["mv-territory"]:
             return _mv_territory(args[1:])
+        if args[:1] == ["mv"]:
+            return _mv(args[1:])
         return _run(args)
     except KeyboardInterrupt:
         return 130
