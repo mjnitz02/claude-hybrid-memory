@@ -441,3 +441,233 @@ def apply_files(root: Path, legacy: Path, fm: FileMove) -> list[Finding]:
     return _committed(root, legacy, "mem mv", subject, write,
                       lambda path: tok.sub(lambda m: moves[m.group(0)], path), back,
                       lambda: describe_files(root, fm, True))
+
+
+@dataclass
+class Archive(Change):
+    group: str = ""
+    why: str = ""
+    territory: str | None = None                       # set when a whole territory retires
+    files: list[tuple[str, Path]] = field(default_factory=list)   # (source territory, file)
+    links: list[Path] = field(default_factory=list)    # silo symlinks to remove
+
+
+def _drop_ref(value: str, name: str) -> str:
+    """`name` out of a comma list; `none` when nothing is left."""
+    keep = [v for v in re.split(r",\s*", value) if v.strip() and v.strip() != name]
+    return ", ".join(keep) or "none"
+
+
+def _router_drop(ar: Archive, router: Path, name: str) -> None:
+    from claude_hybrid_memory.render import ROUTER_ENTRY_RE
+
+    if not router.is_file():
+        return
+    lines = _text(ar, router).split("\n")
+    at = next((i for i, ln in enumerate(lines)
+               if (m := ROUTER_ENTRY_RE.match(ln))
+               and name in re.split(r",\s*", m.group("names"))), None)
+    if at is None:
+        return
+    names = re.split(r",\s*", ROUTER_ENTRY_RE.match(lines[at]).group("names"))
+    if len(names) > 1:
+        lines[at] = lines[at].replace(ROUTER_ENTRY_RE.match(lines[at]).group("names"),
+                                      ", ".join(n for n in names if n != name), 1)
+        ar.notes.append(Finding(WARN, "archive-router-grouped", str(router),
+                                f"{name} dropped from a shared entry; check the rest of its "
+                                "text still fits"))
+    else:
+        end = at + 1
+        while end < len(lines) and lines[end].startswith((" ", "\t")):
+            end += 1
+        del lines[at:end]
+        area = name.split("/", 1)[0]
+        if not any(ROUTER_ENTRY_RE.match(ln) and ln[2:].startswith(area + "/") for ln in lines):
+            ar.notes.append(Finding(WARN, "mv-router-area-empty", str(router),
+                                    f"## {area} has no entries left; remove the section if "
+                                    "the area is done"))
+    ar.edits[router] = "\n".join(lines)
+
+
+def _retire_refs(ar: Archive, tdir: Path, leaving: set[Path]) -> None:
+    """For every file staying behind: `[[slug]]` into an archived file becomes its archive
+    path (as `migrate apply` does), and `container/slug` in `supersedes:` follows it."""
+    gone = {f.stem: f"archive/{ar.group}/{f.name}" for _, f in ar.files}
+    sup = {f"{src}/{f.stem}": f"archive/{ar.group}/{f.stem}" for src, f in ar.files}
+    sup_tok = re.compile(rf"(?<![\w.-])(?:{'|'.join(map(re.escape, sup))})(?![\w-])")
+    for p in sorted(tdir.rglob("*.md")):
+        if p in leaving:
+            continue
+        text = _text(ar, p)
+        for slug, rel in gone.items():
+            text = text.replace(f"[[{slug}]]", f"`{rel}`")
+        _, end = _frontmatter_span(text)
+        lines = text[:end].split("\n")
+        in_sup = False
+        for i, ln in enumerate(lines):
+            if key := re.match(r"^\s*([\w-]+):", ln):
+                in_sup = key.group(1) == "supersedes"
+            if in_sup:
+                lines[i] = sup_tok.sub(lambda m: sup[m.group(0)], ln)
+        if end:
+            text = "\n".join(lines) + text[end:]
+        if text != _text(ar, p):
+            ar.edits[p] = text
+
+
+def plan_archive(root: Path, legacy: Path, specs: list[str], why: str,
+                 group: str | None = None) -> Archive | list[Finding]:
+    """What retiring a whole territory, or some memories, to archive/ would change."""
+    from claude_hybrid_memory.migrate.apply import archive_group
+    from claude_hybrid_memory.store import parse_frontmatter
+
+    tdir = root / "territories"
+    whole = [s for s in specs if (tdir / s / "MEMORY.md").is_file()]
+    if whole and len(specs) > 1:
+        return [Finding(ERROR, "archive-mixed", " ".join(specs),
+                        "archive a territory on its own, or memories without one")]
+    if not why.strip():
+        return [Finding(ERROR, "archive-no-why", " ".join(specs),
+                        "say why; it is the one thing the archive keeps about the decision")]
+    ar = Archive(why=why.strip())
+    errs: list[Finding] = []
+    if whole:
+        ar.territory = whole[0]
+        ar.group = group or archive_group(ar.territory)
+        ar.files = [(ar.territory, f) for f in sorted((tdir / ar.territory).glob("*.md"))
+                    if f.name not in ("MEMORY.md", "EXPORTS.md")]
+        if (root / "archive" / ar.group).exists():
+            errs.append(Finding(ERROR, "archive-group-exists", f"archive/{ar.group}",
+                                "already exists; name another with --as"))
+    else:
+        for spec in specs:
+            got = _resolve(tdir, spec)
+            if isinstance(got, Finding):
+                errs.append(got)
+            elif any(got[1] == f for _, f in ar.files):
+                errs.append(Finding(ERROR, "mv-duplicate", spec, "named twice"))
+            else:
+                ar.files.append(got)
+        srcs = {s for s, _ in ar.files}
+        ar.group = group or (archive_group(srcs.pop()) if len(srcs) == 1 else "")
+        if not ar.group and not errs:
+            errs.append(Finding(ERROR, "archive-no-group", " ".join(specs),
+                                "from more than one territory; name the group with --as"))
+        for _, f in ar.files:
+            if (root / "archive" / ar.group / f.name).exists():
+                errs.append(Finding(ERROR, "mv-target-exists", f.name,
+                                    f"archive/{ar.group} already has one"))
+    if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", ar.group or "x"):
+        errs.append(Finding(ERROR, "mv-bad-name", ar.group, "not a lowercase kebab name"))
+    if errs:
+        return errs
+
+    leaving = {f for _, f in ar.files}
+    for _, f in ar.files:
+        meta, _, _ = parse_frontmatter(f.read_text(encoding="utf-8"))
+        if str(meta.get("role") or "").strip() == "gate" and not ar.territory:
+            ar.notes.append(Finding(WARN, "mv-gate", str(f.relative_to(root)),
+                                    "a gate: take its text out of the territory's GATES "
+                                    "section, and check GATES.md's pointer"))
+    if ar.territory:
+        t = ar.territory
+        leaving |= {tdir / t / "MEMORY.md", tdir / t / "EXPORTS.md"}
+        _router_drop(ar, root / "ROUTER.md", t)
+        for p in sorted(tdir.rglob("MEMORY.md")):
+            if p.parent == tdir / t:
+                continue
+            text = _text(ar, p)
+            _, end = _frontmatter_span(text)
+            head = re.sub(r"(?m)^(\s*(?:consumes|consumed_by):\s*)(.+)$",
+                          lambda m: m.group(1) + _drop_ref(m.group(2).strip().strip('"'), t)
+                          if t in re.split(r",\s*", m.group(2).strip().strip('"'))
+                          else m.group(0), text[:end])
+            if head != text[:end]:
+                ar.edits[p] = head + text[end:]
+        if (tdir / t / "EXPORTS.md").is_file():
+            ar.notes.append(Finding(WARN, "archive-exports", f"territories/{t}/EXPORTS.md",
+                                    "its exports are copied into ROUTER.md or its consumers' "
+                                    "indexes; remove those copies by hand"))
+        if legacy.is_dir():
+            target = (tdir / t).resolve()
+            ar.links = [s / "memory" for s in sorted(legacy.iterdir())
+                        if (s / "memory").is_symlink()
+                        and Path(os.path.realpath(s / "memory")) == target]
+    _retire_refs(ar, tdir, leaving)
+    if not ar.territory:
+        for src in {s for s, _ in ar.files}:
+            left = [f for f in (tdir / src).glob("*.md")
+                    if f.name not in ("MEMORY.md", "EXPORTS.md") and f not in leaving]
+            if not left:
+                ar.notes.append(Finding(WARN, "archive-territory-empty", src,
+                                        "no memories left; archive the territory too, or "
+                                        "keep it for what comes next"))
+    pats = ([re.escape(ar.territory)] if ar.territory
+            else [re.escape(f"{s}/{f.stem}") for s, f in ar.files])
+    _prose(ar, root, re.compile(rf"(?<![\w.-])(?:{'|'.join(pats)})(?![\w-])"))
+    ar.notes = [n for n in ar.notes if not (n.code == "mv-prose" and any(
+        n.path.startswith(str(f.relative_to(root)) + ":") for f in leaving))]
+    return ar
+
+
+def describe_archive(root: Path, ar: Archive, done: bool) -> list[Finding]:
+    verb = "archived" if done else "would archive"
+    if ar.territory:
+        out = [Finding(INFO, "archive-territory", f"territories/{ar.territory}",
+                       f"{verb} to archive/{ar.group}, {len(ar.files)} memories")]
+    else:
+        out = [Finding(INFO, "archive-file", f"territories/{s}/{f.name}",
+                       f"{verb} to archive/{ar.group}/{f.name}") for s, f in ar.files]
+    out += [Finding(INFO, "mv-edit", str(p.relative_to(root)),
+                    "rewritten" if done else "would rewrite") for p in sorted(ar.edits)]
+    out += [Finding(INFO, "archive-unlink", md.parent.name,
+                    ("unlinked" if done else "would unlink") + "; once the memory is back "
+                    "in a territory, `mem link` from the repo relinks it")
+            for md in ar.links]
+    return out + ar.notes
+
+
+def apply_archive(root: Path, legacy: Path, ar: Archive) -> list[Finding]:
+    """Write the archive. The group's WHY-ARCHIVED.md gets a dated line per call, in the
+    format `migrate apply` started. Undo is `git revert` plus `mem link` for the silos."""
+    import datetime as dt
+
+    from claude_hybrid_memory.migrate import apply
+
+    tdir = root / "territories"
+    gdir = root / "archive" / ar.group
+    today = dt.date.today().isoformat()
+
+    def write() -> None:
+        for p, text in ar.edits.items():
+            p.write_text(text, encoding="utf-8")
+        if ar.territory:
+            gdir.parent.mkdir(parents=True, exist_ok=True)
+            (tdir / ar.territory).rename(gdir)
+            parent = (tdir / ar.territory).parent
+            if parent != tdir and not any(parent.iterdir()):
+                parent.rmdir()
+        else:
+            gdir.mkdir(parents=True, exist_ok=True)
+            for _, f in ar.files:
+                f.rename(gdir / f.name)
+            for src in dict.fromkeys(s for s, _ in ar.files):
+                apply.reindex(root, src, frozenset(f.name for s, f in ar.files if s == src))
+        for md in ar.links:
+            md.unlink()
+        log = gdir / "WHY-ARCHIVED.md"
+        what = (f"territory `{ar.territory}` ({len(ar.files)} memories)" if ar.territory
+                else ", ".join(f"`{f.name}` from {s}" for s, f in ar.files))
+        head = "" if log.is_file() else (f"# Archived to {ar.group}\n\n"
+                                         "Never loaded; kept as provenance.\n\n")
+        with log.open("a", encoding="utf-8") as fh:
+            fh.write(head + f"- {what} — {today}, `mem archive`: {ar.why}\n")
+
+    subject = (f"archive: {ar.territory}" if ar.territory else
+               f"archive: {ar.files[0][1].stem}" if len(ar.files) == 1 else
+               f"archive: {len(ar.files)} memories -> {ar.group}")
+    relink = (f"; then `mem link --territory {ar.territory} --write` in each repo"
+              if ar.links else "")
+    return _committed(root, legacy, "mem archive", subject, write, lambda path: path,
+                      f"`git -C {root} revert HEAD` restores it{relink}",
+                      lambda: describe_archive(root, ar, True))

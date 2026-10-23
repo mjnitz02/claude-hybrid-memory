@@ -161,6 +161,15 @@ the destination's last entry. `container/slug` refs in `supersedes:` follow too.
 `role: gate` memory warns, since gate text is inlined in the territory's head. The
 dry run, checkpoint and error report work as for `mv-territory`.
 
+`mem archive TARGET... --why TEXT` retires a whole territory, or some memories, to
+`archive/<area>-<name>/` (`--as` names another group). A territory goes as it is, index
+included. Its ROUTER.md entry and every `consumes:`/`consumed_by:` naming it are removed,
+and every silo linked to it is unlinked, so no repo keeps loading retired memory.
+Bringing it back is a deliberate step: move it into `territories/`, then `mem link`.
+Retired memories leave their index. A `[[slug]]` pointing at one becomes its archive path,
+and `supersedes:` refs follow it. Each call adds a dated line with the reason to the
+group's `WHY-ARCHIVED.md`.
+
 ## Kinds
 
 ### `standing`

@@ -190,3 +190,75 @@ def test_mv_refuses_and_warns(store: Fixture):
                              "--legacy", str(fx.projects)), fx.env())
     assert rc == 0 and "would move to territories/console/kit/lab-backup-plan.md" in out
     assert (fx.store / "territories/home/lab/lab-backup-plan.md").is_file()
+
+
+def archived(fx: Fixture, targets: list[str], why: str = "done with it", group=None) -> list:
+    ar = move.plan_archive(fx.store, fx.projects, targets, why, group)
+    assert isinstance(ar, move.Archive), ar
+    return move.apply_archive(fx.store, fx.projects, ar)
+
+
+def test_archiving_a_territory_retires_it_whole_and_unlinks_its_silos(store: Fixture):
+    fx = store
+    notes = fx.store / "territories/home/lab/lab-sync-notes.md"
+    notes.write_text(notes.read_text() + "Design: [[kit-sync-design]].\n")
+    git(fx.store, "commit", "-qam", "link")
+    out = archived(fx, ["console/kit"], why="the kit was sold")
+    assert "mv-new-error" not in {f.code for f in out}, out
+
+    g = fx.store / "archive/console-kit"
+    assert not (fx.store / "territories/console").exists()
+    assert (g / "MEMORY.md").is_file() and (g / "kit-sync-design.md").is_file()
+    assert "the kit was sold" in (g / "WHY-ARCHIVED.md").read_text()
+
+    # the repo's silo no longer loads retired memory; relinking is a separate step
+    assert not any(p.is_symlink() for p in fx.projects.glob("*/memory"))
+    assert any(f.code == "archive-unlink" for f in out)
+
+    router = (fx.store / "ROUTER.md").read_text()
+    assert "console/kit" not in router and "mv-router-area-empty" in {f.code for f in out}
+    lab = (fx.store / "territories/home/lab/MEMORY.md").read_text()
+    assert "consumed_by: none" in lab
+    text = notes.read_text()
+    assert "supersedes: archive/console-kit/kit-fodder-corpus" in text
+    assert "Design: `archive/console-kit/kit-sync-design.md`." in text
+    assert git(fx.store, "log", "--format=%s", "-1").strip() == "archive: console/kit"
+
+
+def test_archiving_memories_reindexes_and_logs_each_call(store: Fixture):
+    fx = store
+    design = fx.store / "territories/console/kit/kit-sync-design.md"
+    design.write_text(design.read_text() + "Backups: [[lab-backup-plan]].\n")
+    git(fx.store, "commit", "-qam", "link")
+    archived(fx, ["lab-backup-plan"], why="replaced by snapshots")
+    lab = fx.store / "territories/home/lab"
+    assert not (lab / "lab-backup-plan.md").exists()
+    assert "lab-backup-plan" not in (lab / "MEMORY.md").read_text()
+    assert "`archive/home-lab/lab-backup-plan.md`" in design.read_text()
+    assert any(p.is_symlink() for p in fx.projects.glob("*/memory"))   # silos untouched
+
+    out = archived(fx, ["lab-sync-notes"], why="folded into the runbook")
+    log = (fx.store / "archive/home-lab/WHY-ARCHIVED.md").read_text()
+    assert log.count("# Archived") == 1 and "snapshots" in log and "runbook" in log
+    # only the gate is left, and it is a memory too, so the territory is not empty yet
+    assert "archive-territory-empty" not in {f.code for f in out}
+
+
+def test_archive_refuses_and_warns(store: Fixture):
+    fx = store
+    (fx.store / "archive/home-lab").mkdir(parents=True)
+    for targets, why, group, code in (
+            (["home/lab"], "", None, "archive-no-why"),
+            (["home/lab", "kit-sync-v1"], "x", None, "archive-mixed"),
+            (["home/lab"], "x", None, "archive-group-exists"),
+            (["lab-backup-plan", "kit-sync-v1"], "x", None, "archive-no-group"),
+            (["kit-sync-v1", "kit-sync-v1"], "x", None, "mv-duplicate"),
+            (["kit-sync-v1"], "x", "Bad Group", "mv-bad-name")):
+        got = move.plan_archive(fx.store, fx.projects, targets, why, group)
+        assert isinstance(got, list) and code in {f.code for f in got}, (targets, got)
+    ar = move.plan_archive(fx.store, fx.projects, ["lab-ssh-read-only"], "x", "lab-gates")
+    assert "mv-gate" in {f.code for f in ar.notes}
+    rc, out, _ = run(mem_cmd("archive", "console/kit", "--why", "x", "--root", str(fx.store),
+                             "--legacy", str(fx.projects)), fx.env())
+    assert rc == 0 and "would archive to archive/console-kit" in out
+    assert (fx.store / "territories/console/kit/MEMORY.md").is_file()

@@ -32,6 +32,7 @@ Enforces docs/format-spec.md.
     mem refine queue [--territory T] [--limit N] [--json]
     mem mv-territory OLD NEW [--write]
     mem mv SLUG... TERRITORY [--write]
+    mem archive TERRITORY|SLUG... --why TEXT [--as GROUP] [--write]
 
 Exit codes: 0 clean, 1 findings at error level, 2 tool error.
 """
@@ -1101,6 +1102,35 @@ def _mv(argv: list[str]) -> int:
     return report(move.apply_files(a.root, a.legacy, fm), a.json)
 
 
+def _archive(argv: list[str]) -> int:
+    import argparse
+    from pathlib import Path
+
+    from claude_hybrid_memory import move
+    from claude_hybrid_memory.findings import report
+    from claude_hybrid_memory.store import LEGACY, STORE
+
+    ap = argparse.ArgumentParser(prog="mem archive",
+                                 description="Retire a whole territory, or some memories, to "
+                                             "archive/. Silos linked to a retired territory "
+                                             "are unlinked; relinking is a separate step.")
+    ap.add_argument("targets", nargs="+", metavar="TARGET",
+                    help="one territory (area/name), or memories (slug, area/name/slug, path)")
+    ap.add_argument("--why", required=True, help="the reason, kept in WHY-ARCHIVED.md")
+    ap.add_argument("--as", dest="group", help="archive group (default: area-name of the source)")
+    ap.add_argument("--write", action="store_true", help="apply it (default: show the plan)")
+    ap.add_argument("--root", type=Path, default=STORE)
+    ap.add_argument("--legacy", type=Path, default=LEGACY)
+    ap.add_argument("--json", action="store_true")
+    a = ap.parse_args(argv)
+    ar = move.plan_archive(a.root, a.legacy, a.targets, a.why, a.group)
+    if isinstance(ar, list):
+        return report(ar, a.json)
+    if not a.write:
+        return report(move.describe_archive(a.root, ar, False), a.json)
+    return report(move.apply_archive(a.root, a.legacy, ar), a.json)
+
+
 def main(argv: list[str] | None = None) -> int:
     import time
     t0 = time.perf_counter()
@@ -1128,6 +1158,8 @@ def main(argv: list[str] | None = None) -> int:
             return _mv_territory(args[1:])
         if args[:1] == ["mv"]:
             return _mv(args[1:])
+        if args[:1] == ["archive"]:
+            return _archive(args[1:])
         return _run(args)
     except KeyboardInterrupt:
         return 130
