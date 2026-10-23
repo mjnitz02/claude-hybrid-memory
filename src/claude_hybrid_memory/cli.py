@@ -148,7 +148,7 @@ GIT_COMMANDS = ("commit", "log", "diff", "restore")
 
 
 def _render(argv: list[str]) -> int:
-    """`mem render`: the generated MEMORIES section of each adopted territory index."""
+    """`mem render`: ALWAYS.md, and the generated MEMORIES section of each adopted index."""
     import argparse
     import json
     from pathlib import Path
@@ -210,6 +210,10 @@ def _render(argv: list[str]) -> int:
               file=sys.stderr)
         return 2
     from claude_hybrid_memory.audit.relations import store_graph
+    from claude_hybrid_memory.hooks import session_start
+    if not a.territory:
+        changed = session_start.write_always(a.root)
+        print(f"{session_start.ALWAYS}: {'re-rendered' if changed else 'unchanged'}")
     sup = store_graph(a.root).superseded()
     for n in names:
         old, new = render.render(a.root, n, True, sup)

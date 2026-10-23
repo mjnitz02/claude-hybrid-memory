@@ -179,14 +179,15 @@ def render(root: Path, name: str, write: bool = True,
 
 
 def render_all(root: Path) -> list[str]:
-    """Re-render every adopted territory; the names of those that changed."""
+    """Re-render ALWAYS.md and every adopted territory; the names of those that changed."""
     from claude_hybrid_memory.audit.relations import store_graph
+    from claude_hybrid_memory.hooks import session_start
 
+    changed = [session_start.ALWAYS] if session_start.write_always(root) else []
     names = rendered(root)
     if not names:
-        return []
+        return changed
     sup = store_graph(root).superseded()
-    changed = []
     for n in names:
         old, new = render(root, n, True, sup)
         if old != new:
@@ -195,13 +196,23 @@ def render_all(root: Path) -> list[str]:
 
 
 def check(root: Path, names: list[str] | None = None) -> list[Finding]:
-    """Every territory index against the harness cap; every adopted one against its render."""
+    """Every territory index against the harness cap; every adopted one against its render;
+    and, on a whole-store check, ALWAYS.md against the layer it is rendered from."""
     from claude_hybrid_memory.audit.relations import store_graph
+    from claude_hybrid_memory.hooks import session_start
 
+    out = []
+    always = root / session_start.ALWAYS
+    want = session_start.layer(root)
+    # a missing ALWAYS.md is `mem budget`'s to report; the hook writes one at session start
+    if not names and want and always.is_file() and session_start.read(always) + "\n" != want:
+        out.append(Finding(WARN, "render-stale", str(always),
+                           "differs from MACHINE.md + GATES.md + standing/ + ROUTER.md as "
+                           "they are now, so sessions load an old layer; `mem render` "
+                           "rewrites it"))
     tdir = root / "territories"
     if not tdir.is_dir():
-        return []
-    out = []
+        return out
     adopted = set(rendered(root))
     sup = store_graph(root).superseded() if adopted else set()
     for p in sorted(tdir.rglob("MEMORY.md")):

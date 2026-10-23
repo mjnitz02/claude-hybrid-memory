@@ -1,6 +1,6 @@
 """`mem install`: stand up or repair this machine's store and wire Claude Code to it.
 
-The scripted form of setup.md steps 1 to 3c; `make install` runs it after installing the
+The scripted form of setup.md steps 1 to 3d; `make install` runs it after installing the
 `mem` tool itself. Every step looks before it changes anything and can be re-run: what is
 already right is reported and left alone, a file is never overwritten, and settings.json
 is backed up before it is rewritten. Then it runs each hook the way Claude Code will,
@@ -24,6 +24,7 @@ from pathlib import Path
 
 from claude_hybrid_memory import storegit
 from claude_hybrid_memory.findings import ERROR, INFO, WARN, Finding
+from claude_hybrid_memory.hooks import session_start
 
 REPO = Path(__file__).resolve().parents[2]
 CLAUDE = Path.home() / ".claude"
@@ -203,6 +204,18 @@ def ensure_exception(claude_md: Path, repo: Path) -> list[Finding]:
                     f"{repo / 'templates' / 'CLAUDE-git-exception.md'} under the git rule")]
 
 
+def ensure_import(claude_md: Path, root: Path) -> list[Finding]:
+    """~/.claude/CLAUDE.md must import ALWAYS.md (setup.md step 3d): that import is the only
+    way the layer reaches a session, since the hook's output is capped at 10,000 chars.
+    Checked, never written, like the git exception."""
+    line = session_start.import_line(root)
+    if session_start.imported(root, claude_md):
+        return [Finding(INFO, "install-ok", str(claude_md), f"imports {line[1:]}")]
+    return [Finding(WARN, "install-import", str(claude_md),
+                    f"no `{line}` line, so sessions start without GATES, standing or the "
+                    f"router; add {REPO / 'templates' / 'CLAUDE-memory-import.md'}")]
+
+
 CHECK_SESSION = "mem-install-check"
 
 
@@ -216,12 +229,13 @@ def _hook(mem: str, name: str, payload: dict, env: dict) -> tuple[int, str, floa
     return p.returncode, p.stdout, (time.perf_counter() - t0) * 1000
 
 
-def check_hooks(root: Path, mem: str, repo: Path) -> list[Finding]:
+def check_hooks(root: Path, mem: str, repo: Path, claude: Path = CLAUDE) -> list[Finding]:
     """Run the three hooks as Claude Code will (setup.md, the checks under 3 to 3c),
     against a throwaway copy of the store, so nothing real is logged or committed.
 
     Every hook fails open, so an exit code alone proves little: each check looks for the
-    effect instead. session-start hands over a non-empty context; post-tool logs a read of
+    effect instead. session-start hands over a non-empty context under the harness's
+    persist threshold and renders ALWAYS.md; post-tool logs a read of
     a memory and stays silent; session-end commits a probe file left in the copy."""
     if not Path(mem).is_file():
         return [Finding(WARN, "install-check-skipped", mem, "no binary here; hooks not run")]
@@ -233,16 +247,24 @@ def check_hooks(root: Path, mem: str, repo: Path) -> list[Finding]:
     with tempfile.TemporaryDirectory(prefix="mem-install-check-") as tmp:
         copy = Path(tmp) / "memory"
         shutil.copytree(root, copy, symlinks=True, ignore=shutil.ignore_patterns(".cache"))
-        env = {**os.environ, "CLAUDE_MEMORY_STORE": str(copy), "CLAUDE_PROJECT_DIR": str(repo)}
+        env = {**os.environ, "CLAUDE_MEMORY_STORE": str(copy), "CLAUDE_PROJECT_DIR": str(repo),
+               "CLAUDE_CONFIG_DIR": str(claude)}
 
         rc, so, ms = _hook(mem, "session-start", {"source": "startup"}, env)
         try:
             ctx = json.loads(so)["hookSpecificOutput"]["additionalContext"] if rc == 0 else ""
         except (ValueError, KeyError, TypeError):
             ctx = ""
-        if ctx:
+        limit = session_start.HOOK_OUTPUT_LIMIT
+        if ctx and len(ctx) > limit:
+            bad("session-start", f"{len(ctx):,} chars of context, past the harness's "
+                f"{limit:,}; sessions would see only a 2 KB preview of it")
+        elif ctx and (copy / session_start.ALWAYS).is_file():
             out.append(Finding(INFO, "install-check-session-start", mem,
-                               f"ok, {len(ctx):,} chars of context, {ms:.0f} ms"))
+                               f"ok, {len(ctx):,} chars of context, ALWAYS.md rendered, "
+                               f"{ms:.0f} ms"))
+        elif ctx:
+            bad("session-start", "no ALWAYS.md rendered; CLAUDE.md would import nothing")
         else:
             bad("session-start", f"exit {rc}, no context; every session would start without "
                 "the router. Try `mem hook session-start` by hand")
@@ -280,7 +302,8 @@ def run(root: Path, repo: Path = REPO, claude: Path = CLAUDE, mem: Path = MEM,
            + ensure_skills(repo, claude / "skills", dry)
            + ensure_settings(claude / "settings.json", str(mem), dry,
                              now.strftime("%Y%m%d-%H%M%S"))
-           + ensure_exception(claude / "CLAUDE.md", repo))
+           + ensure_exception(claude / "CLAUDE.md", repo)
+           + ensure_import(claude / "CLAUDE.md", root))
     if dry or any(f.level == ERROR for f in out):
         return out
-    return out + check_hooks(root, str(mem), repo)
+    return out + check_hooks(root, str(mem), repo, claude)

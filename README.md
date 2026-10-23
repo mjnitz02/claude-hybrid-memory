@@ -31,9 +31,10 @@ computable freshness.
 
     ~/.claude/memory/
       MACHINE.md          # machine identity + calibration      ┐
-      GATES.md            # irreversible-harm rules, max 5      │ injected every session
-      standing/           # directives true in every repo      │ by the SessionStart hook
+      GATES.md            # irreversible-harm rules, max 5      │ rendered into ALWAYS.md,
+      standing/           # directives true in every repo      │ which CLAUDE.md imports
       ROUTER.md           # one line per territory + PULL WHEN  ┘
+      ALWAYS.md           # generated: the four above as one file, gitignored
       territories/<path>/
         MEMORY.md         # the territory router, auto-loaded by Claude Code
         EXPORTS.md        # the contract for territories downstream
@@ -122,14 +123,17 @@ There is one dependency, `pyyaml`, for frontmatter, and it is never on the hook 
     make hooks               # git hooks: lint + secret scan on commit, tests on push
 
 Three hooks are installed:
-- `SessionStart` injects the always-loaded layer, names the territory for the current
-  directory, and reports when the retrospective is overdue.
+- `SessionStart` re-renders the always-loaded layer into `ALWAYS.md`, which
+  `~/.claude/CLAUDE.md` imports (a hook's output is cut to a 2 KB preview past 10,000 chars,
+  so the layer cannot ride in it). It also names the territory for the current directory and
+  reports when the retrospective is overdue.
 - `PostToolUse` records usage and reindexes on writes.
 - `SessionEnd` re-renders indexes and commits the store.
 
 To see exactly what a session is handed:
 
-    mem hook session-start | jq -r .hookSpecificOutput.additionalContext | head -40
+    cat ~/.claude/memory/ALWAYS.md
+    mem hook session-start | jq -r .hookSpecificOutput.additionalContext
 
 ## Skills
 

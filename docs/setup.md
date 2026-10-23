@@ -28,13 +28,15 @@ changed; any other hook, including one sharing a group with a `mem` hook, stays 
 Then it runs the checks under steps 3 to 3c itself: each hook is run as Claude Code will
 run it, against a throwaway copy of the store, so nothing real is logged or committed.
 Every hook fails open, so each check looks for the hook's effect, not its exit code:
-session-start must hand over a non-empty context, post-tool must log a memory read and
+session-start must hand over a non-empty context under the harness's 10,000-char limit and
+render `ALWAYS.md`, post-tool must log a memory read and
 print nothing, and session-end must commit a probe file left in the copy. A failure is an
 error, and `make install` exits non-zero. `--dry-run` runs no hook.
 
 It also checks that `~/.claude/CLAUDE.md` carries the store's git exception beside the git
 rule (`direction.md` §16.1), and warns if it does not. It never writes that file: paste
-`templates/CLAUDE-git-exception.md` under the rule yourself.
+`templates/CLAUDE-git-exception.md` under the rule yourself. The same goes for the import
+of the always-loaded layer (step 3d): it warns when the line is missing and never adds it.
 
 It does not edit `MACHINE.md` (it warns when it has just copied the template), and it does
 not do steps 4 and 5. Finish with `mem audit`. The manual steps stay documented below;
@@ -90,8 +92,9 @@ which are wanted here.
 
 ## 3. Install the SessionStart hook
 
-The hook is what removes the need for the user to nudge. It injects the always-loaded layer,
-names the territory for the current directory, and says when the retrospective is overdue.
+The hook is what removes the need for the user to nudge. It renders the always-loaded layer
+into `ALWAYS.md` (which `~/.claude/CLAUDE.md` imports, step 3d), names the territory for the
+current directory, and says when the retrospective is overdue.
 
 Install the package as a uv tool, from the repo root. The install is editable, so code
 changes take effect immediately:
@@ -229,6 +232,44 @@ Check it on a copy, so the real store is not committed by the check:
     cp -R ~/.claude/memory /tmp/store-check
     echo '{}' | CLAUDE_MEMORY_STORE=/tmp/store-check ~/.local/bin/mem hook session-end
     git -C /tmp/store-check log -1 --stat; rm -rf /tmp/store-check
+
+
+### 3d. Import the always-loaded layer from CLAUDE.md
+
+**The layer reaches a session through `~/.claude/CLAUDE.md`, not through the hook.** Claude
+Code saves any single hook output over 10,000 characters to a file and shows the model only
+its first 2 KB (2.1.309, `yhe()`, `bri=1e4`). The layer is ~25 KB, so between 2026-10-01 and
+2026-10-23 every session got the opening of `MACHINE.md` and none of the gates, standing
+directives or router. A CLAUDE.md import is loaded whole (the cap there is 4 MB per file), and
+it reaches subagents too.
+
+So `mem` renders `MACHINE.md` + `GATES.md` + `standing/` + `ROUTER.md` into
+`~/.claude/memory/ALWAYS.md`, in the hook's degrade order. It re-renders at every session start,
+on `mem render`, and at session end. The file is generated and gitignored in the store; edit
+its sources. Append `templates/CLAUDE-memory-import.md` to `~/.claude/CLAUDE.md`, which ends
+with the line that matters:
+
+    @~/.claude/memory/ALWAYS.md
+
+The hook now prints only the `MEMORY STATUS` block, a few hundred characters. If the import is
+missing, the first status line says that the layer is not in context. If `ALWAYS.md` was stale
+and had to be re-rendered at session start, it says so, because CLAUDE.md may have loaded the old copy.
+
+Verify in a fresh session, not just with `mem budget`. Ask it to quote the last bullet in
+`GATES.md`, without tools:
+
+    echo "Without tools, quote the last GATES bullet verbatim." | claude -p --tools ""
+
+`mem budget` errors (`budget-not-imported`) when the line is missing, and
+(`budget-hook-output`) when the hook's own output passes 10,000 characters. After a Claude
+Code upgrade, re-read the threshold from the binary:
+
+    strings -n 6 "$(realpath "$(which claude)")" | rg -o 'async function yhe\(.{0,80}'
+    strings -n 6 "$(realpath "$(which claude)")" | rg -o '[,; ]bri=[^,;]{1,20}'
+
+Done on the personal Mac 2026-10-23: the section was appended by hand, and a fresh
+`claude -p` session quoted the `sound-scraper` gate and the router's last entry verbatim,
+with no persisted-output preview.
 
 ## 4. Create the first territory
 
