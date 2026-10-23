@@ -131,7 +131,7 @@ include `~/.local/bin`:
 
 If `settings.json` already has a `hooks` object, merge into it rather than replacing it.
 
-Measured on the personal Mac (2026-10-21): about 17 ms, against 23 ms for the old
+Measured on the first machine (2026-10-21): about 17 ms, against 23 ms for the old
 `/usr/bin/python3 tools/session_start.py`, mostly because the tool runs on Python 3.13 rather
 than the system 3.9. `uv run --project <repo>` was the self-healing alternative, at about
 28 ms; the direct `.venv/bin/mem` path is as fast but lives in a directory `uv sync` rebuilds.
@@ -166,7 +166,7 @@ traffic goes through Bash. Add beside `SessionStart` in the same `hooks` object,
       }
     ]
 
-Measured on the personal Mac (2026-10-21), fresh process, JSON on stdin: interpreter start
+Measured on the first machine (2026-10-21), fresh process, JSON on stdin: interpreter start
 alone 10 ms; a Read outside the store, which is what nearly every call pays, p95 15 ms; a
 memory Read 16 ms; a memory Edit with its reindex 34 ms. A Bash call outside the store
 (2026-10-22, after `Bash` joined the matcher) 16 ms p50, 19 ms max: it is rejected on a
@@ -207,7 +207,7 @@ dies before its SessionEnd leaves its changes for the next commit. Add beside th
       }
     ]
 
-Measured on the personal Mac (2026-10-22) against a copy of the store with a day's
+Measured on the first machine (2026-10-22) against a copy of the store with a day's
 backlog: 181 ms, exit 0, no output. Nothing waits on it.
 
 Every other git operation on the store goes through `mem` too, so a session never runs
@@ -267,8 +267,8 @@ Code upgrade, re-read the threshold from the binary:
     strings -n 6 "$(realpath "$(which claude)")" | rg -o 'async function yhe\(.{0,80}'
     strings -n 6 "$(realpath "$(which claude)")" | rg -o '[,; ]bri=[^,;]{1,20}'
 
-Done on the personal Mac 2026-10-23: the section was appended by hand, and a fresh
-`claude -p` session quoted the `sound-scraper` gate and the router's last entry verbatim,
+Done on the first machine 2026-10-23: the section was appended by hand, and a fresh
+`claude -p` session quoted a gate and the router's last entry verbatim,
 with no persisted-output preview.
 
 ## 4. Create the first territory

@@ -28,7 +28,7 @@ markdown" true by construction.
 
 ## 2. Why change: the evidence
 
-Measured on the personal Mac, 2026-10-21.
+Measured on the first machine, 2026-10-21.
 
 | Fact | Value | Why it matters |
 |---|---|---|
@@ -373,11 +373,11 @@ Rebuild times extrapolate the measured 47 ms linearly; typical runs are incremen
 Additions this leaves room for without redesign: embeddings via `sqlite-vec` in the cache if
 search misses ever show up in events; LLM-written summaries stored in the cache keyed by
 content hash (an index aid, never a replacement body); a read-only viewer over the cache;
-the same tool on the work Mac's chain topology.
+the same tool on the second machine's chain topology.
 
 ## 15. Migration
 
-### Inventory, personal Mac, 2026-10-21
+### Inventory, first machine, 2026-10-21
 
 | Where | State | Count |
 |---|---|---|
@@ -654,7 +654,7 @@ per the deletion directive. `archive/` becomes searchable on request (`include_a
 is never rendered: retired, not lost.
 *Exit:* `mem status` shows no unreviewed silos.
 
-**Phase 7 — The work Mac.**
+**Phase 7 — The second machine.**
 *Revised 2026-10-23:* also on `fast-adoption.md`.
 Same sequence against its own store and its chain topology (`EXPORTS.md`, layered
 territories). Separate store, separate git history, nothing shared but this repo.

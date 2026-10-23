@@ -333,7 +333,7 @@ marks it planned. A territory's `consumes:` and `consumed_by:` follow the same r
 (`territory-ref-unknown`); a glob such as `home/*` passes while it matches a territory.
 
     # MEMORY ROUTER
-    machine: work-mac
+    machine: machine-a
     last_retrospective: 2026-09-04
     territories: 13
 

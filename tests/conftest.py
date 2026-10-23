@@ -1,7 +1,7 @@
 """Fixture stores: synthetic content, real shapes.
 
 The repo crosses machines and memory content may not, so nothing here is copied from a real
-store. Each fixture file instead reproduces a SHAPE found in the personal Mac's store on
+store. Each fixture file instead reproduces a SHAPE found in a real store on
 2026-10-21, and says which one. A test built on a shape nobody has seen proves only that the
 test agrees with itself.
 """
@@ -109,7 +109,7 @@ FILES = {
         "[[kit-sync-design]]\n"
     ),
     # archive/<group>/: a README.md with no frontmatter beside a retired memory, which is
-    # how all six README-bearing groups in the personal Mac's archive/ are laid out
+    # how all six README-bearing groups in a real store's archive/ are laid out
     "archive/kit-old/README.md": (
         "# kit-old\n\nRetired with the old kit repo. "
         "Its nightly notes live on in kit-sync-design.\n"

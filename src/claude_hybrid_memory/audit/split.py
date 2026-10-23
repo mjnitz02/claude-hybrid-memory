@@ -11,7 +11,7 @@ from claude_hybrid_memory.findings import INFO, WARN, Finding
 from claude_hybrid_memory.spec import ACCRETION_RE
 from claude_hybrid_memory.store import Memory
 
-# The 95th percentile of the personal Mac's 297 territory files on 2026-10-21 (median 3.4 KB,
+# The 95th percentile of a real store's 297 territory files on 2026-10-21 (median 3.4 KB,
 # max 38.8 KB): 14 files, ~2,500 tokens and up, to read for what is usually one paragraph.
 SPLIT_BYTES = 10 * 1024
 

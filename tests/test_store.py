@@ -35,7 +35,7 @@ def test_no_frontmatter():
     assert parse_frontmatter("---\n---\nBody\n") == ({}, "Body\n", [])
 
 
-# The shapes below are the ones strict YAML disagreed with on the personal Mac's 409 real
+# The shapes below are the ones strict YAML disagreed with on a real store's 409
 # frontmatter blocks (2026-10-21); each names the file it reproduces.
 
 def test_unquoted_hash_keeps_the_full_value():

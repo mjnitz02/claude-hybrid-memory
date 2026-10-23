@@ -1,6 +1,6 @@
 # MACHINE
 
-machine: <work-mac | personal-mac>
+machine: <a short name for this machine, e.g. laptop>
 user_path: <e.g. /Users/alice>
 store: ~/.claude/memory
 set_up: <YYYY-MM-DD>
