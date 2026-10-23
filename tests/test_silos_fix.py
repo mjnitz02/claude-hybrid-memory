@@ -8,7 +8,7 @@ from conftest import Fixture
 from claude_hybrid_memory.fix import desired_slug, do_fix
 from claude_hybrid_memory.harness import silo_name
 from claude_hybrid_memory.silos import do_link, silo_workdir
-from claude_hybrid_memory.store import scan_store
+from claude_hybrid_memory.store import parse_frontmatter, scan_store
 
 
 @pytest.mark.parametrize("stem,want", [
@@ -34,6 +34,31 @@ def test_fix_plans_rename_and_rewrites_links(fx: Fixture):
     kit = fx.store / "territories/console/kit"
     assert (kit / "kit-raw-notes.md").exists() and not (kit / "kit_raw_notes.md").exists()
     assert "[[kit-raw-notes]]" in (kit / "kit-sync-v1.md").read_text()
+
+
+def test_fix_quotes_frontmatter_yaml_misreads(fx: Fixture):
+    p = fx.store / "territories/console/kit/kit-colon.md"
+    desc = "SHIPPED 2026-10-07 (PR #735): it's \"done\" now"
+    p.write_text(f"---\nname: kit-colon\nkind: territory\ndescription: {desc}\n"
+                 "status: SHIPPED\nmetadata:\n  note: a: b\n---\nBody.\n")
+    mems, routers = scan_store(fx.store)
+    assert [m for m in mems if m.path == p][0].fm_problems
+    f = do_fix(mems, routers, write=True, stamp_today=False)
+    assert "quoted description, note (frontmatter-not-yaml)" in \
+        [x for x in f if x.path == str(p)][0].message
+    meta, body, problems = parse_frontmatter(p.read_text())
+    assert not problems and body == "Body.\n"
+    assert meta["description"] == desc and meta["metadata"]["note"] == "a: b"
+
+
+def test_fix_leaves_frontmatter_it_cannot_verify(fx: Fixture):
+    p = fx.store / "territories/console/kit/kit-keyless.md"
+    raw = "---\nname: kit-keyless\nkind: territory\ndescription: d: e\n[not a key\n---\nB.\n"
+    p.write_text(raw)
+    mems, routers = scan_store(fx.store)
+    f = do_fix(mems, routers, write=True, stamp_today=False)
+    assert any(x.code == "fix-frontmatter-skip" and x.path == str(p) for x in f)
+    assert p.read_text() == raw
 
 
 def test_fix_dry_run_writes_nothing(fx: Fixture):

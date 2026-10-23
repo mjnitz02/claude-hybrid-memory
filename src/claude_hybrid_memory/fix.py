@@ -5,9 +5,13 @@ import datetime as dt
 import re
 from pathlib import Path
 
-from claude_hybrid_memory.findings import ERROR, INFO, Finding
+import yaml
+
+from claude_hybrid_memory.findings import ERROR, INFO, WARN, Finding
 from claude_hybrid_memory.spec import STATUSES
-from claude_hybrid_memory.store import Memory
+from claude_hybrid_memory.store import Memory, _Loader, parse_frontmatter
+
+_FM_LINE = re.compile(r"^(\s*)([A-Za-z_][\w.-]*)(\s*:\s+)(\S.*?)\s*$")
 
 
 def desired_slug(stem: str) -> str:
@@ -15,6 +19,52 @@ def desired_slug(stem: str) -> str:
     w = re.sub(r"[^a-z0-9-]", "", w)
     w = re.sub(r"-{2,}", "-", w).strip("-")
     return w or stem.lower()
+
+
+def _needs_quote(v: str) -> bool:
+    if v[0] in "\"'":
+        return False
+    return ": " in v or " #" in v or v.endswith(":") or v[0] in "*&!|>%@`[{,?-#"
+
+
+def quote_frontmatter(text: str) -> tuple[str, list[str]] | None:
+    """Double-quote each plain scalar YAML misreads (`frontmatter-not-yaml`).
+
+    Quotes the raw text after `key: `, not the lenient parser's value, which strips quote
+    characters. Returns None unless strict YAML then reads every quoted value back verbatim.
+    """
+    end = text.find("\n---", 3)
+    lines, quoted, parent = text[3:end].split("\n"), {}, None
+    for i, ln in enumerate(lines):
+        m = _FM_LINE.match(ln)
+        if not m:
+            if re.match(r"^[A-Za-z_][\w.-]*\s*:\s*$", ln):
+                parent = ln.split(":")[0].strip()
+            continue
+        indent, key, sep, val = m.groups()
+        if not indent:
+            parent = None
+        if _needs_quote(val):
+            quoted[(parent if indent else None, key)] = val
+            esc = val.replace("\\", "\\\\").replace('"', '\\"')
+            lines[i] = f'{indent}{key}{sep}"{esc}"'
+    if not quoted:
+        return None
+    block = "\n".join(lines)
+    try:
+        meta = yaml.load(block, _Loader)
+    except yaml.YAMLError:
+        return None
+    if not isinstance(meta, dict):
+        return None
+    for (par, key), val in quoted.items():
+        got = (meta.get(par) or {}).get(key) if par else meta.get(key)
+        if got != val:
+            return None
+    new = text[:3] + block + text[end:]
+    if parse_frontmatter(new)[2]:
+        return None
+    return new, sorted(k for _, k in quoted)
 
 
 def do_fix(mems: list[Memory], routers: dict, write: bool, stamp_today: bool) -> list[Finding]:
@@ -56,6 +106,16 @@ def do_fix(mems: list[Memory], routers: dict, write: bool, stamp_today: bool) ->
             continue
         want, target = plan[m.path]
         text, actions = m.raw, []
+
+        if m.fm_problems:
+            q = quote_frontmatter(text)
+            if q:
+                text = q[0]
+                actions.append(f"quoted {', '.join(q[1])} (frontmatter-not-yaml)")
+            else:
+                out.append(Finding(WARN, "fix-frontmatter-skip", str(m.path),
+                                   "frontmatter is not valid YAML and quoting would not read "
+                                   "back verbatim; fix by hand"))
 
         if not m.name:
             if m.meta:
