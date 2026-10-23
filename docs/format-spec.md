@@ -146,6 +146,14 @@ A silo linked to a territory that is gone (renamed or archived) is `silo-danglin
 error: the repo silently loads no memory. `mem.py link` re-points it without the
 manual unlink a live link needs.
 
+`mem mv-territory OLD NEW` renames a territory or moves it to another area. It moves the
+directory and repoints every silo linked to it. It rewrites the territory's own header,
+its ROUTER.md entry (moving it under the new area's section), other territories'
+`consumes:`/`consumed_by:`, `container/slug` refs in `supersedes:`, and the migration
+plan, keeping an approval the rename did not change. Prose that names the old path is
+listed, not rewritten. Without `--write` it only shows the plan; with it, it makes a
+checkpoint commit first and reports any audit error the move introduced.
+
 ## Kinds
 
 ### `standing`
