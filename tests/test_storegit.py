@@ -86,6 +86,23 @@ def test_never_commits_into_a_parent_repository(fx: Fixture):
     assert subjects(fx.home) == before
 
 
+def test_a_hook_environment_never_redirects_the_commit(fx: Fixture, monkeypatch):
+    # Under another repo's git hook, GIT_DIR and GIT_INDEX_FILE point at that repo and
+    # outrank `-C`. The store's commit must still land in the store and only there.
+    init(fx.store)
+    outer = fx.home / "outer"
+    outer.mkdir()
+    init(outer)
+    monkeypatch.setenv("GIT_DIR", str(outer / ".git"))
+    monkeypatch.setenv("GIT_INDEX_FILE", str(outer / ".git" / "index"))
+    (fx.store / "standing/working-register.md").write_text("changed\n")
+    assert storegit.commit(fx.store, "test").status == "committed"
+    monkeypatch.delenv("GIT_DIR")
+    monkeypatch.delenv("GIT_INDEX_FILE")
+    assert subjects(outer) == ["Baseline"]
+    assert len(subjects(fx.store)) == 2
+
+
 def test_a_held_index_lock_skips_and_the_hook_stays_silent(fx: Fixture):
     init(fx.store)
     (fx.store / "standing/working-register.md").write_text("changed\n")

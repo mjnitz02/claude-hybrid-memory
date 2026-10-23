@@ -32,10 +32,25 @@ class Result:
     sha: str = ""
 
 
+# `git rev-parse --local-env-vars`: the variables that pick a repository, its index or its
+# objects. A git hook exports some of them (GIT_DIR, GIT_INDEX_FILE), and they outrank
+# `-C`, so `mem` run from inside another repo's hook would commit the store's files into
+# that repo. Dropping them keeps every call here on the store and nowhere else.
+REPO_ENV = {"GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CONFIG", "GIT_CONFIG_PARAMETERS",
+            "GIT_CONFIG_COUNT", "GIT_OBJECT_DIRECTORY", "GIT_DIR", "GIT_WORK_TREE",
+            "GIT_IMPLICIT_WORK_TREE", "GIT_GRAFT_FILE", "GIT_INDEX_FILE",
+            "GIT_NO_REPLACE_OBJECTS", "GIT_REPLACE_REF_BASE", "GIT_PREFIX", "GIT_SHALLOW_FILE",
+            "GIT_COMMON_DIR"}
+
+
+def _env() -> dict[str, str]:
+    return {**{k: v for k, v in os.environ.items() if k not in REPO_ENV},
+            "GIT_TERMINAL_PROMPT": "0"}
+
+
 def _git(root: Path, *args: str, stdin: str | None = None) -> subprocess.CompletedProcess:
-    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
     return subprocess.run(["git", "-C", str(root), *args], input=stdin, capture_output=True,
-                          text=True, timeout=TIMEOUT, env=env)
+                          text=True, timeout=TIMEOUT, env=_env())
 
 
 def is_repo(root: Path) -> bool:
@@ -122,7 +137,8 @@ def commit(root: Path, trigger: str, session: str = "", subject: str | None = No
 
 def passthrough(root: Path, *args: str) -> int:
     """Run a read-only git command on the store with its output going straight through."""
-    return subprocess.run(["git", "--no-pager", "-C", str(root), *args], timeout=60).returncode
+    return subprocess.run(["git", "--no-pager", "-C", str(root), *args], timeout=60,
+                          env=_env()).returncode
 
 
 def file_log(root: Path, path: str) -> list[list[str]] | None:
@@ -165,7 +181,7 @@ def resolve(root: Path, rev: str) -> str | None:
 def read_at(root: Path, rev: str, path: str) -> bytes | None:
     """A store-relative file as it was at `rev`, or None if it did not exist there."""
     r = subprocess.run(["git", "-C", str(root), "show", f"{rev}:{path}"], capture_output=True,
-                       timeout=TIMEOUT)
+                       timeout=TIMEOUT, env=_env())
     return r.stdout if r.returncode == 0 else None
 
 
@@ -234,7 +250,7 @@ def export(root: Path, rev: str, dest: Path) -> None:
     """Write the store's tree at `rev` into `dest`, outside the store; no checkout, no
     worktree, nothing in .git touched."""
     r = subprocess.run(["git", "-C", str(root), "archive", "--format=tar", rev],
-                       capture_output=True, timeout=60)
+                       capture_output=True, timeout=60, env=_env())
     if r.returncode:
         raise RuntimeError(r.stderr.decode(errors="replace").strip())
     with tarfile.open(fileobj=io.BytesIO(r.stdout)) as t:

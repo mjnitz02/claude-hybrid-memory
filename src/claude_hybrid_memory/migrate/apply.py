@@ -369,4 +369,3 @@ def undo(root: Path, silo: str, legacy_dir: Path | None) -> str:
             pre.rename(link)
             restored = True
     return f"reverted {len(shas)} commit(s)" + (", silo restored" if restored else "")
-
