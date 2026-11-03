@@ -1,7 +1,9 @@
 # Command reference
 
-`mem` is the `claude_hybrid_memory` package in `src/`, installed as a uv tool by
-`make install`. `mem --help` prints this list too. `--json` gives machine output on most
+`mem` is the `claude_hybrid_memory` package in `src/`. The `hybrid-memory` plugin runs it
+through `bin/mem`, which is on the PATH inside Claude Code sessions (setup.md, "The
+plugin"); for a terminal `mem`, `uv tool install -e .` in a clone. `mem --help` prints this
+list too. `--json` gives machine output on most
 commands. There is one dependency, `pyyaml`, for frontmatter, and it is never on the hook
 path.
 
@@ -18,7 +20,8 @@ Exit codes: 0 clean, 1 findings at error level, 2 tool error.
     mem render --check         # stale or degraded rendered indexes, and any MEMORY.md near the cap
     mem render [TERRITORY]     # re-render territory indexes
     mem render <t> --adopt [--write]   # migrate a hand-written index to a rendered one
-    mem install [--dry-run]    # set up or repair the store, its history, skills and hooks
+    mem install [--dry-run] [--dev]   # set up or repair the store, its history and the rules
+                                      # file; remove pre-plugin hooks and skill links
 
 ## Reading and writing memories
 
@@ -64,13 +67,13 @@ The process is in [`fast-adoption.md`](fast-adoption.md).
 
 ## Hooks
 
-`make install` adds three hooks to `~/.claude/settings.json`:
+The plugin declares three hooks in `hooks/hooks.json`:
 
 - `SessionStart` re-renders the always-loaded layer into `ALWAYS.md`, which
   `~/.claude/rules/claude-hybrid-memory.md` imports (a hook's output is cut to a 2 KB preview
   past 10,000 chars, so the layer cannot ride in it). It also names the territory for the
   current directory, reports when the retrospective is overdue, and points at
-  `/memory-setup` when the store, its history or the import is missing.
+  the `memory-setup` skill when the store, its history or the import is missing.
 - `PostToolUse` records usage, refreshes the cache on writes, and re-renders a rendered
   territory's index after a Write or Edit into it.
 - `SessionEnd` re-renders indexes and commits the store.
@@ -88,4 +91,5 @@ To see exactly what a session is handed:
     make test         # fixture stores: synthetic content, real shapes
     make test-live    # the installed `mem`, read-only, against this machine's real store
     make hooks        # git hooks: lint + secret scan on commit, tests on push
+    make install         # dev install: load this checkout as the plugin, then `mem install`
     make install-check   # what `make install` would change, writing nothing

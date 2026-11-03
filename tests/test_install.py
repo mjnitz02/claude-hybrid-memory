@@ -41,7 +41,46 @@ def codes(findings) -> set[str]:
     return {f.code for f in findings}
 
 
-def test_fresh_machine_gets_store_history_skills_and_hooks(home: Path):
+def plugin(home: Path) -> Path:
+    """Mark the plugin installed from a marketplace, as Claude Code records it."""
+    f = home / ".claude" / "plugins" / "installed_plugins.json"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps({"version": 2, "plugins": {
+        "hybrid-memory@hybrid-memory": [{"scope": "user"}]}}))
+    return f
+
+
+def legacy(home: Path, other: dict) -> Path:
+    """A machine wired up before the plugin: mem hooks in settings.json, one link per skill."""
+    claude = home / ".claude"
+    (claude / "skills").mkdir(parents=True, exist_ok=True)
+    for s in ("memory-setup", "memory-retro"):
+        (claude / "skills" / s).symlink_to(REPO / "skills" / s)
+    path = claude / "settings.json"
+    path.write_text(json.dumps({
+        "model": "opus",
+        "hooks": {
+            "PostToolUse": [
+                # someone else's hook sharing a group with ours: theirs stays, with its matcher
+                {"matcher": "Edit", "hooks": [other, {"type": "command",
+                                                       "command": "/old/path/mem hook post-tool"}]},
+            ],
+            "SessionStart": [
+                {"hooks": [{"type": "command",
+                            "command": "/usr/bin/python3 tools/session_start.py"}]},
+                {"hooks": [{"type": "command", "command": "/home/x/.local/bin/mem",
+                            "args": ["hook", "session-start"]}]},
+            ],
+            "SessionEnd": [{"hooks": [{"type": "command", "command": "mem",
+                                       "args": ["hook", "session-end"]}]}],
+            "Stop": [{"hooks": [other]}],
+        },
+    }))
+    return path
+
+
+def test_fresh_machine_gets_store_history_and_no_settings(home: Path):
+    plugin(home)
     f = do(home)
     store = home / ".claude" / "memory"
     assert all((store / d).is_dir() for d in install.DIRS)
@@ -51,21 +90,16 @@ def test_fresh_machine_gets_store_history_skills_and_hooks(home: Path):
                          text=True).stdout
     assert log.startswith("Baseline: store as of")
     assert ".bm25-index.json" in (store / ".gitignore").read_text()
-    for s in ("memory-setup", "memory-migrate", "memory-retro"):
-        assert (home / ".claude" / "skills" / s).resolve() == (REPO / "skills" / s).resolve()
-    hooks = json.loads((home / ".claude" / "settings.json").read_text())["hooks"]
-    assert hooks["SessionStart"] == [install.hook_group("SessionStart", MEM)]
-    assert hooks["PostToolUse"][0]["matcher"] == "Read|Write|Edit|Bash"
-    assert "matcher" not in hooks["SessionEnd"][0]
+    # the plugin carries hooks and skills: nothing is written for them
+    assert not (home / ".claude" / "settings.json").exists()
+    assert not [p for p in (home / ".claude" / "skills").glob("*") if p.is_symlink()]
 
 
 def test_second_run_changes_nothing(home: Path):
+    plugin(home)
     do(home)
-    settings = (home / ".claude" / "settings.json").read_text()
     f = do(home)
-    assert codes(f) <= {"install-ok", "install-mem-missing", "install-check-skipped"}, f
-    assert (home / ".claude" / "settings.json").read_text() == settings
-    assert not list((home / ".claude").glob("settings.json.bak-*"))
+    assert codes(f) <= {"install-ok", "install-check-skipped"}, f
 
 
 def test_dry_run_writes_nothing(home: Path):
@@ -74,40 +108,38 @@ def test_dry_run_writes_nothing(home: Path):
     assert any(x.message.startswith("would") for x in f)
 
 
-def test_existing_settings_are_merged_not_replaced(home: Path):
-    path = home / ".claude" / "settings.json"
-    path.parent.mkdir(parents=True)
+def test_no_plugin_warns_and_keeps_the_old_wiring(home: Path):
+    # removing the old hooks with no plugin to replace them would leave no hooks at all
     other = {"type": "command", "command": "/usr/local/bin/notify"}
-    path.write_text(json.dumps({
-        "model": "opus",
-        "hooks": {
-            "PostToolUse": [
-                # someone else's hook sharing a group with ours: theirs keeps its matcher
-                {"matcher": "Edit", "hooks": [other, {"type": "command",
-                                                       "command": "/old/path/mem hook post-tool"}]},
-            ],
-            "SessionStart": [
-                {"hooks": [{"type": "command",
-                            "command": "/usr/bin/python3 tools/session_start.py"}]},
-                {"hooks": [{"type": "command", "command": "mem",
-                            "args": ["hook", "session-start"]}]},
-            ],
-            "Stop": [{"hooks": [other]}],
-        },
-    }))
+    path = legacy(home, other)
+    before = path.read_text()
+    f = do(home)
+    assert "install-no-plugin" in codes(f)
+    assert path.read_text() == before
+    assert (home / ".claude" / "skills" / "memory-retro").is_symlink()
+
+
+def test_with_the_plugin_the_old_wiring_is_removed(home: Path):
+    other = {"type": "command", "command": "/usr/local/bin/notify"}
+    path = legacy(home, other)
+    plugin(home)
+    dry = do(home, dry=True)
+    assert {"install-legacy-hook", "install-legacy-skill"} <= codes(dry)
+    assert (home / ".claude" / "skills" / "memory-retro").is_symlink()
     f = do(home)
     s = json.loads(path.read_text())
-    assert s["model"] == "opus" and s["hooks"]["Stop"] == [{"hooks": [other]}]
-    assert s["hooks"]["PostToolUse"] == [install.hook_group("PostToolUse", MEM),
-                                         {"matcher": "Edit", "hooks": [other]}]
-    assert s["hooks"]["SessionStart"] == [install.hook_group("SessionStart", MEM)]
-    assert any("duplicate" in x.message for x in f)
+    assert s == {"model": "opus", "hooks": {"PostToolUse": [{"matcher": "Edit",
+                                                             "hooks": [other]}],
+                                            "Stop": [{"hooks": [other]}]}}
+    assert sum(x.code == "install-legacy-hook" and "removed" in x.message for x in f) == 3
     assert len(list(path.parent.glob("settings.json.bak-*"))) == 1
+    assert not (home / ".claude" / "skills" / "memory-retro").exists()
+    assert not (home / ".claude" / "skills" / "memory-setup").exists()
 
 
 def test_unreadable_settings_are_left_alone(home: Path):
+    plugin(home)
     path = home / ".claude" / "settings.json"
-    path.parent.mkdir(parents=True)
     path.write_text("{not json")
     f = do(home)
     assert "install-settings" in codes(f) and path.read_text() == "{not json"
@@ -120,12 +152,36 @@ def test_store_inside_another_checkout_is_not_initialized(home: Path):
     assert "install-git" in codes(f) and not (home / ".claude" / "memory" / ".git").exists()
 
 
-def test_a_real_skill_directory_is_not_replaced(home: Path):
+def test_a_real_skill_directory_is_not_removed(home: Path):
+    plugin(home)
     mine = home / ".claude" / "skills" / "memory-retro"
     mine.mkdir(parents=True)
-    f = do(home)
-    assert mine.is_dir() and not mine.is_symlink()
-    assert any(x.code == "install-skill" and x.level == "warn" for x in f)
+    (mine / "SKILL.md").write_text("mine\n")
+    do(home)
+    assert (mine / "SKILL.md").read_text() == "mine\n"
+
+
+def test_dev_links_the_checkout_as_the_plugin(home: Path):
+    claude = home / ".claude"
+    dry = install.run(claude / "memory", REPO, claude, Path(MEM), True, dev=True)
+    assert "install-dev-link" in codes(dry) and "install-no-plugin" not in codes(dry)
+    assert not home.exists()
+    f = install.run(claude / "memory", REPO, claude, Path(MEM), False, dev=True)
+    link = claude / "skills" / "hybrid-memory"
+    assert link.is_symlink() and link.resolve() == REPO.resolve()
+    assert install.plugin_source(claude) == "skills-dir"
+    assert "install-no-plugin" not in codes(f)
+    again = install.run(claude / "memory", REPO, claude, Path(MEM), False, dev=True)
+    assert "install-dev-link" not in codes(again)
+
+
+def test_dev_never_replaces_a_real_directory(home: Path):
+    real = home / ".claude" / "skills" / "hybrid-memory"
+    real.mkdir(parents=True)
+    f = install.run(home / ".claude" / "memory", REPO, home / ".claude", Path(MEM), False,
+                    dev=True)
+    assert any(x.code == "install-dev-link" and x.level == "error" for x in f)
+    assert real.is_dir() and not real.is_symlink()
 
 
 def test_existing_gitignore_gets_missing_patterns(home: Path):

@@ -279,7 +279,8 @@ import-time-tested. If it still ever exceeds budget, only `mem hook` is rewritte
 few hundred lines, against the same contract: append JSONL, upsert the cache. Because the
 event log and the cache schema are the interface, the language decision is per component and
 reversible. TypeScript is the runner-up and the right answer if this ever becomes a Claude
-Code plugin distributed to other people, which is a non-goal today.
+Code plugin distributed to other people, which is a non-goal today. (It became one on
+2026-11-03, §16 item 8, still in Python: the hook budget held through a shell shim.)
 
 ## 11. Database
 
@@ -723,6 +724,25 @@ Settled 2026-10-21 unless marked open.
    later move to `archive/`, get pruned once git holds them, or stay put forever is a future
    optimization. Revisit once real chains exist and the count of superseded files is
    known; nothing depends on it before then.
+8. **Distributed as a Claude Code plugin** (2026-11-03, reversing "a non-goal today" in §10
+   and the skills-by-symlink choice in design.md). The repo is its own marketplace; the
+   install is `claude plugin install hybrid-memory --marketplace
+   mjnitz02/claude-hybrid-memory`. **Why:** the earlier rejection rested on marketplace
+   distribution being unwanted, and the repo went public on 2026-10-23. The plugin also
+   removes the riskiest install step, rewriting `settings.json`. Settled with Matt:
+   - **One install path.** The plugin carries hooks and skills; `mem install` keeps what a
+     plugin cannot do (store, history, rules file) and removes the pre-plugin wiring once
+     the plugin is present, never before. `make install` is the dev path: it symlinks the
+     checkout to `~/.claude/skills/hybrid-memory` (`@skills-dir`, edits live).
+   - **`bin/mem` is a sh shim** over one venv in `~/.cache/claude-hybrid-memory/`, with a
+     stamped fast path (p50 17.7 ms against 14.6 ms for the uv tool) and `uv sync` when the
+     root or `uv.lock` changes. Not `CLAUDE_PLUGIN_DATA`: the Bash tool's shell never gets it.
+   - **No `version`**, so each commit on `main` is a release, by sha (checked).
+   - **Named `hybrid-memory`.** `claude-hybrid-memory` was the first choice, but a plugin
+     name starting `claude-` is reserved and `claude plugin validate` refuses it. Repo,
+     package and paths keep the long name.
+   - **`agents/` became `prompts/`**, since a plugin loads `agents/` as subagents.
+   - **CI checks the plugin files with pytest** (`tests/test_plugin.py`), not the Claude CLI.
 
 ## 17. Risks, and when to stop
 

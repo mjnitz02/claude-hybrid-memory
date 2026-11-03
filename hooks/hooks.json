@@ -1,0 +1,41 @@
+{
+  "description": "hybrid-memory: render and report the memory layer at session start, log memory reads and writes, commit the store at session end. Each fails open.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/mem\" hook session-start",
+            "timeout": 60,
+            "statusMessage": "Loading memory router"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Read|Write|Edit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/mem\" hook post-tool",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/mem\" hook session-end",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

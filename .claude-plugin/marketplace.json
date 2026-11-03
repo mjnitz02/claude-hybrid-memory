@@ -1,0 +1,17 @@
+{
+  "name": "hybrid-memory",
+  "owner": {
+    "name": "Matt Nitzken",
+    "url": "https://github.com/mjnitz02"
+  },
+  "description": "Claude Hybrid Memory, as an installable Claude Code plugin.",
+  "plugins": [
+    {
+      "name": "hybrid-memory",
+      "source": "./",
+      "description": "A machine-local memory store for Claude Code: territories, a router, standing directives and gates loaded every session, usage logging, and a store that commits its own history.",
+      "category": "productivity",
+      "keywords": ["memory", "hooks", "skills", "context"]
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+#!/bin/sh
+# `mem`, as the hybrid-memory plugin runs it: hooks call this file, and Claude Code puts
+# this bin/ on the Bash tool's PATH. It finds its own root from $0, since the Bash tool's shell
+# gets no CLAUDE_PLUGIN_* variables (checked on 2.1.317).
+#
+# One venv, outside the store (creating it there would make an unset-up store look set up)
+# and outside CLAUDE_PLUGIN_DATA (absent in Bash calls, and named per install source). A
+# stamp records the root the venv was built for: when it matches and uv.lock is not newer,
+# this is a straight exec of the venv's `mem`. Otherwise `uv sync` rebuilds it first, which
+# is also what picks up a dependency change. Hooks fail open, so a missing uv never breaks a
+# session; SessionStart says why instead.
+set -u
+
+case $0 in */*) here=${0%/*} ;; *) here=. ;; esac
+root=$(cd "$here/.." && pwd -P) || exit 0
+venv="${XDG_CACHE_HOME:-$HOME/.cache}/claude-hybrid-memory/venv"
+stamp="$venv/.plugin-root"
+
+built=
+[ -f "$stamp" ] && IFS= read -r built < "$stamp"
+if [ "$built" = "$root" ] && [ -x "$venv/bin/mem" ] && ! [ "$root/uv.lock" -nt "$stamp" ]; then
+  exec "$venv/bin/mem" "$@"
+fi
+
+is_hook=0
+[ "${1:-}" = hook ] && is_hook=1
+
+uv=$(command -v uv 2>/dev/null)
+for c in "$HOME/.local/bin/uv" /opt/homebrew/bin/uv /usr/local/bin/uv; do
+  [ -n "$uv" ] && break
+  [ -x "$c" ] && uv=$c
+done
+if [ -z "$uv" ]; then
+  why="claude-hybrid-memory needs uv (https://docs.astral.sh/uv/), and none was found."
+  if [ "$is_hook" = 1 ]; then
+    [ "${2:-}" = session-start ] && printf '%s\n' \
+      "{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"# MEMORY STATUS\\n\\n- **Memory is not running:** $why Tell the user.\"}}"
+    exit 0
+  fi
+  echo "mem: $why" >&2
+  exit 127
+fi
+
+mkdir -p "$(dirname "$venv")" || exit 0
+if ! UV_PROJECT_ENVIRONMENT="$venv" "$uv" sync --project "$root" --frozen --no-dev --quiet \
+    >&2; then
+  [ "$is_hook" = 1 ] && exit 0
+  echo "mem: \`uv sync\` failed for $root" >&2
+  exit 1
+fi
+printf '%s\n' "$root" > "$stamp"
+exec "$venv/bin/mem" "$@"

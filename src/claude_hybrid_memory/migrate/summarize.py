@@ -23,7 +23,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
-from claude_hybrid_memory.migrate import AGENTS, workdir
+from claude_hybrid_memory.migrate import PROMPTS, workdir
 
 MODEL = "sonnet"
 JOBS = 4
@@ -47,12 +47,12 @@ class Job:
 
     @property
     def directive(self) -> Path:
-        return AGENTS / ("memory-summarizer.md" if self.kind == "file"
+        return PROMPTS / ("memory-summarizer.md" if self.kind == "file"
                          else "memory-silo-summarizer.md")
 
     @property
     def schema(self) -> Path:
-        return AGENTS / ("memory-summary.schema.json" if self.kind == "file"
+        return PROMPTS / ("memory-summary.schema.json" if self.kind == "file"
                          else "memory-silo-summary.schema.json")
 
     def key(self, model: str) -> str:

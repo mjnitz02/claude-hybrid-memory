@@ -146,10 +146,10 @@ def test_always_md_says_store_history_is_not_git_use(fx: Fixture):
 def test_setup_gaps_point_at_memory_setup(fx: Fixture, tmp_path: Path):
     md = imports(fx, tmp_path)
     out = session_start.output(tmp_path / "no-store", fx.elsewhere, md)
-    assert "not set up" in out and "/memory-setup" in out
+    assert "not set up" in out and "`memory-setup` skill" in out
     assert len(out) < session_start.HOOK_OUTPUT_LIMIT
     (fx.store / ".git").mkdir(exist_ok=True)
     assert "no history" not in session_start.output(fx.store, fx.elsewhere, md)
     (fx.store / ".git").rmdir()
     out = session_start.output(fx.store, fx.elsewhere, md)
-    assert "no history" in out and "/memory-setup" in out
+    assert "no history" in out and "`memory-setup` skill" in out

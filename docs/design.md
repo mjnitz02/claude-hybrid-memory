@@ -326,10 +326,11 @@ scolds about something it could have fixed.
 
 ## Skills
 
-Three, living in this repo under `skills/`, symlinked into `~/.claude/skills/`. Symlinked
-rather than packaged as a plugin: a plugin only buys bundled agents, MCP servers, and
-marketplace distribution, none of which are wanted, and a symlink means editing the repo
-changes live behavior immediately.
+Living in this repo under `skills/`, shipped by the `hybrid-memory` plugin, so they are
+invoked as `/hybrid-memory:<name>`. Until 2026-11-03 they were symlinked into
+`~/.claude/skills/` instead, because a plugin "only buys marketplace distribution", which
+was not wanted until the repo went public (direction.md §16 item 8). Live editing survives
+the change: `make install` loads a checkout as the plugin through `~/.claude/skills`.
 
 | Skill | Job |
 |---|---|
