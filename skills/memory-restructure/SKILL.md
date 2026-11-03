@@ -39,7 +39,7 @@ output as part of the plan.
 - **Archiving needs Matt's reason**, in his words, for `--why`. Do not write one for him.
 - **A territory's head is prose.** Its intro, its GATES section and `EXPORTS.md` never move
   on their own. Merge them by hand, and say what you dropped and why.
-- **Undo** is `git -C ~/.claude/memory revert <checkpoint>` for the step, then `mem link`
+- **Undo** is `mem revert <checkpoint>` for the step, then `mem link`
   for any silo it unlinked. Every command prints its own undo line; keep it.
 
 ## Merge B into A

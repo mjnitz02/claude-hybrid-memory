@@ -33,10 +33,11 @@ render `ALWAYS.md`, post-tool must log a memory read and
 print nothing, and session-end must commit a probe file left in the copy. A failure is an
 error, and `make install` exits non-zero. `--dry-run` runs no hook.
 
-It also checks that `~/.claude/CLAUDE.md` carries the store's git exception beside the git
-rule (`direction.md` §16.1), and warns if it does not. It never writes that file: paste
-`templates/CLAUDE-git-exception.md` under the rule yourself. The same goes for the import
-of the always-loaded layer (step 3d): it warns when the line is missing and never adds it.
+It writes `~/.claude/rules/claude-hybrid-memory.md`, the import of the always-loaded layer
+(step 3d). `mem` owns that file and rewrites it if it drifts. It never writes
+`~/.claude/CLAUDE.md`; it reads it only to warn when it imports the layer too, which loads
+it twice. No git exception is needed there any more (`direction.md` §16.1, amended
+2026-11-03): sessions never run `git` on the store, only `mem`.
 
 It does not edit `MACHINE.md` (it warns when it has just copied the template), and it does
 not do steps 4 and 5. Finish with `mem audit`. The manual steps stay documented below;
@@ -73,9 +74,9 @@ what lets a correction replace text instead of piling up beside it (`direction.m
 
 Check first that nothing above the store is already a repo (`git -C ~/.claude/memory
 rev-parse --show-toplevel` should fail). After this, `mem` commits the store on its own
-at the end of every session (step 3c); that is the one carve-out from the git rule in `~/.claude/CLAUDE.md`,
-and it covers this directory only. The `init` and baseline above are a setup step, run by
-the user or on their go-ahead.
+at the end of every session (step 3c), and sessions reach its history only through `mem
+commit | log | diff | restore | revert`, never `git`. The `init` and baseline above are a
+setup step, run by the user or on their go-ahead.
 
 ## 2. Link the skills
 
@@ -93,8 +94,10 @@ which are wanted here.
 ## 3. Install the SessionStart hook
 
 The hook is what removes the need for the user to nudge. It renders the always-loaded layer
-into `ALWAYS.md` (which `~/.claude/CLAUDE.md` imports, step 3d), names the territory for the
-current directory, and says when the retrospective is overdue.
+into `ALWAYS.md` (which the rules file imports, step 3d), names the territory for the
+current directory, and says when the retrospective is overdue. When the store is missing,
+has no history, or the layer is not imported, it says so in one line and points the session
+at `/memory-setup`.
 
 Install the package as a uv tool, from the repo root. The install is editable, so code
 changes take effect immediately:
@@ -236,33 +239,37 @@ Check it on a copy, so the real store is not committed by the check:
     git -C /tmp/store-check log -1 --stat; rm -rf /tmp/store-check
 
 
-### 3d. Import the always-loaded layer from CLAUDE.md
+### 3d. Import the always-loaded layer from a rules file
 
-**The layer reaches a session through `~/.claude/CLAUDE.md`, not through the hook.** Claude
+**The layer reaches a session through a memory-file import, not through the hook.** Claude
 Code saves any single hook output over 10,000 characters to a file and shows the model only
 its first 2 KB (2.1.309, `yhe()`, `bri=1e4`). The layer is ~25 KB, so between 2026-10-01 and
 2026-10-23 every session got the opening of `MACHINE.md` and none of the gates, standing
-directives or router. A CLAUDE.md import is loaded whole (the cap there is 4 MB per file), and
-it reaches subagents too.
+directives or router. A memory-file import is loaded whole (the cap there is 4 MB per file).
 
 So `mem` renders `MACHINE.md` + `GATES.md` + `standing/` + `ROUTER.md` into
 `~/.claude/memory/ALWAYS.md`, in the hook's degrade order. It re-renders at every session start,
 on `mem render`, and at session end. The file is generated and gitignored in the store; edit
-its sources. Append `templates/CLAUDE-memory-import.md` to `~/.claude/CLAUDE.md`, which ends
-with the line that matters:
+its sources. `mem install` writes `~/.claude/rules/claude-hybrid-memory.md`, whose line that
+matters is:
 
     @~/.claude/memory/ALWAYS.md
 
+A user-level rules file with no `paths:` frontmatter loads in every session, imports included
+(checked on 2.1.317, 2026-11-03), so nobody's `CLAUDE.md` is edited. Until then the line was
+pasted into `~/.claude/CLAUDE.md`. That still counts, but with the rules file as well the layer
+loads twice, so `mem install` and `mem budget` warn (`budget-imported-twice`): delete the
+`# Memory` block from `CLAUDE.md`.
 The hook now prints only the `MEMORY STATUS` block, a few hundred characters. If the import is
 missing, the first status line says that the layer is not in context. If `ALWAYS.md` was stale
-and had to be re-rendered at session start, it says so, because CLAUDE.md may have loaded the old copy.
+and had to be re-rendered at session start, it says so, because the session may have loaded the old copy.
 
 Verify in a fresh session, not just with `mem budget`. Ask it to quote the last bullet in
 `GATES.md`, without tools:
 
     echo "Without tools, quote the last GATES bullet verbatim." | claude -p --tools ""
 
-`mem budget` errors (`budget-not-imported`) when the line is missing, and
+`mem budget` errors (`budget-not-imported`) when nothing imports the layer, and
 (`budget-hook-output`) when the hook's own output passes 10,000 characters. After a Claude
 Code upgrade, re-read the threshold from the binary:
 
@@ -271,7 +278,7 @@ Code upgrade, re-read the threshold from the binary:
 
 Done on the first machine 2026-10-23: the section was appended by hand, and a fresh
 `claude -p` session quoted a gate and the router's last entry verbatim,
-with no persisted-output preview.
+with no persisted-output preview. Moved to the rules file 2026-11-03.
 
 ## 4. Create the first territory
 

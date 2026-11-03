@@ -282,7 +282,7 @@ def _committed(root: Path, legacy: Path, trigger: str, subject: str, write, rema
                done) -> list[Finding]:
     """Checkpoint commit, `write()`, re-render, commit; then any audit error that was not
     there before. `remap` carries an old error path to where the move put it, so the same
-    error under a new path is not new."""
+    error under a new path is not new. A `{sha}` in `undo` becomes the move's commit."""
     from claude_hybrid_memory import render
     from claude_hybrid_memory.migrate import apply
 
@@ -295,6 +295,7 @@ def _committed(root: Path, legacy: Path, trigger: str, subject: str, write, rema
     render.render_all(root)
     c = storegit.commit(root, trigger, subject=subject)
     out = done()
+    undo = undo.replace("{sha}", c.sha or "HEAD")
     if c.status == "committed":
         out.append(Finding(INFO, "mv-committed", c.sha, c.detail))
     out += [Finding(ERROR, "mv-new-error", path, f"{code} appeared after the move; {undo}")
@@ -620,7 +621,7 @@ def describe_archive(root: Path, ar: Archive, done: bool) -> list[Finding]:
 
 def apply_archive(root: Path, legacy: Path, ar: Archive) -> list[Finding]:
     """Write the archive. The group's WHY-ARCHIVED.md gets a dated line per call, in the
-    format `migrate apply` started. Undo is `git revert` plus `mem link` for the silos."""
+    format `migrate apply` started. Undo is `mem revert` plus `mem link` for the silos."""
     import datetime as dt
 
     from claude_hybrid_memory.migrate import apply
@@ -660,5 +661,5 @@ def apply_archive(root: Path, legacy: Path, ar: Archive) -> list[Finding]:
     relink = (f"; then `mem link --territory {ar.territory} --write` in each repo"
               if ar.links else "")
     return _committed(root, legacy, "mem archive", subject, write, lambda path: path,
-                      f"`git -C {root} revert HEAD` restores it{relink}",
+                      f"`mem revert {{sha}}` restores it{relink}",
                       lambda: describe_archive(root, ar, True))

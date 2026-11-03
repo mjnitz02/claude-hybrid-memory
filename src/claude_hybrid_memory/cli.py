@@ -21,6 +21,7 @@ Enforces docs/format-spec.md.
     mem log [PATH...] [-n N]
     mem diff [PATH...] [--stat]
     mem restore PATH... [--from REV]
+    mem revert SHA...
     mem audit --at REV
     mem render [TERRITORY] [--check]
     mem render TERRITORY --adopt [--write]
@@ -156,7 +157,7 @@ def _run(argv: list[str]) -> int:
 
 
 CACHE_COMMANDS = ("index", "find", "show", "history", "supersede")
-GIT_COMMANDS = ("commit", "log", "diff", "restore")
+GIT_COMMANDS = ("commit", "log", "diff", "restore", "revert")
 
 
 def _render(argv: list[str]) -> int:
@@ -528,7 +529,7 @@ def _summaries(jobs, have: dict, as_json: bool) -> int:
 
 
 def _storegit(argv: list[str]) -> int:
-    """`mem commit | log | diff | restore`: git on the store, and only the store
+    """`mem commit | log | diff | restore | revert`: git on the store, and only the store
     (direction §16.1)."""
     import argparse
     import json
@@ -543,6 +544,10 @@ def _storegit(argv: list[str]) -> int:
     ap.add_argument("--root", type=Path, default=STORE, help=f"store root (default {STORE})")
     if cmd == "commit":
         ap.add_argument("-m", dest="subject", help="subject line; the body is still generated")
+        ap.add_argument("--json", action="store_true")
+    elif cmd == "revert":
+        ap.add_argument("shas", nargs="+", metavar="SHA",
+                        help="store commits to undo, e.g. a checkpoint a `--write` printed")
         ap.add_argument("--json", action="store_true")
     elif cmd == "restore":
         ap.add_argument("paths", nargs="+", help="files or directories, store-relative or absolute")
@@ -568,6 +573,14 @@ def _storegit(argv: list[str]) -> int:
         else:
             print(f"{r.sha}  {r.detail}" if r.sha else f"{r.status}: {r.detail}")
         return 0 if r.status in ("committed", "clean") else 1
+    if cmd == "revert":
+        r = storegit.revert(root, a.shas)
+        if a.json:
+            print(json.dumps(r.__dict__))
+        else:
+            print(f"{r.sha}  {r.detail}" if r.sha else f"{r.status}: {r.detail}",
+                  file=sys.stdout if r.status == "committed" else sys.stderr)
+        return 0 if r.status == "committed" else 1
     paths = [os.path.relpath(os.path.realpath(p), root) if os.path.isabs(p) else p
              for p in a.paths]
     if cmd == "restore":

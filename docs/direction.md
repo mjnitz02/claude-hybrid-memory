@@ -683,6 +683,18 @@ Settled 2026-10-21 unless marked open.
    with a SessionEnd commit landing mid-stash, and hides changes if a session dies holding
    it. `restore` commits first and names its paths; `--at` reads a past tree without
    touching the working one.
+   *Amended 2026-11-03: the CLAUDE.md exception is retired.* Once every store git operation
+   went through `mem`, the carve-out covered something no session does: Claude runs `mem`,
+   the harness runs the SessionEnd hook, and nobody runs `git` on the store. Its last leak,
+   the raw `git -C … revert` undo in `mem archive` and the restructure skill, became
+   `mem revert <sha>`. In its place, `ALWAYS.md` opens with one fixed line, owned by the code
+   (`session_start.STORE_GIT`), saying the `mem` history verbs are not git use under any git
+   rule, so a session reading "only touch git when asked" does not balk at `mem restore`.
+   `templates/CLAUDE-git-exception.md` and the install check for it are gone. **Why:** a
+   step that edits the user's CLAUDE.md is the one install step a Claude Code plugin cannot
+   do, and this one had stopped doing anything. The import of `ALWAYS.md` moved out of
+   CLAUDE.md the same day, into `~/.claude/rules/claude-hybrid-memory.md`, which `mem
+   install` writes (setup.md step 3d).
 2. **No read gate.** Reads go ahead as normal. A large file is a maintenance signal — why is
    it that big, and should it have been split? — surfaced as split candidates in `mem audit`
    and the retro (§9).
@@ -703,8 +715,8 @@ Settled 2026-10-21 unless marked open.
      never auto-loaded, and runs on an explicit ask or when a session needs it.
 6. **The store's gate is rewritten.** `territories/meta/claude-memory/MEMORY.md` now states
    the narrowed rule (content never crosses machines; local history allowed), applied on
-   Matt's explicit go-ahead after auto mode refused it unprompted. The git exception is in
-   `~/.claude/CLAUDE.md`.
+   Matt's explicit go-ahead after auto mode refused it unprompted. The git exception was in
+   `~/.claude/CLAUDE.md` until 2026-11-03 (item 1).
 7. **Open (TBD): what eventually happens to superseded files.** Phase 3 leaves them in
    place, byte-identical, hidden from search by derivation; the old rule that they be
    archived or marked HISTORICAL was dropped (2026-10-21, Matt agreed). Whether they should

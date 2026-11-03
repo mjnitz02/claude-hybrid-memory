@@ -32,7 +32,7 @@ computable freshness.
     ~/.claude/memory/
       MACHINE.md          # machine identity + calibration      ┐
       GATES.md            # irreversible-harm rules, max 5      │ rendered into ALWAYS.md,
-      standing/           # directives true in every repo      │ which CLAUDE.md imports
+      standing/           # directives true in every repo      │ which a rules file imports
       ROUTER.md           # one line per territory + PULL WHEN  ┘
       ALWAYS.md           # generated: the four above as one file, gitignored
       territories/<path>/

@@ -164,6 +164,14 @@ def test_budget_checks_delivery_not_just_tokens(fx: Fixture, tmp_path: Path, mon
     assert audit.budget.check_delivery(fx.store, md) == []
     monkeypatch.setattr(session_start, "HOOK_OUTPUT_LIMIT", 50)
     assert "budget-hook-output" in codes(audit.budget.check_delivery(fx.store, md), "error")
+    monkeypatch.undo()
+    # the rules file is the import now; CLAUDE.md importing as well loads the layer twice
+    rules = session_start.rules_path(md)
+    rules.parent.mkdir()
+    rules.write_text(session_start.rules_text(fx.store))
+    assert codes(audit.budget.check_delivery(fx.store, md)) == {"budget-imported-twice"}
+    md.write_text("# Git\n")
+    assert audit.budget.check_delivery(fx.store, md) == []
 
 
 def test_a_silo_whose_territory_was_renamed_is_an_error(fx: Fixture):

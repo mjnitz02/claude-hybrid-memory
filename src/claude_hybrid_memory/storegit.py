@@ -1,13 +1,14 @@
 """The store's own git history (direction §16.1): the one place `mem` runs git, and only on the
 store.
 
-Matt's rule is that Claude touches git only when asked, in every repo. The store is the one
-carve-out, written beside that rule in ~/.claude/CLAUDE.md: `mem` commits it on its own,
-with generated messages, and never pushes, since the store has no remote. Every store git
-operation goes through `mem`: `commit`, `log`, `diff`, `restore`, `show --at` and
-`audit --at`. That keeps the carve-out narrow and easy to see: a session never runs `git`
-against the store directly, and nothing here can reach another repository or a remote, or
-rewrite history. A verb a session needs and `mem` lacks gets added here, not worked around.
+`mem` commits the store on its own, with generated messages, and never pushes, since the
+store has no remote. Every store git operation goes through `mem`: `commit`, `log`, `diff`,
+`restore`, `revert`, `show --at` and `audit --at`. A session never runs `git` against the
+store directly, so a user rule about when Claude may touch git needs no carve-out for it:
+until 2026-11-03 one was pasted into ~/.claude/CLAUDE.md, and ALWAYS.md now carries a fixed
+line saying the same thing (session_start.STORE_GIT). Nothing here can reach another
+repository or a remote, or rewrite history. A verb a session needs and `mem` lacks gets
+added here, not worked around.
 
 The SessionEnd hook calls `commit` with no one asking, which is the point: history only
 helps if it exists without anyone remembering to make it. A session that dies before its
@@ -265,7 +266,7 @@ GITIGNORE = """\
 # Written into whichever memory dir it indexes, i.e. a territory. Derived; never commit.
 .bm25-index.json
 
-# The always-loaded layer as CLAUDE.md imports it, rendered from the files it is made of.
+# The always-loaded layer, rendered from the files it is made of; regenerated, never committed.
 ALWAYS.md
 """
 

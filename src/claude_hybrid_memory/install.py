@@ -7,9 +7,12 @@ is backed up before it is rewritten. Then it runs each hook the way Claude Code 
 against a copy of the store, so a broken hook shows up here and not in every session.
 `--dry-run` reports what would change, writes nothing, and runs no hook.
 
-Not done here: editing MACHINE.md (only Matt knows what is true of this box) or
-~/.claude/CLAUDE.md (his instructions; it is checked, never written), territories and silo
-migration (steps 4 and 5, which change where sessions read memory from).
+It writes one file outside the store, ~/.claude/rules/claude-hybrid-memory.md, which `mem`
+owns and which imports the always-loaded layer (step 3d).
+
+Not done here: editing MACHINE.md (only the user knows what is true of this box) or
+~/.claude/CLAUDE.md (theirs; it is read, never written), territories and silo migration
+(steps 4 and 5, which change where sessions read memory from).
 """
 from __future__ import annotations
 
@@ -190,30 +193,32 @@ def ensure_settings(path: Path, mem: str, dry: bool, stamp: str) -> list[Finding
                   for c in changes]
 
 
-def ensure_exception(claude_md: Path, repo: Path) -> list[Finding]:
-    """~/.claude/CLAUDE.md must carry the store's git carve-out beside the git rule it
-    narrows (direction §16.1), so no session reads the rule without it. Checked, never written."""
-    text = claude_md.read_text(encoding="utf-8") if claude_md.is_file() else ""
-    for para in text.split("\n\n"):
-        low = para.lower()
-        if ".claude/memory" in low and "commit" in low and ("exception" in low
-                                                            or "carve-out" in low):
-            return [Finding(INFO, "install-ok", str(claude_md), "store git exception present")]
-    return [Finding(WARN, "install-git-exception", str(claude_md),
-                    "no exception for the store's own commits; add "
-                    f"{repo / 'templates' / 'CLAUDE-git-exception.md'} under the git rule")]
-
-
-def ensure_import(claude_md: Path, root: Path) -> list[Finding]:
-    """~/.claude/CLAUDE.md must import ALWAYS.md (setup.md step 3d): that import is the only
-    way the layer reaches a session, since the hook's output is capped at 10,000 chars.
-    Checked, never written, like the git exception."""
-    line = session_start.import_line(root)
-    if session_start.imported(root, claude_md):
-        return [Finding(INFO, "install-ok", str(claude_md), f"imports {line[1:]}")]
-    return [Finding(WARN, "install-import", str(claude_md),
-                    f"no `{line}` line, so sessions start without GATES, standing or the "
-                    f"router; add {REPO / 'templates' / 'CLAUDE-memory-import.md'}")]
+def ensure_rules(claude_md: Path, root: Path, dry: bool) -> list[Finding]:
+    """Write the rules file that imports ALWAYS.md (setup.md step 3d). That import is the
+    only way the layer reaches a session, since the hook's output is capped at 10,000 chars.
+    `mem` owns the file, so a drifted one is rewritten. A CLAUDE.md that also imports the
+    layer loads it twice; that is reported, and CLAUDE.md is never written."""
+    rules = session_start.rules_path(claude_md)
+    want = session_start.rules_text(root)
+    out = []
+    if session_start.read(rules) + "\n" == want:
+        out.append(Finding(INFO, "install-ok", str(rules), "imports the always-loaded layer"))
+    else:
+        verb = "rewrite" if rules.exists() else "write"
+        if not dry:
+            rules.parent.mkdir(parents=True, exist_ok=True)
+            tmp = rules.with_name(rules.name + ".tmp")
+            tmp.write_text(want, encoding="utf-8")
+            os.replace(tmp, rules)
+        out.append(Finding(INFO, "install-rules", str(rules),
+                           (f"would {verb}" if dry else f"{verb[:-1]}ten")
+                           + ": imports the always-loaded layer"))
+    if session_start.imports(root, claude_md):
+        out.append(Finding(WARN, "install-imported-twice", str(claude_md),
+                           f"also imports the layer, so it loads twice; delete the "
+                           f"`{session_start.import_line(root)}` line (and its `# Memory` "
+                           "block) from it"))
+    return out
 
 
 CHECK_SESSION = "mem-install-check"
@@ -264,7 +269,7 @@ def check_hooks(root: Path, mem: str, repo: Path, claude: Path = CLAUDE) -> list
                                f"ok, {len(ctx):,} chars of context, ALWAYS.md rendered, "
                                f"{ms:.0f} ms"))
         elif ctx:
-            bad("session-start", "no ALWAYS.md rendered; CLAUDE.md would import nothing")
+            bad("session-start", "no ALWAYS.md rendered; the rules file would import nothing")
         else:
             bad("session-start", f"exit {rc}, no context; every session would start without "
                 "the router. Try `mem hook session-start` by hand")
@@ -302,8 +307,7 @@ def run(root: Path, repo: Path = REPO, claude: Path = CLAUDE, mem: Path = MEM,
            + ensure_skills(repo, claude / "skills", dry)
            + ensure_settings(claude / "settings.json", str(mem), dry,
                              now.strftime("%Y%m%d-%H%M%S"))
-           + ensure_exception(claude / "CLAUDE.md", repo)
-           + ensure_import(claude / "CLAUDE.md", root))
+           + ensure_rules(claude / "CLAUDE.md", root, dry))
     if dry or any(f.level == ERROR for f in out):
         return out
     return out + check_hooks(root, str(mem), repo, claude)

@@ -38,6 +38,7 @@ The store is its own git repo with no remote. Every git operation on it goes thr
     mem log [PATH...] [-n N]   # the store's history, or one file's
     mem diff [PATH...] [--stat]
     mem restore PATH... [--from REV]   # put files back; commits first, never deletes
+    mem revert SHA...                  # undo store commits as new commits; commits first
 
 ## Moving things around
 
@@ -66,9 +67,10 @@ The process is in [`fast-adoption.md`](fast-adoption.md).
 `make install` adds three hooks to `~/.claude/settings.json`:
 
 - `SessionStart` re-renders the always-loaded layer into `ALWAYS.md`, which
-  `~/.claude/CLAUDE.md` imports (a hook's output is cut to a 2 KB preview past 10,000 chars,
-  so the layer cannot ride in it). It also names the territory for the current directory and
-  reports when the retrospective is overdue.
+  `~/.claude/rules/claude-hybrid-memory.md` imports (a hook's output is cut to a 2 KB preview
+  past 10,000 chars, so the layer cannot ride in it). It also names the territory for the
+  current directory, reports when the retrospective is overdue, and points at
+  `/memory-setup` when the store, its history or the import is missing.
 - `PostToolUse` records usage, refreshes the cache on writes, and re-renders a rendered
   territory's index after a Write or Edit into it.
 - `SessionEnd` re-renders indexes and commits the store.
