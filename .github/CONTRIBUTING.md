@@ -12,8 +12,8 @@ but it isn't trying to become a general-purpose product. So:
 
 [`docs/design.md`](../docs/design.md) explains the model and the alternatives
 already rejected; [`docs/format-spec.md`](../docs/format-spec.md) is the format
-`mem` enforces. Read the "Two rules worth knowing" section of the
-[README](../README.md) before changing anything.
+`mem` enforces. Read the "Two rules worth knowing" section of
+[`docs/overview.md`](../docs/overview.md) before changing anything.
 
 ## Development
 
