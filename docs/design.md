@@ -2,8 +2,8 @@
 
 Status: revision 2, 2026-09-04: the original design, kept as the record of why the
 format is shaped the way it is. Built since; `direction.md` is where it went next.
-It responds to an audit of Claude Code's per-project memory on a real machine (see the
-README), and was revised once after an adversarial review of its own weak points.
+It responds to an audit of Claude Code's per-project memory on a real machine (see
+`overview.md`), and was revised once after an adversarial review of its own weak points.
 
 ## Goals
 

@@ -461,6 +461,6 @@ Matt, 2026-10-23: worth evaluating later, not blocking.
   shows each relocation for Matt, and `territory_hint` disagreement is a refine item.
 - **The queue becomes the new backlog nobody works.** Its length is the retrospective's
   number, so it is looked at monthly. Items that are mostly noise get their source deleted,
-  per the README's rule about checks that are mostly false positives.
+  per the rule in `overview.md` about checks that are mostly false positives.
 - **Rate limits** with parallel jobs. `--jobs` defaults to 4; failures retry once and are
   then marked, never silently dropped.
