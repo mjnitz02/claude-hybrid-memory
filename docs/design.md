@@ -136,7 +136,7 @@ Exactly three things enter context, at three different times.
 
 | When | What | Mechanism | Budget |
 |---|---|---|---|
-| Every session, before the first prompt | `MACHINE.md` + `GATES.md` + `standing/` + `ROUTER.md`, rendered into `ALWAYS.md` | `~/.claude/CLAUDE.md` imports `ALWAYS.md`; the `SessionStart` hook keeps it current | measured in **tokens**; `standing/` capped by **file count**, `GATES.md` by **five entries**; the hook's own output under the harness's **10,000 chars** |
+| Every session, before the first prompt | `MACHINE.md` + `GATES.md` + `standing/` + `ROUTER.md`, rendered into `ALWAYS.md` | `~/.claude/rules/claude-hybrid-memory.md` imports `ALWAYS.md`; the `SessionStart` hook keeps it current | measured in **tokens**; `standing/` capped by **file count**, `GATES.md` by **five entries**; the hook's own output under the harness's **10,000 chars** |
 | Every session, automatically | this cwd's territory `MEMORY.md` | harness auto-memory | 200 lines / 25 KB (harness limit) |
 | On demand, during the session | individual memory files | Claude reads them, guided by the routers | none |
 
@@ -151,7 +151,8 @@ because line length varies too much to budget honestly.
 
 The `SessionStart` hook is cwd-aware, and does four jobs:
 
-1. Render the always-loaded layer into `ALWAYS.md`, which `~/.claude/CLAUDE.md` imports.
+1. Render the always-loaded layer into `ALWAYS.md`, which a rules file `mem install` writes
+   imports (it was a `~/.claude/CLAUDE.md` line until 2026-11-03).
    Until 2026-10-23 the hook injected the layer itself. Claude Code persists any one hook
    output over 10,000 chars to a file and gives the model a 2 KB preview, so for three weeks
    every session had `MACHINE.md`'s opening and nothing after it, while `mem budget` passed.

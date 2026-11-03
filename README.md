@@ -53,13 +53,13 @@ if you don't have it), and Claude Code 2.1.260 or later.
 git clone https://github.com/mjnitz02/claude-hybrid-memory.git
 cd claude-hybrid-memory
 make install
-cat templates/CLAUDE-memory-import.md >> ~/.claude/CLAUDE.md
 ```
 
-`make install` installs `mem`, creates the store at `~/.claude/memory/`, links the skills
-and adds the hooks to `~/.claude/settings.json` (backing it up first). It is safe to re-run.
-The last line imports the always-loaded layer into every session. Keep the clone: `mem` and
-the skills run from it.
+`make install` installs `mem`, creates the store at `~/.claude/memory/`, links the skills,
+adds the hooks to `~/.claude/settings.json` (backing it up first) and writes
+`~/.claude/rules/claude-hybrid-memory.md`, which imports the always-loaded layer into every
+session. It never edits your `CLAUDE.md`, and it is safe to re-run. Keep the clone: `mem`
+and the skills run from it.
 
 Then name your machine in `~/.claude/memory/MACHINE.md`, and bring in the memory you
 already have:
@@ -72,9 +72,9 @@ mem migrate apply       # move everything in; `mem migrate undo --silo S` revert
 mem audit               # check the result
 ```
 
-> If your `~/.claude/CLAUDE.md` tells Claude never to commit, add
-> [`templates/CLAUDE-git-exception.md`](templates/CLAUDE-git-exception.md) under that rule
-> so the store can commit itself.
+> A `CLAUDE.md` rule against touching git needs no exception for the store. The store's
+> history is made by `mem` (the SessionEnd hook commits it; sessions use `mem log`, `mem
+> restore` and so on), and Claude never runs `git` on it.
 
 ## Day to day
 

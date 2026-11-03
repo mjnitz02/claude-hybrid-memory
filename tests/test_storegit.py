@@ -172,6 +172,21 @@ def test_restore_puts_files_back_and_commits_what_it_overwrites_first(fx: Fixtur
     assert f"unchanged  {LAB}" in out
 
 
+def test_revert_undoes_a_store_commit_as_a_new_one(fx: Fixture):
+    # the undo a restructure step prints; a session never runs `git revert` on the store
+    init(fx.store)
+    original = (fx.store / LAB).read_text()
+    (fx.store / LAB).write_text("edited\n")
+    rc, out, _ = run(mem_cmd("commit", "-m", "an edit"), fx.env())
+    sha = out.split()[0]
+    rc, out, _ = run(mem_cmd("revert", sha), fx.env())
+    assert rc == 0 and "reverted 1 commit(s)" in out
+    assert (fx.store / LAB).read_text() == original
+    assert subjects(fx.store)[:2][1] == "an edit"  # history kept, never rewritten
+    rc, _, err = run(mem_cmd("revert", "nope"), fx.env())
+    assert rc == 1 and err
+
+
 def test_restore_writes_nothing_when_any_path_is_wrong(fx: Fixture):
     init(fx.store)
     (fx.store / LAB).write_text("edited\n")

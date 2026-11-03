@@ -1,6 +1,6 @@
 ---
 name: memory-setup
-description: Stand up or repair the machine-local Claude memory store (~/.claude/memory) - the router, standing directives, territories, skills symlinks, and the SessionStart hook. Use when setting up a new machine, when the SessionStart hook reports no store, or when the store's scaffolding is broken or missing.
+description: Stand up or repair the machine-local Claude memory store (~/.claude/memory) - the router, standing directives, territories, skills symlinks, the hooks, and the rules file that imports the always-loaded layer. Use when setting up a new machine, when the SessionStart hook says memory is not set up, the store has no history, or the layer is not in context, or when the store's scaffolding is broken or missing.
 ---
 
 # memory-setup
@@ -23,9 +23,11 @@ Then check the current state before changing anything:
     mem audit
     make install-check    # from the repo root: what `make install` would change
 
-`make install` (setup.md, "The short path") does steps 1 to 3c and is idempotent, so it
+`make install` (setup.md, "The short path") does steps 1 to 3d and is idempotent, so it
 is also the repair for broken scaffolding. Matt runs it, or it runs on his go-ahead,
-because it includes step 1b.
+because it includes step 1b. It writes `~/.claude/rules/claude-hybrid-memory.md` (step 3d)
+and never edits `~/.claude/CLAUDE.md`. If it warns `install-imported-twice`, hand Matt the
+`# Memory` block to delete from his `CLAUDE.md`; do not edit it yourself.
 
 ## Rules
 
@@ -40,8 +42,8 @@ because it includes step 1b.
 - **Merge into the existing `hooks` object** in `~/.claude/settings.json` if there is one;
   do not clobber hooks that are already there.
 - **Step 1b (`git init` of the store and its baseline commit) runs only on Matt's
-  go-ahead.** The `~/.claude/CLAUDE.md` exception covers `mem`'s own commits to the store,
-  not setup. Never add a remote to the store.
+  go-ahead.** After setup, store history goes only through `mem`; never run `git` on the
+  store. Never add a remote to the store.
 - Commit nothing in any repo. Branches, commits and PRs are Matt's to make.
 
 ## Machine identity

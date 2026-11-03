@@ -84,8 +84,9 @@ def check_delivery(root: Path, claude_md: Path | None = None) -> list[Finding]:
     """Whether the layer actually reaches a session, which the token counts above cannot say.
 
     Those passed at ~6,200 tokens for three weeks while every session got a 2 KB preview of
-    the hook's output (session_start.py's docstring has the story). So: the CLAUDE.md import
-    must be there, and the hook's own output must fit under the harness's persist threshold.
+    the hook's output (session_start.py's docstring has the story). So: the import must be
+    there (the rules file `mem install` writes, or an older CLAUDE.md line, but not both),
+    and the hook's own output must fit under the harness's persist threshold.
     It is measured from a directory that maps to no territory, the longest status it prints.
     """
     if not root.is_dir():
@@ -93,12 +94,17 @@ def check_delivery(root: Path, claude_md: Path | None = None) -> list[Finding]:
     claude_md = claude_md or session_start.CLAUDE_MD
     out = []
     want = session_start.layer(root)
-    if want and not session_start.imported(root, claude_md):
-        out.append(Finding(ERROR, "budget-not-imported", str(claude_md),
-                           f"does not import the always-loaded layer, so no session sees "
-                           f"GATES, standing or the router; add "
-                           f"`{session_start.import_line(root)}` on a line of its own "
+    rules = session_start.rules_path(claude_md)
+    found = session_start.importers(root, claude_md) if want else [rules]
+    if not found:
+        out.append(Finding(ERROR, "budget-not-imported", str(rules),
+                           "nothing imports the always-loaded layer, so no session sees "
+                           "GATES, standing or the router; `mem install` writes this file "
                            "(docs/setup.md step 3d)"))
+    elif len(found) > 1:
+        out.append(Finding(WARN, "budget-imported-twice", str(claude_md),
+                           f"imports the layer as well as {rules.name}, so it loads twice; "
+                           f"delete the `{session_start.import_line(root)}` line here"))
     if want and session_start.read(root / session_start.ALWAYS) + "\n" != want:
         # measured on the layer as it will be, so a stale file does not count as the status
         # line `output` would add, and nothing is written here

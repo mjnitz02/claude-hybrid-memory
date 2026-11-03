@@ -63,9 +63,7 @@ def test_second_run_changes_nothing(home: Path):
     do(home)
     settings = (home / ".claude" / "settings.json").read_text()
     f = do(home)
-    assert codes(f) <= {"install-ok", "install-mem-missing", "install-git-exception",
-                        "install-import",
-                        "install-check-skipped"}, f
+    assert codes(f) <= {"install-ok", "install-mem-missing", "install-check-skipped"}, f
     assert (home / ".claude" / "settings.json").read_text() == settings
     assert not list((home / ".claude").glob("settings.json.bak-*"))
 
@@ -168,25 +166,29 @@ def test_a_hook_that_fails_open_is_still_caught(home: Path, tmp_path: Path):
                    "install-check-session-end"}
 
 
-def test_claude_md_exception_is_checked_never_written(home: Path):
-    md = home / ".claude" / "CLAUDE.md"
-    md.parent.mkdir(parents=True)
-    md.write_text("# Git\n\nOnly touch git when asked.\n")
-    assert "install-git-exception" in codes(do(home))
-    assert md.read_text() == "# Git\n\nOnly touch git when asked.\n"
-    md.write_text("# Git\n\nOnly touch git when asked.\n\n"
-                  + (REPO / "templates" / "CLAUDE-git-exception.md").read_text())
-    assert "install-git-exception" not in codes(do(home))
+def test_rules_file_imports_the_layer_and_is_owned(home: Path):
+    store, claude = home / ".claude" / "memory", home / ".claude"
+    assert "install-rules" in codes(do(home))
+    rules = session_start.rules_path(claude / "CLAUDE.md")
+    assert rules == claude / "rules" / "claude-hybrid-memory.md"
+    assert session_start.import_line(store) in rules.read_text().splitlines()
+    assert session_start.importers(store, claude / "CLAUDE.md") == [rules]
+    assert not (claude / "CLAUDE.md").exists()  # never created, never written
+    rules.write_text("hand edit\n")  # mem owns it: drift is rewritten, dry run only says so
+    assert "would rewrite" in " ".join(x.message for x in do(home, dry=True))
+    assert rules.read_text() == "hand edit\n"
+    do(home)
+    assert rules.read_text() == session_start.rules_text(store)
 
 
-def test_claude_md_import_is_checked_never_written(home: Path):
+def test_a_claude_md_import_too_is_reported_never_written(home: Path):
     md = home / ".claude" / "CLAUDE.md"
     md.parent.mkdir(parents=True)
-    md.write_text("# Git\n")
-    assert "install-import" in codes(do(home))
-    assert md.read_text() == "# Git\n"
-    template = (REPO / "templates" / "CLAUDE-memory-import.md").read_text()
-    assert "@~/.claude/memory/ALWAYS.md" in template
     line = session_start.import_line(home / ".claude" / "memory")  # this home is not ~
-    md.write_text("# Git\n\n" + template.replace("@~/.claude/memory/ALWAYS.md", line))
-    assert "install-import" not in codes(do(home))
+    md.write_text(f"# Git\n\nOnly touch git when asked.\n\n# Memory\n\n{line}\n")
+    before = md.read_text()
+    f = do(home)
+    assert "install-imported-twice" in codes(f)
+    assert md.read_text() == before
+    md.write_text("# Git\n\nOnly touch git when asked.\n")
+    assert "install-imported-twice" not in codes(do(home))

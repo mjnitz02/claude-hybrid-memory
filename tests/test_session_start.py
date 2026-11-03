@@ -120,3 +120,36 @@ def test_a_silo_pointing_at_a_gone_territory_is_said(fx: Fixture, tmp_path: Path
     out = session_start.output(fx.store, fx.repo, imports(fx, tmp_path))
     assert "points at console/renamed-away, which no longer exists" in out
     assert "Territory for this directory" not in out
+
+
+def test_the_rules_file_alone_delivers_the_layer(fx: Fixture, tmp_path: Path):
+    # 2026-11-03: `mem install` writes the import into a rules file it owns, so no one's
+    # CLAUDE.md has to be edited. A CLAUDE.md with no import is then fine.
+    md = tmp_path / "CLAUDE.md"
+    md.write_text("# Git\n\nOnly touch git when asked.\n")
+    rules = session_start.rules_path(md)
+    rules.parent.mkdir()
+    rules.write_text(session_start.rules_text(fx.store))
+    assert session_start.importers(fx.store, md) == [rules]
+    assert "NOT in context" not in session_start.output(fx.store, fx.elsewhere, md)
+    md.write_text(f"{session_start.import_line(fx.store)}\n")
+    assert session_start.importers(fx.store, md) == [rules, md]
+
+
+def test_always_md_says_store_history_is_not_git_use(fx: Fixture):
+    # replaced the CLAUDE.md git exception (direction §16.1, amended 2026-11-03)
+    session_start.write_always(fx.store)
+    always = (fx.store / "ALWAYS.md").read_text()
+    assert session_start.STORE_GIT in always.split("# MACHINE", 1)[0]
+
+
+def test_setup_gaps_point_at_memory_setup(fx: Fixture, tmp_path: Path):
+    md = imports(fx, tmp_path)
+    out = session_start.output(tmp_path / "no-store", fx.elsewhere, md)
+    assert "not set up" in out and "/memory-setup" in out
+    assert len(out) < session_start.HOOK_OUTPUT_LIMIT
+    (fx.store / ".git").mkdir(exist_ok=True)
+    assert "no history" not in session_start.output(fx.store, fx.elsewhere, md)
+    (fx.store / ".git").rmdir()
+    out = session_start.output(fx.store, fx.elsewhere, md)
+    assert "no history" in out and "/memory-setup" in out
