@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 
 from claude_hybrid_memory.findings import ERROR, INFO, WARN, Finding
-from claude_hybrid_memory.spec import INDEX_LINK_RE, SLUG_RE, WIKILINK_RE
+from claude_hybrid_memory.spec import INDEX_LINK_RE, SLUG_RE, WIKILINK_RE, index_names
 from claude_hybrid_memory.store import Memory
 
 
@@ -82,7 +82,13 @@ def check_router_drift(mems: list[Memory], routers: dict,
         listed = {os.path.basename(x) for x in INDEX_LINK_RE.findall(r.raw)}
         # For "unlisted", a wikilink DOES count as listing: a gate is referenced from the
         # inlined gate text by [[slug]] rather than as a markdown link.
-        mentioned = listed | {t + ".md" for t in WIKILINK_RE.findall(r.raw) if SLUG_RE.match(t)}
+        # A bare `- slug: gloss` line (what `mem new` appends) lists it too. A rendered index
+        # lists every memory by construction, records and collapsed groups included, so a gap
+        # there is a stale render, which `mem render --check` reports.
+        mentioned = (listed | index_names(r.raw)
+                     | {t + ".md" for t in WIKILINK_RE.findall(r.raw) if SLUG_RE.match(t)})
+        if "<!-- mem:render begin" in r.raw:
+            mentioned |= present
         for missing in sorted(listed - present):
             out.append(Finding(ERROR, "router-ghost", f"{container}/MEMORY.md",
                                f"lists {missing} which does not exist"))

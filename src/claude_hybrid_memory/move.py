@@ -302,7 +302,6 @@ def _committed(root: Path, legacy: Path, trigger: str, subject: str, write, rema
     return out
 
 
-ENTRY_LINE = r"^- \[[^\]]*\]\({}\).*$"
 
 
 def _resolve(tdir: Path, spec: str) -> tuple[str, Path] | Finding:
@@ -334,6 +333,7 @@ def _resolve(tdir: Path, spec: str) -> tuple[str, Path] | Finding:
 def plan_files(root: Path, specs: list[str], dest: str) -> FileMove | list[Finding]:
     """Everything moving these memories into `dest` would change, or why it can't happen."""
     from claude_hybrid_memory.render import markers
+    from claude_hybrid_memory.spec import entry_line_re
     from claude_hybrid_memory.store import parse_frontmatter
 
     tdir = root / "territories"
@@ -377,7 +377,7 @@ def plan_files(root: Path, specs: list[str], dest: str) -> FileMove | list[Findi
                 fm.edits[p] = edited
         index = (tdir / src / "MEMORY.md").read_text(encoding="utf-8")
         if not markers(index) and (
-                m := re.search(ENTRY_LINE.format(re.escape(f.name)), index, re.M)):
+                m := entry_line_re(f.name).search(index)):
             fm.carried.append(m.group(0))
         meta, _, _ = parse_frontmatter(f.read_text(encoding="utf-8"))
         if str(meta.get("role") or "").strip() == "gate":

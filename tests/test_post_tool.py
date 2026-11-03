@@ -133,3 +133,41 @@ def test_mem_show_and_find_log_their_own_reads(fx: Fixture):
         "read", f"{KIT}/kit-sync-design.md", "mem show", "s9")
     assert (find["event"], find["tool"], find["query"]) == ("search", "mem find", ["sync"])
     assert f"{KIT}/kit-sync-design.md" in find["hits"]
+
+
+def test_a_harness_write_into_a_rendered_territory_re_renders_it(fx: Fixture):
+    """The console_tools miss of 2026-10-31, replayed: the harness recipe writes a memory
+    through the silo symlink with its own nested frontmatter, then hand-adds a pointer line
+    inside the rendered block. The hook gives the memory its line from its description and
+    leaves the memory file exactly as written."""
+    from conftest import mem_cmd, run
+
+    from claude_hybrid_memory import render
+    rc, _, err = run(mem_cmd("render", "console/kit", "--adopt", "--write"), fx.env())
+    assert rc == 0, err
+    silo = fx.projects / silo_name(str(fx.repo)) / "memory"
+    mem = silo / "kit-miyoo-card.md"
+    raw = ("---\nname: kit-miyoo-card\ndescription: The kid's handheld: what's on it.\n"
+           "metadata:\n  node_type: memory\n  type: project\n  modified: 2026-10-31\n"
+           "  originSessionId: 00000000-0000-0000-0000-000000000000\n---\n\nBody.\n")
+    mem.write_text(raw)
+    assert post(fx, "Write", mem)[0] == 0
+    idx = fx.store / "territories/console/kit/MEMORY.md"
+    text = idx.read_text()
+    s, e = render.markers(text)
+    assert "- kit-miyoo-card: The kid's handheld: what's on it." in text[s:e]
+    assert mem.read_text() == raw
+    # the recipe's second step: a pointer hand-added inside the block
+    idx.write_text(text[:e] + "- [Miyoo](kit-miyoo-card.md) — hand line\n" + text[e:])
+    assert post(fx, "Edit", silo / "MEMORY.md")[0] == 0
+    text = idx.read_text()
+    assert "hand line" not in text and text.count("kit-miyoo-card") == 1
+
+
+def test_a_write_into_a_hand_written_territory_leaves_its_index_alone(fx: Fixture):
+    idx = fx.store / "territories/console/kit/MEMORY.md"
+    before = idx.read_text()
+    mem = fx.store / "territories/console/kit/kit-new.md"
+    mem.write_text("---\nname: kit-new\ndescription: New.\n---\n\nBody.\n")
+    assert post(fx, "Write", mem)[0] == 0
+    assert idx.read_text() == before

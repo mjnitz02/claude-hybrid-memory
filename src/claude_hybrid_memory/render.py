@@ -8,10 +8,15 @@ the index a function of the markdown: each memory's `description:` is its line, 
 the headings. Everything outside the markers stays hand-written and is never touched.
 
     <!-- mem:render begin ... -->
+    Each name below is `<name>.md` beside this file.
     ### Group
-    - [slug](slug.md) — description
-    - Records and history: [a](a.md) · [b](b.md)
+    - slug: description
+    - Records: a b
     <!-- mem:render end -->
+
+A line names its memory bare. Every memory sits beside its index, so `[slug](slug.md)` said
+the slug twice and spent 3.4 KB of console/tools' 19 KB section doing it; the one header
+line says where the files are instead. Readers take both forms (spec.index_entry).
 
 What does not get a line of its own:
   - a superseded memory: dropped, since the memory superseding it is the current word;
@@ -20,11 +25,25 @@ What does not get a line of its own:
     out "unless hot"; that needs read counts, which wait for Phase 2's events.)
 
 A description longer than 160 bytes is cut at a word boundary with "…" on its index line:
-an index directs to its memory, it does not stand in for it.
+an index directs to its memory, it does not stand in for it. The `description:` itself is
+never touched; one that needs cutting is a `description-long` refine item.
 
-Budget: the MEMORIES section warns past 100 lines and errors past 150; the hand-written
-head above it is not counted. The whole file still errors past the harness's 200 lines,
-since that is truncation, not policy.
+Budget: render owns it. The harness loads the first 200 lines / 25,000 bytes, so every
+render fits the whole file under BYTE_TARGET / LINE_TARGET (a kilobyte and ten lines of
+margin, so one hand-written Write cannot tip the harness's own "rewrite the index" error).
+Lines and bytes are separate problems, and only some steps help each: cutting descriptions
+saves bytes and no lines. So render walks the line steps, and within each the byte steps,
+and keeps the first that fits:
+  lines  1. each group's records line merged into one `Records:` line at the end;
+         2. that line dropped for a pointer at `mem find`;
+         3. groups collapsed to a `Names:` line, from the bottom up (Other first, then
+            `groups:` in reverse);
+  bytes  descriptions cut to 120, then 80 bytes.
+console/tools on 2026-11-01 was over on lines and not bytes: one step 1, no cut.
+A session writing memories never sees any of this: the size findings (`index-degraded`,
+`description-long`, the caps) are refine-only, shown by `mem render --check`, `mem audit
+--refine` and the refine queue, and never by a plain `mem audit` (spec REFINE_CODES). Fixing
+the memories so the index stops degrading is a refinement pass's job, not the writer's.
 
 An entry line for one of the territory's own memories BELOW the end marker is taken into
 the section: the harness's auto-memory writes a file and then appends a pointer to
@@ -48,6 +67,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from claude_hybrid_memory.findings import ERROR, INFO, WARN, Finding
+from claude_hybrid_memory.spec import LINK_ENTRY_RE, index_entry
 from claude_hybrid_memory.store import load_file, parse_frontmatter
 
 BEGIN = "<!-- mem:render begin"
@@ -57,15 +77,19 @@ BEGIN_LINE = (f"{BEGIN}: generated from each memory's description and group; "
 LINE_CAP = 200          # the harness loads only the first 200 lines
 BYTE_CAP = 25_000       # and at most 25 KB (format-spec.md)
 BYTE_WARN = 24_000      # a kilobyte short of it: room for a few more lines, not many
+BYTE_TARGET = 24_000    # what every render fits the whole file under
+LINE_TARGET = 190
 LINE_DESC = 160         # bytes of description per index line; longer is cut at a word, with …
+DESC_STEPS = (LINE_DESC, 120, 80)
 MEM_WARN = 100          # lines of the MEMORIES section itself: the ideal ceiling
 MEM_CAP = 150           # and the hard one; the hand-written head above it is not counted
 OTHER = "Other"
-RECORDS = "Records and history"
+RECORDS = "Records"     # a records line: the names of a group's `tier: record` memories
+NAMES = "Names"         # a collapsed group: every name, no descriptions
+HEADER = "Each name below is `<name>.md` beside this file."
 
 SECTION_RE = re.compile(r"^## MEMORIES\b.*$", re.M)
-ENTRY_RE = re.compile(
-    r"^- \[(?P<title>[^\]]*)\]\((?P<file>[^)]+\.md)\)\s*(?:[—–-]+\s*)?(?P<gloss>.*)$")
+ENTRY_RE = LINK_ENTRY_RE  # the link form only; index_entry reads both
 
 
 @dataclass
@@ -132,8 +156,32 @@ def clip(s: str, limit: int = LINE_DESC) -> str:
     return head.rstrip(" ,;:—–-(") + "…"
 
 
-def render_section(t: Territory) -> str:
-    """The text between the markers."""
+@dataclass(frozen=True)
+class Degrade:
+    """How far a render stepped down to fit (module docstring, Budget)."""
+    desc: int = LINE_DESC
+    records: str = "group"                       # group | one (line) | none (a pointer)
+    names_only: tuple[str | None, ...] = ()      # groups collapsed, None being Other
+
+    @property
+    def none(self) -> bool:
+        return self == FULL
+
+    def describe(self) -> str:
+        bits = []
+        if self.desc < LINE_DESC:
+            bits.append(f"descriptions cut to {self.desc} bytes")
+        if self.records == "one":
+            bits.append("records on one line")
+        elif self.records == "none":
+            bits.append("records not listed")
+        if self.names_only:
+            bits.append(f"{len(self.names_only)} group(s) names only: "
+                        + ", ".join(g or OTHER for g in self.names_only))
+        return "; ".join(bits)
+
+
+def _order(t: Territory) -> tuple[dict[str | None, list[Entry]], list[str | None], bool]:
     by: dict[str | None, list[Entry]] = {}
     for e in t.entries:
         by.setdefault(e.group, []).append(e)
@@ -141,16 +189,64 @@ def render_section(t: Territory) -> str:
     order = [g for g in t.groups if g in by] + sorted(g for g in named if g not in t.groups)
     if None in by:
         order.append(None)
+    return by, order, bool(named)
+
+
+FULL = Degrade()
+
+
+def render_section(t: Territory, d: Degrade = FULL) -> str:
+    """The text between the markers."""
+    by, order, headed = _order(t)
     lines = []
     for g in order:
-        if named:
+        if headed:
             lines.append(f"### {g or OTHER}")
         es = sorted(by[g], key=lambda e: e.slug)
-        lines += [f"- [{e.slug}]({e.file}) — {clip(e.description)}" for e in es if not e.compact]
-        compact = [e for e in es if e.compact]
+        full = [e for e in es if not e.compact]
+        compact = [e for e in es if e.compact] if d.records == "group" else []
+        if g in d.names_only:
+            lines.append(f"- {NAMES}: " + " ".join(e.slug for e in full + compact))
+            continue
+        lines += [f"- {e.slug}: {clip(e.description, d.desc)}" for e in full]
         if compact:
-            lines.append(f"- {RECORDS}: " + " · ".join(f"[{e.slug}]({e.file})" for e in compact))
-    return "\n".join(lines) + "\n" if lines else ""
+            lines.append(f"- {RECORDS}: " + " ".join(e.slug for e in compact))
+    records = sorted(e.slug for e in t.entries if e.compact
+                     and (e.group not in d.names_only or d.records == "none"))
+    if d.records == "one" and records:
+        lines.append(f"- {RECORDS}: " + " ".join(records))
+    elif d.records == "none" and records:
+        lines.append(f"- ({len(records)} records not listed: "
+                     f"`mem find <terms> --territory {t.name}`)")
+    return "\n".join([HEADER, *lines]) + "\n" if lines else ""
+
+
+def ladder(t: Territory):
+    """Every Degrade in the order render tries them: the line steps, and within each the
+    byte steps, mildest first."""
+    _, order, _ = _order(t)
+    steps = [("group", ()), ("one", ()), ("none", ())]
+    gone: tuple[str | None, ...] = ()
+    for g in reversed(order):
+        gone += (g,)
+        steps.append(("none", gone))
+    for records, names_only in steps:
+        for desc in DESC_STEPS:
+            yield Degrade(desc, records, names_only)
+
+
+def fits(text: str) -> bool:
+    return len(text.encode()) <= BYTE_TARGET and nlines(text) <= LINE_TARGET
+
+
+def fit(t: Territory, before: str, after: str) -> tuple[str, Degrade]:
+    """The mildest section that fits `before + section + after` under the target, or the
+    most collapsed one when none does (the hand-written head alone is too big)."""
+    for d in ladder(t):
+        section = render_section(t, d)
+        if fits(before + section + after):
+            return section, d
+    return section, d
 
 
 def markers(text: str) -> tuple[int, int] | None:
@@ -186,9 +282,9 @@ def hand_entries(text: str, own: set[str]) -> tuple[str, list[str]]:
     end = text.find(END) + len(END)
     keep, took = [], []
     for ln in text[end:].split("\n"):
-        m = ENTRY_RE.match(ln)
-        if m and m.group("file") in own:
-            took.append(m.group("file"))
+        e = index_entry(ln)
+        if e and e[0] in own:
+            took.append(e[0])
         else:
             keep.append(ln)
     tail = "\n".join(keep)
@@ -199,15 +295,23 @@ def render(root: Path, name: str, write: bool = True,
            superseded: set[str] | None = None) -> tuple[str, str]:
     """(current text, rendered text) of an adopted territory's MEMORY.md; writes when
     they differ and `write` is set."""
+    text, new, _, _ = render_full(root, name, write, superseded)
+    return text, new
+
+
+def render_full(root: Path, name: str, write: bool = True,
+                superseded: set[str] | None = None) -> tuple[str, str, Degrade, Territory]:
+    """`render`, plus how far it had to step down and the territory it read."""
     t = load(root, name, superseded)
     text = t.index.read_text(encoding="utf-8")
     s, _ = markers(text)
     rest, _ = hand_entries(text, members(t.index))
     _, e = markers(rest)
-    new = text[:s] + render_section(t) + rest[e:]
+    section, d = fit(t, text[:s], rest[e:])
+    new = text[:s] + section + rest[e:]
     if write and new != text:
         t.index.write_text(new, encoding="utf-8")
-    return text, new
+    return text, new, d, t
 
 
 ROUTER_COUNT_RE = re.compile(r"^(- (?P<t>[a-z0-9-]+(?:/[a-z0-9-]+)+) )\((?P<n>\d+)\)", re.M)
@@ -291,15 +395,37 @@ def check(root: Path, names: list[str] | None = None) -> list[Finding]:
                                    "listed by hand below the rendered section, as the "
                                    "harness's auto-memory appends it; `mem render` takes it "
                                    "in from the memory's description"))
-            _, new = render(root, name, False, sup)
+            _, new, d, t = render_full(root, name, False, sup)
             if new != text:
                 out.append(Finding(WARN, "render-stale", str(p),
                                    "the rendered MEMORIES section differs from what the "
                                    "memories say now (a description or group changed, or "
                                    "the section was hand-edited); `mem render` rewrites it"))
+            if not d.none:
+                out.append(Finding(INFO, "index-degraded", str(p),
+                                   f"rendered {d.describe()} to fit {BYTE_TARGET:,} bytes / "
+                                   f"{LINE_TARGET} lines; shorten descriptions, split records "
+                                   "out, or restructure the territory to get the full index "
+                                   "back"))
+            out += long_descriptions(t)
+            if t.groups:
+                out += [Finding(INFO, "field-invalid", str(p.parent / e.file),
+                                f"no `group:`, so it is listed under {OTHER}; give it one of "
+                                f"{name}'s groups")
+                        for e in t.entries if e.group is None]
             text = new
         out += budget(p, text)
     return out
+
+
+def long_descriptions(t: Territory) -> list[Finding]:
+    """A description render has to cut even at full size: a refine item, since the cut line
+    loses whatever the end of the description said."""
+    d = t.index.parent
+    return [Finding(INFO, "description-long", str(d / e.file),
+                    f"description is {len(e.description.encode())} bytes; its index line is "
+                    f"cut at {LINE_DESC}. Say the conclusion in fewer words")
+            for e in t.entries if not e.compact and len(e.description.encode()) > LINE_DESC]
 
 
 _TNAME = r"[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)+"
@@ -395,21 +521,23 @@ def memory_lines(text: str) -> int:
 
 
 def budget(p: Path, text: str) -> list[Finding]:
+    """Size findings for one index. All refine-only (spec.REFINE_CODES): a session writing
+    memories is never asked to make room, and never errors for it."""
     lines, size = nlines(text), len(text.encode())
     out = []
     if lines > LINE_CAP or size > BYTE_CAP:
-        out.append(Finding(ERROR, "index-over-cap", str(p),
+        out.append(Finding(WARN, "index-over-cap", str(p),
                            f"{lines} lines, {size:,} bytes: the harness loads only the first "
                            f"{LINE_CAP} lines / {BYTE_CAP:,} bytes, so the tail is never seen"))
     if not out and size > BYTE_WARN:
-        out.append(Finding(WARN, "index-near-cap", str(p),
+        out.append(Finding(INFO, "index-near-cap", str(p),
                            f"{size:,} of the harness's {BYTE_CAP:,} bytes"))
     mem = memory_lines(text)
     if mem > MEM_CAP:
-        out.append(Finding(ERROR, "memories-over-cap", str(p),
+        out.append(Finding(WARN, "memories-over-cap", str(p),
                            f"the MEMORIES section is {mem} lines, over the {MEM_CAP}-line cap"))
     elif mem > MEM_WARN:
-        out.append(Finding(WARN, "memories-over-target", str(p),
+        out.append(Finding(INFO, "memories-over-target", str(p),
                            f"the MEMORIES section is {mem} lines, over the {MEM_WARN}-line target"))
     return out
 
@@ -487,9 +615,8 @@ def parse_section(text: str) -> tuple[int, int, list[Line], list[str]] | None:
     for ln in text[m.end():end].splitlines():
         if ln.startswith("### "):
             group = ln[4:].strip()
-        elif e := ENTRY_RE.match(ln):
-            lines.append(Line(group, e["title"].strip(), Path(e["file"]).name,
-                              e["gloss"].strip()))
+        elif e := index_entry(ln):
+            lines.append(Line(group, e[1], e[0], e[2]))
         elif ln.strip():
             prose.append(ln)
     return m.start(), end, lines, prose

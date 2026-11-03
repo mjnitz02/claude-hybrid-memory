@@ -147,7 +147,9 @@ exits 0, which is the correct behavior on a machine that has not been set up.
 
 Logs a `read` or `write` event to `<store>/events/YYYY-MM.jsonl` whenever a session reads or
 writes a memory, refreshes the cache on writes, and hands the session a near-duplicate
-note when a NEW memory closely resembles an existing one. For a Bash call it logs every
+note when a NEW memory closely resembles an existing one. A Write or Edit into a rendered
+territory re-renders its index, so a memory written the harness's way still gets its line.
+For a Bash call it logs every
 store path the command names (`read`, `write` or `search`, by heuristic), since most memory
 traffic goes through Bash. Add beside `SessionStart` in the same `hooks` object, with no
 `statusMessage`, because it fires on every Read, Write, Edit and Bash call in every session:

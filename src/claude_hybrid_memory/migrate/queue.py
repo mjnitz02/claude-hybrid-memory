@@ -11,7 +11,8 @@ How each item drops:
   shape, low-confidence     the body differs from the one that landed
   standing/gate-candidate,  the file is no longer at that path (promoted, moved, archived)
   territory-hint, index-only
-  verify                    the memory carries `verify:`, or is `tier: record`. Only the
+  verify                    the memory carries `verify:` or `unrunnable: true`, or is
+                            `tier: record`. Only the
                             summarizer's claims queue; the §8 heuristic ranks them
   unverified                the memory gains `status:`, `last_verified:` or `verify:`, or is
                             `tier: record`, or its territory has no `active` member left
@@ -38,7 +39,10 @@ from claude_hybrid_memory.migrate import workdir
 from claude_hybrid_memory.store import parse_frontmatter, scan_store
 
 AUDIT_CODES = ("split-candidate", "possible-duplicate", "frontmatter-not-yaml", "stale-live",
-               "superseded-still-indexed", "budget-high", "budget-always-stale")
+               "superseded-still-indexed", "budget-high", "budget-always-stale",
+               # refine-only (spec.REFINE_CODES): what writing sessions are never asked to fix
+               "index-over-cap", "memories-over-cap", "index-degraded", "description-long",
+               "memories-over-target", "field-invalid", "missing-kind")
 SHAPES = ("build-diary", "dated-snapshot", "accreted")
 
 # Lower works first. The always-loaded layer costs every session, so promotions lead;
@@ -47,7 +51,10 @@ RANK = {"gate-candidate": 0, "standing-candidate": 1, "verify-both": 2, "stale-l
         "description": 4, "frontmatter-not-yaml": 5, "superseded-still-indexed": 5,
         "budget-high": 5, "budget-always-stale": 5, "split-candidate": 6, "shape": 7,
         "possible-duplicate": 8, "verify-summary": 9, "unverified": 9, "index-only": 10,
-        "low-confidence": 11, "territory-hint": 12}
+        "low-confidence": 11, "territory-hint": 12,
+        "index-over-cap": 3, "memories-over-cap": 5, "index-degraded": 5,
+        "description-long": 4, "memories-over-target": 7, "field-invalid": 6,
+        "missing-kind": 6}
 
 DECLINED_RE = re.compile(r"`refine:([^`]+)`")
 
@@ -211,7 +218,7 @@ def _verify_items(root: Path, claims: dict[str, list], superseded: set[str]) -> 
     out = []
     for rel, said in claims.items():
         m = mems.get(rel)
-        if (m is None or rel in superseded or m.meta.get("verify")
+        if (m is None or rel in superseded or m.meta.get("verify") or m.meta.get("unrunnable")
                 or str(m.meta.get("tier") or "") == "record"):
             continue
         hits = [f"{label} `{mt.group(0)}`" for label, rx in HEURISTIC

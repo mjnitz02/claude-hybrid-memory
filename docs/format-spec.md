@@ -15,6 +15,24 @@ retrievability and unambiguous tagging even where that costs readability. The do
 Four required fields. Everything else is optional, derived, or filled in by `mem.py fix`.
 If a rule here ever makes writing a memory feel like paperwork, the rule is wrong.
 
+**Write a new territory memory with `mem new`**, body on stdin:
+
+    mem new <slug> -d "the conclusion, one line" [-g GROUP] [-t TERRITORY] [--record] <<'EOF'
+    The fact first. **Why:** ... **How to apply:** ...
+    EOF
+
+It fills in the frontmatter (`kind: territory`, `role: reference`, `volatility: live`,
+`last_verified:` today), refuses a slug that exists, and indexes the memory: a rendered index
+re-renders, a hand-written one gains a bare `- slug: description` line. The territory defaults
+to the one the current directory maps to. It never commits; the SessionEnd hook does.
+**Do not use the harness's auto-memory recipe** (a Write into `projects/*/memory/` plus a
+pointer line hand-added to MEMORY.md): it skips the store's fields and puts the line where a
+render erases it. The PostToolUse hook re-renders a rendered territory after such a write, as a
+backstop, not a second way in. Updating a memory is an ordinary edit to its file.
+
+**A writing session is never asked to make room or fix vocabulary.** Index size and field
+values outside their vocabulary are refine findings (below), not errors.
+
 ## Store layout
 
     ~/.claude/memory/
@@ -431,12 +449,16 @@ Auto-loaded by the harness for every repo pointed at this territory. Harness lim
 
 **The MEMORIES section is rendered once a territory is adopted** (`mem render <t>
 --adopt`). Between `<!-- mem:render begin ... -->` and `<!-- mem:render end -->`, every
-line is generated: `- [slug](slug.md) — description`, with a description over 160 bytes
-cut at a word boundary and ended with "…" (the line directs to the memory; the memory keeps
-the whole description), under a `### heading` from the
+line is generated. The first says ``Each name below is `<name>.md` beside this file.``; each
+memory's line is `- slug: description`, bare, since every memory sits beside its index and
+the link form `[slug](slug.md)` spent 17% of console/tools' section saying the slug twice. A
+description over 160 bytes is cut at a word boundary and ended with "…" (the line directs to
+the memory; the memory keeps the whole description, and the cut is a `description-long`
+refine item). Lines sit under a `### heading` from the
 memory's optional `group:` field, headings ordered by the territory's
 `groups: ["...", "..."]` frontmatter. A superseded memory gets no line; a `tier: record`
-or `status: HISTORICAL` memory shares its group's one `Records and history:` line. **Edit
+or `status: HISTORICAL` memory shares its group's one `- Records: a b c` line. Every reader
+takes both forms, link and bare (`spec.index_entry`), so hand-written indexes keep theirs. **Edit
 the description or `group:`, never the rendered lines**: `mem render` (and the SessionEnd
 hook) rewrite them, and `mem audit` flags a section that differs as `render-stale`.
 Everything outside the markers stays hand-written, with one exception: an entry line for
@@ -445,10 +467,27 @@ one of the territory's own memories *below* the end marker is taken into the sec
 appends after writing a file through a migrated silo's symlink, and leaving it would list
 the memory twice. A memory its index does not list at all is `router-unlisted`, an error in
 the store, since the index is how a session finds it. Until a territory is adopted its index
-is hand-written as below. Either way `mem audit` budgets the `## MEMORIES` section, warning
-past 100 lines and erroring past 150; the hand-written head above it is not counted. The
-whole file still errors past 200 lines or 25,000 bytes, because the harness truncates there,
-and warns past 24,000 bytes.
+is hand-written as below.
+
+**Render owns the budget.** The harness loads the first 200 lines / 25,000 bytes. Every render
+fits the whole file under 190 lines / 24,000 bytes, leaving margin so one hand-written Write
+cannot trip the harness's own "rewrite the index" error. Lines and bytes are separate
+problems, so it walks the line steps, and within each the byte steps, keeping the first that
+fits. Line steps: the records lines merged into one `Records:` line at the end; that line
+dropped for a pointer at `mem find`; groups collapsed to a `- Names: a b c` line, from the
+bottom up (Other first, then `groups:` in reverse). Byte steps: descriptions cut to 120, then
+80 bytes. **It never edits a memory's `description:` to fit.** A degraded render is
+`index-degraded`, a refine item: getting the full index back is a refinement pass's job.
+
+**Refine findings.** Size and vocabulary are reported to the refinement pass, never to a
+session writing memories: `index-degraded`, `description-long`, `index-over-cap`,
+`index-near-cap`, `memories-over-target` (MEMORIES section past 100 lines),
+`memories-over-cap` (past 150), `field-invalid` (a `kind`, `volatility`, `status`, `role`,
+`tier`, `confidence`, `owner`, `mode` or `last_verified` value outside its vocabulary, or a
+rendered territory's memory with no `group:`) and `missing-kind`. None is an error. `mem
+render --check`, `mem audit --refine` and `mem refine queue` show them; a plain `mem audit`
+does not. Errors are kept for broken structure: no frontmatter, a missing name or description,
+a bad slug, a dangling chain, an unlisted memory.
 
 **A territory with no members is legitimate**, and worth knowing about because the obvious
 reading is that it must be a mistake. Use it when the subject is a *shape* rather than a

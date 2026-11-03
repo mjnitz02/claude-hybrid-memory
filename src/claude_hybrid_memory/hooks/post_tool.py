@@ -20,8 +20,16 @@ For a memory file it appends a `read` or `write` event. A write also refreshes t
 and may hand the session one advisory note: for a file NEW to the cache, the existing
 memories it closely resembles; for an existing file carrying accretion markers, the first
 time this session writes it, that it is due a split into state plus records (direction §15 Phase
-3: split "when next touched", never in a bulk pass). It never changes the markdown and
-never blocks.
+3: split "when next touched", never in a bulk pass). It never blocks.
+
+A Write or Edit into a rendered territory (a memory, or its MEMORY.md) re-renders that
+territory's index, which is the one file it changes. That is the backstop for a session that
+followed the harness's auto-memory recipe instead of `mem new`: the new memory gets its index
+line from its description, and a pointer hand-added inside the rendered block is replaced
+rather than left for the next render to erase. It never rewrites a memory's frontmatter: the
+store already reads the harness's nested `metadata:` (store.parse_frontmatter), and the harness
+re-nests it on its next write anyway. Bash writes are only logged, since a command's write is a
+guess and a render run on a guess could land mid-edit.
 """
 from __future__ import annotations
 
@@ -70,6 +78,7 @@ def main(t0: float | None = None) -> int:
     hint = ""
     if event == "write":
         hint = _after_write(store, str(rel), data.get("session_id", ""))
+        _rerender(store, rel)
     events.append(store, {"event": event, "path": str(rel), "tool": data["tool_name"],
                           "session": data.get("session_id", ""), "cwd": data.get("cwd", ""),
                           "ms": round((time.perf_counter() - t0) * 1000, 1)})
@@ -163,6 +172,21 @@ def _after_write(store: Path, rel: str, session: str) -> str:
     lines.append("If it replaces one of these, add `supersedes: <slug>` to its frontmatter; "
                  "if it overlaps, consider merging instead. Advisory only.")
     return "\n".join(lines)
+
+
+def _rerender(store: Path, rel: Path) -> None:
+    """Re-render the territory `rel` is in, when its index is rendered. Silent either way:
+    whatever the render had to do to fit is the refine pass's business, not this session's."""
+    if len(rel.parts) < 3 or rel.parts[0] != "territories":
+        return
+    territory = "/".join(rel.parts[1:-1])
+    try:
+        from claude_hybrid_memory import render
+        index = store / "territories" / territory / "MEMORY.md"
+        if render.markers(index.read_text(encoding="utf-8", errors="replace")):
+            render.render(store, territory)
+    except Exception:          # a hook never breaks a session
+        pass
 
 
 def _accretion_hint(store: Path, rel: str, session: str) -> str:

@@ -37,9 +37,14 @@ def age_phrase(age: int | None) -> str:
     return "never verified" if age is None else f"{age}d since last_verified"
 
 
-def check_freshness(mems: list[Memory], today: dt.date, run: bool) -> list[Finding]:
+def check_freshness(mems: list[Memory], today: dt.date, run: bool,
+                    superseded: frozenset = frozenset()) -> list[Finding]:
+    """`superseded` is the absolute paths of superseded memories: never edited by design, so
+    a staleness finding on one could never be cleared."""
     out = []
     for m in mems:
+        if m.path in superseded:
+            continue
         vol = m.volatility or "slow"
         limit = STALE_AFTER.get(vol, 90)
         age = m.age_days(today)

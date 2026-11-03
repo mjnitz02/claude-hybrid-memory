@@ -169,7 +169,7 @@ def test_reindex_adds_unlisted_files_beside_topic_entries(tmp_path: Path):
     (tdir / "b.md").write_text("---\nname: b\ndescription: the b one\n---\n")
     apply.reindex(tmp_path, "home/lab")
     assert (tdir / "MEMORY.md").read_text() == \
-        "# home/lab\n\n## Topic\n- [A](a.md) — a\n- [b](b.md) — the b one\n\n## Notes\nprose\n"
+        "# home/lab\n\n## Topic\n- [A](a.md) — a\n- b: the b one\n\n## Notes\nprose\n"
 
 
 def test_mv_into_a_rendered_index_renders_it(store: Fixture):
@@ -181,7 +181,7 @@ def test_mv_into_a_rendered_index_renders_it(store: Fixture):
                      move.plan_files(fx.store, ["home/lab/lab-backup-plan"], "console/kit"))
     text = (fx.store / "territories/console/kit/MEMORY.md").read_text()
     section = text[text.index("<!-- mem:render begin"):]
-    assert "(lab-backup-plan.md)" in section and "(lab-backup-plan.md)" not in text[
+    assert "- lab-backup-plan: " in section and "lab-backup-plan" not in text[
         text.index("<!-- mem:render end"):]
 
 

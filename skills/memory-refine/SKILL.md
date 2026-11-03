@@ -28,8 +28,9 @@ section before writing a `verify:`.
    read only the answer. Small files and audit-only items you read yourself.
 2. **Decide, and say the decision in one line.** You write, not the subagent.
 3. **Write to the store with a script** (python/perl/sed on `~/.claude/memory/...`), not
-   Edit or Write: the harness rewrites frontmatter on memory paths. A memory that replaces
-   another goes through `mem supersede <old> <new>`. Never edit the old one in place.
+   Edit or Write: the harness rewrites frontmatter on memory paths. A new memory (a split's
+   records, say) goes through `mem new`, which writes the fields and indexes it. A memory that
+   replaces another goes through `mem supersede <old> <new>`. Never edit the old one in place.
 4. **Rebuild the queue** and check that the item dropped. If it didn't, the fix missed.
 
 | type | what dropping it takes | subagent directive |
@@ -44,6 +45,16 @@ section before writing a `verify:`.
 | `index-only` | archive it, if its index line already says everything | none: read it |
 | `frontmatter-not-yaml` | quote the offending value | none: mechanical |
 | `low-confidence`, `territory-hint` | a read, then a fix or a decline | none: read it |
+| `description-long` | a description under 160 bytes that still states the conclusion | same as `description`, plus: "in at most 160 bytes" |
+| `index-degraded` | the full index back: shorten the longest descriptions, split records out of a crowded group, or propose restructuring the territory | none: `mem render --check T` names the steps it took; work the `description-long` items in that territory first |
+| `index-over-cap`, `memories-over-cap`, `memories-over-target` | a shorter hand-written head or MEMORIES section; restructuring goes to Matt (`/memory-restructure`) | none: read the index |
+| `field-invalid`, `missing-kind` | the value from the vocabulary in format-spec (a missing `group:` takes one of the territory's `groups:`) | none: mechanical |
+
+**The index budget is this skill's, and only this skill's.** Render fits every index under
+the harness's limit by itself, degrading its own output and never a memory's description, so
+nothing on other items needs trimming to make room. Do not shorten a description because an
+index is full: that is what `index-degraded` and `description-long` are for, and they want a
+better description, not a shorter one.
 
 ## Ask Matt, don't act
 
@@ -69,7 +80,7 @@ an item because it is hard.
 ## Finish
 
     mem refine queue --limit 0          # report: N items before, M after
-    mem render && mem audit --scan store
+    mem render && mem audit --scan store --refine
 
 No new audit errors. Report what was done per item, what was asked and is waiting on
 Matt, and the queue length before and after. The store commits itself at session end.
