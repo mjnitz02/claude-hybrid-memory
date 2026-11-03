@@ -3,7 +3,7 @@
 # Tools run through uv, so their versions come from uv.lock, and the pre-commit hooks,
 # CI and this file all run the same ruff and pytest.
 
-MEM_BIN := $(shell uv tool dir --bin 2>/dev/null || echo $(HOME)/.local/bin)/mem
+MEM := $(CURDIR)/bin/mem
 
 .DEFAULT_GOAL := help
 .PHONY: help sync lint fix test test-live check pre-commit hooks install install-check
@@ -34,9 +34,8 @@ pre-commit: ## Every pre-commit hook over every file
 hooks: ## Install the git hooks: lint + secret scan on commit, tests on push
 	uv run pre-commit install
 
-install: ## Install `mem`, then set up or repair the store, skills and Claude Code hooks
-	uv tool install -e . --reinstall
-	$(MEM_BIN) install --repo $(CURDIR) --mem $(MEM_BIN)
+install: ## Dev install: load this checkout as the plugin, then set up or repair the store
+	$(MEM) install --dev --repo $(CURDIR)
 
 install-check: ## What `make install` would change, writing nothing
-	$(MEM_BIN) install --dry-run --repo $(CURDIR) --mem $(MEM_BIN)
+	$(MEM) install --dev --dry-run --repo $(CURDIR)

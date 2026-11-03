@@ -1,0 +1,12 @@
+{
+  "name": "hybrid-memory",
+  "description": "A machine-local memory store for Claude Code: territories, a router, standing directives and gates loaded every session, usage logging, and a store that commits its own history.",
+  "author": {
+    "name": "Matt Nitzken",
+    "url": "https://github.com/mjnitz02"
+  },
+  "homepage": "https://github.com/mjnitz02/claude-hybrid-memory",
+  "repository": "https://github.com/mjnitz02/claude-hybrid-memory",
+  "license": "MIT",
+  "keywords": ["memory", "hooks", "skills", "context"]
+}

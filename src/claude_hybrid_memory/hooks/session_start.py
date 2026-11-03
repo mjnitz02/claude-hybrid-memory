@@ -10,7 +10,7 @@ Four jobs, per docs/design.md:
 
 Must never break a session: any failure prints nothing and exits 0. A machine with no
 store, or a store missing its history or its import, gets one line pointing at
-`/memory-setup` -- never an error.
+the `memory-setup` skill -- never an error.
 
 Why the layer is not injected from here any more (2026-10-23). Claude Code persists any one
 hook's `additionalContext` longer than 10,000 chars to a file under tool-results/ and hands
@@ -334,7 +334,7 @@ def output(store: Path, cwd: Path, claude_md: Path = CLAUDE_MD, write: bool = Tr
     With `write` False nothing is written and the stale note is counted as if it fired."""
     if not store.is_dir():
         return ("# MEMORY STATUS\n\n- **Memory is not set up on this machine** (no store at "
-                f"`{store}`). Offer the user `/memory-setup`, which creates it.")
+                f"`{store}`). Offer the user the `memory-setup` skill, which creates it.")
     notes = []
     stale = write_always(store) if write else True
     always = store / ALWAYS
@@ -342,7 +342,8 @@ def output(store: Path, cwd: Path, claude_md: Path = CLAUDE_MD, write: bool = Tr
         notes.append(f"**The always-loaded layer is NOT in context.** Nothing imports it "
                      f"(wanted: {rules_path(claude_md)}), so GATES, the standing directives "
                      f"and the router were not loaded. Read `{always}` now, before acting, "
-                     "and offer the user `/memory-setup`; `mem install` writes the import.")
+                     "and offer the user the `memory-setup` skill; `mem install` writes "
+                     "the import.")
     elif stale:
         notes.append(f"`{always}` was out of date and has just been re-rendered, so the "
                      "copy loaded this session may be older than the store. "
@@ -350,7 +351,7 @@ def output(store: Path, cwd: Path, claude_md: Path = CLAUDE_MD, write: bool = Tr
     if not (store / ".git").exists():
         notes.append(f"**The store has no history** (`{store}` is not a git repository), so "
                      "nothing commits it and `mem restore` / `mem revert` cannot work. "
-                     "Offer the user `/memory-setup`.")
+                     "Offer the user the `memory-setup` skill.")
 
     terr, all_t = territory_for(cwd, store)
     if terr and terr not in all_t:
@@ -369,7 +370,7 @@ def output(store: Path, cwd: Path, claude_md: Path = CLAUDE_MD, write: bool = Tr
     overdue = retro_overdue(read(store / "ROUTER.md"))
     if overdue is not None:
         notes.append(f"Memory retrospective is **{overdue} days** old "
-                     f"(cadence {RETRO_DUE_DAYS}d). Run `/memory-retro` when there is "
+                     f"(cadence {RETRO_DUE_DAYS}d). Run the `memory-retro` skill when there is "
                      "a natural pause.")
     return ("# MEMORY STATUS\n\n" + "\n\n".join(f"- {n}" for n in notes)) if notes else ""
 

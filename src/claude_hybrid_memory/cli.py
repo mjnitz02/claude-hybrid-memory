@@ -25,7 +25,7 @@ Enforces docs/format-spec.md.
     mem audit --at REV
     mem render [TERRITORY] [--check]
     mem render TERRITORY --adopt [--write]
-    mem install [--dry-run]
+    mem install [--dry-run] [--dev]
     mem migrate inventory [--source DIR ...]
     mem migrate summarize [--silo S ...] [--jobs N] [--model M] [--force] [--dry-run]
     mem migrate summaries [--silo S ...] [--json]
@@ -283,7 +283,7 @@ def _adoption_report(ad, render) -> None:
 
 
 def _install(argv: list[str]) -> int:
-    """`mem install`: stand up or repair the store and its hooks (setup.md)."""
+    """`mem install`: stand up or repair the store behind the plugin (setup.md)."""
     import argparse
     from pathlib import Path
 
@@ -297,18 +297,22 @@ def _install(argv: list[str]) -> int:
                     help="report what would change; write nothing")
     ap.add_argument("--root", type=Path, default=STORE, help=f"store root (default {STORE})")
     ap.add_argument("--repo", type=Path, default=install.REPO,
-                    help=f"this repo, for templates/ and skills/ (default {install.REPO})")
+                    help=f"the plugin checkout, for templates/ and skills/ "
+                         f"(default {install.REPO})")
     ap.add_argument("--claude-dir", type=Path, default=install.CLAUDE,
-                    help=f"holds settings.json and skills/ (default {install.CLAUDE})")
+                    help=f"Claude Code's config dir (default {install.CLAUDE})")
     ap.add_argument("--mem", type=Path, default=install.MEM,
-                    help=f"the binary the hooks run (default {install.MEM})")
+                    help=f"the shim the hooks run (default {install.MEM})")
+    ap.add_argument("--dev", action="store_true",
+                    help="load --repo as the plugin, via a symlink in ~/.claude/skills")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
     if not (a.repo / "templates").is_dir():
         print(f"{a.repo} has no templates/; pass --repo <claude-hybrid-memory checkout>",
               file=sys.stderr)
         return 2
-    return report(install.run(a.root, a.repo, a.claude_dir, a.mem.absolute(), a.dry_run), a.json)
+    return report(install.run(a.root, a.repo, a.claude_dir, a.mem.absolute(), a.dry_run,
+                              a.dev), a.json)
 
 
 def _migrate(argv: list[str]) -> int:

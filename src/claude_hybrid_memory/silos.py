@@ -97,7 +97,7 @@ def do_link(root: Path, legacy: Path, territory: str, target_dir: Path,
         if files:
             out.append(Finding(ERROR, "link-silo-occupied", silo.name,
                                f"holds {len(files)} unmigrated memory file(s); run "
-                               "/memory-migrate first -- linking over them would strand "
+                               "the memory-migrate skill first -- linking over them would strand "
                                "knowledge in a directory nothing reads"))
             return out
 

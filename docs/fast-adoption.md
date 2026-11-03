@@ -108,8 +108,8 @@ both machines. Each run is isolated:
 
     claude -p --model sonnet --tools "" --no-session-persistence --setting-sources "" \
       --settings '{"disableAllHooks": true}' \
-      --system-prompt-file <repo>/agents/memory-summarizer.md \
-      --json-schema "$(cat <repo>/agents/memory-summary.schema.json)" --output-format json
+      --system-prompt-file <repo>/prompts/memory-summarizer.md \
+      --json-schema "$(cat <repo>/prompts/memory-summary.schema.json)" --output-format json
 
 started in an empty temporary directory, with the file body (and its inventory record) on
 stdin:
@@ -146,7 +146,7 @@ project's basic memory file" that the territory map is built from.
 
 ### What a file summary says
 
-Defined by `agents/memory-summary.schema.json`; roughly:
+Defined by `prompts/memory-summary.schema.json`; roughly:
 
     {
       "conclusion": "one line, stated as a conclusion, not a topic",
@@ -308,7 +308,7 @@ its key.
   is a symlink to the territory, so a re-computed key no longer matches.
 - **Declining** is a backticked `refine:<key>` anywhere in `RETRO.md`, so the reason sits
   in the prose of the retrospective that made the call.
-- **The per-type subagent directives live in the skill**, not in `agents/`, since they are
+- **The per-type subagent directives live in the skill**, not in `prompts/`, since they are
   one sentence each and only the skill uses them.
 
 First real build, 2026-10-23: 144 items: 46 verify, 45 shape, 17 split-candidate, 16
@@ -320,7 +320,7 @@ as its health number, in place of reading through territories.
 
 ## 9. The repo additions
 
-    agents/
+    prompts/
       memory-summarizer.md           # file directive (system prompt for stage 2)
       memory-silo-summarizer.md      # silo directive
       memory-summary.schema.json
@@ -329,10 +329,10 @@ as its health number, in place of reading through territories.
     skills/memory-migrate/SKILL.md   # rewritten: drives stages 1 to 4, holds the checkpoint
     skills/memory-refine/SKILL.md    # new: stage 5
 
-`agents/` holds directives that `mem` passes to `claude -p`; they are not Claude Code agent
-definitions and are not symlinked anywhere. The refine subagents use the same files
-through the Agent tool's prompt, with `model: sonnet`. `mem install` links the new skill
-like the others.
+`prompts/` holds directives that `mem` passes to `claude -p`; they are not Claude Code agent
+definitions, which is why the directory is not called `agents/` (renamed 2026-11-03: the
+plugin would load that as subagents). The refine subagents use the same files through the
+Agent tool's prompt, with `model: sonnet`. The plugin ships the new skill like the others.
 
 ## 10. Testing
 
@@ -383,7 +383,7 @@ events, and its isolation (§5) keeps it out of Phase 2's measurements.
    `dated-snapshot` where they applied. Two directive fixes came out of it: `verify` now
    asks only for state claims, at most 3 (the first draft flagged every path), and
    `territory_hint` is null unless the file is about another project (the first draft
-   echoed the silo's own project). The tested directive and schema are in `agents/`.
+   echoed the silo's own project). The tested directive and schema are in `prompts/`.
 2. **Inventory and summarize**, with the fake runner and tests. Then run on
    one small silo (7 files) and Matt reads the summaries beside the files.
    *Exit:* Matt judges the conclusions and flags right on that silo.

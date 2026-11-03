@@ -1,16 +1,23 @@
-"""`mem install`: stand up or repair this machine's store and wire Claude Code to it.
+"""`mem install`: stand up or repair this machine's store, behind the plugin.
 
-The scripted form of setup.md steps 1 to 3d; `make install` runs it after installing the
-`mem` tool itself. Every step looks before it changes anything and can be re-run: what is
-already right is reported and left alone, a file is never overwritten, and settings.json
-is backed up before it is rewritten. Then it runs each hook the way Claude Code will,
-against a copy of the store, so a broken hook shows up here and not in every session.
-`--dry-run` reports what would change, writes nothing, and runs no hook.
+The scripted form of setup.md steps 1 to 3d. The `hybrid-memory` plugin carries the
+hooks and skills (hooks/hooks.json, skills/); this does what a plugin cannot: create the
+store, give it its own history, and write the rules file that imports the always-loaded
+layer. Every step looks before it changes anything and can be re-run: what is already right
+is reported and left alone, and a store file is never overwritten. Then it runs each hook
+the way Claude Code will, against a copy of the store, so a broken hook shows up here and
+not in every session. `--dry-run` reports what would change, writes nothing, and runs no hook.
 
-It writes one file outside the store, ~/.claude/rules/claude-hybrid-memory.md, which `mem`
-owns and which imports the always-loaded layer (step 3d).
+Machines set up before the plugin (2026-11-03) carry the old wiring: `mem` hooks merged
+into settings.json and one symlink per skill in ~/.claude/skills. With the plugin there too,
+both would run twice, so once the plugin is present they are removed (settings.json backed
+up first). Without the plugin they are left alone: removing them would leave no hooks.
 
-Not done here: editing MACHINE.md (only the user knows what is true of this box) or
+`--dev` loads a checkout as the plugin by symlinking it into ~/.claude/skills, which Claude
+Code loads as `hybrid-memory@skills-dir`, so edits are live. `make install` does that.
+
+It writes one file outside the store, ~/.claude/rules/claude-hybrid-memory.md. Not done
+here: editing MACHINE.md (only the user knows what is true of this box) or
 ~/.claude/CLAUDE.md (theirs; it is read, never written), territories and silo migration
 (steps 4 and 5, which change where sessions read memory from).
 """
@@ -30,65 +37,80 @@ from claude_hybrid_memory.findings import ERROR, INFO, WARN, Finding
 from claude_hybrid_memory.hooks import session_start
 
 REPO = Path(__file__).resolve().parents[2]
-CLAUDE = Path.home() / ".claude"
-MEM = Path.home() / ".local" / "bin" / "mem"
+CLAUDE = session_start.CLAUDE_DIR
+PLUGIN = "hybrid-memory"
+MEM = REPO / "bin" / "mem"
 
 DIRS = ("standing", "territories", "archive")
 TEMPLATES = ("MACHINE.md", "GATES.md", "ROUTER.md", "RETRO.md")
 
-# event -> (matcher, hook name, extra fields): setup.md steps 3, 3b and 3c, which say why
+# event -> (matcher, hook name): what hooks/hooks.json declares (tests/test_plugin.py holds
+# the two together), and what the pre-plugin settings.json entries ran.
 HOOKS = {
-    "SessionStart": ("startup|resume|clear|compact", "session-start",
-                     {"statusMessage": "Loading memory router"}),
-    "PostToolUse": ("Read|Write|Edit|Bash", "post-tool", {}),
-    "SessionEnd": (None, "session-end", {}),
+    "SessionStart": ("startup|resume|clear|compact", "session-start"),
+    "PostToolUse": ("Read|Write|Edit|Bash", "post-tool"),
+    "SessionEnd": (None, "session-end"),
 }
 
 
-def hook_group(event: str, mem: str) -> dict:
-    """The settings.json group for one event, exactly as setup.md shows it."""
-    matcher, name, extra = HOOKS[event]
-    hook = {"type": "command", "command": mem, "args": ["hook", name], "timeout": 10, **extra}
-    return ({"matcher": matcher} if matcher else {}) | {"hooks": [hook]}
-
-
 def is_ours(hook: dict, name: str) -> bool:
-    """A hook entry that runs `mem hook <name>`, in either the args or the one-string form,
-    or the old `tools/session_start.py` it replaced."""
+    """A settings.json hook entry that runs `mem hook <name>`, in either the args or the
+    one-string form, or the old `tools/session_start.py` it replaced."""
     if not isinstance(hook, dict):
         return False
     line = " ".join([str(hook.get("command", ""))] + [str(a) for a in hook.get("args") or []])
     if name == "session-start" and "tools/session_start.py" in line:
         return True
     words = line.split()
-    return bool(words) and Path(words[0]).name == "mem" and f"hook {name}" in line
+    return bool(words) and Path(words[0].strip('"')).name == "mem" and f"hook {name}" in line
 
 
-def merge_hooks(settings: dict, mem: str) -> list[str]:
-    """Bring `settings["hooks"]` to the wanted state in place; returns what changed.
-
-    Only `mem` entries are touched. Unless exactly one is there and already right, every
-    one is taken out (a group left empty goes with it) and the wanted group goes where the
-    first was, so a hook sharing a group with ours keeps its matcher, and a second copy,
-    which would run twice, is gone."""
-    hooks = settings.setdefault("hooks", {})
-    changes = []
-    for event, (_, name, _) in HOOKS.items():
-        want = hook_group(event, mem)
-        groups = hooks.setdefault(event, [])
-        found = [(i, g, h) for i, g in enumerate(groups) for h in g.get("hooks", [])
-                 if is_ours(h, name)]
-        if len(found) == 1 and found[0][1] == want:
+def drop_hooks(settings: dict) -> list[str]:
+    """Take every `mem` hook out of `settings["hooks"]` in place; returns what went. A group
+    left empty goes with it, and an event left empty too. Any other hook stays, including
+    one that shared a group with ours."""
+    hooks = settings.get("hooks")
+    if not isinstance(hooks, dict):
+        return []
+    gone = []
+    for event, (_, name) in HOOKS.items():
+        groups = hooks.get(event)
+        if not isinstance(groups, list):
             continue
-        for _, g, h in found:
-            g["hooks"].remove(h)
-        at = found[0][0] if found else len(groups)
-        kept = [g for g in groups[:at] if g.get("hooks")]
-        hooks[event] = kept + [want] + [g for g in groups[at:] if g.get("hooks")]
-        verb = "updated" if found else "added"
-        extra = f" ({len(found) - 1} duplicate removed)" if len(found) > 1 else ""
-        changes.append(f"{event}: {verb} `mem hook {name}`{extra}")
-    return changes
+        n = 0
+        for g in groups:
+            if isinstance(g, dict) and isinstance(g.get("hooks"), list):
+                keep = [h for h in g["hooks"] if not is_ours(h, name)]
+                n += len(g["hooks"]) - len(keep)
+                g["hooks"] = keep
+        if n:
+            kept = [g for g in groups if not (isinstance(g, dict) and g.get("hooks") == [])]
+            if kept:
+                hooks[event] = kept
+            else:
+                del hooks[event]
+            gone.append(f"{event}: removed `mem hook {name}`" + (f" x{n}" if n > 1 else ""))
+    if not hooks:
+        del settings["hooks"]
+    return gone
+
+
+def plugin_source(claude: Path) -> str | None:
+    """Where this machine gets the plugin: a checkout in ~/.claude/skills (`skills-dir`), an
+    install from a marketplace (`marketplace`), or nowhere. A session started with
+    `--plugin-dir` cannot be seen from here."""
+    manifest = claude / "skills" / PLUGIN / ".claude-plugin" / "plugin.json"
+    try:
+        if json.loads(manifest.read_text(encoding="utf-8")).get("name") == PLUGIN:
+            return "skills-dir"
+    except (OSError, ValueError, AttributeError):
+        pass
+    try:
+        installed = json.loads((claude / "plugins" / "installed_plugins.json")
+                               .read_text(encoding="utf-8")).get("plugins", {})
+    except (OSError, ValueError, AttributeError):
+        return None
+    return "marketplace" if any(k.startswith(PLUGIN + "@") for k in installed) else None
 
 
 def ensure_store(root: Path, repo: Path, dry: bool) -> list[Finding]:
@@ -139,58 +161,65 @@ def ensure_git(root: Path, dry: bool, today: str) -> list[Finding]:
     return [Finding(ERROR, "install-git", str(root), r.detail)]
 
 
-def ensure_skills(repo: Path, skills: Path, dry: bool) -> list[Finding]:
-    """Symlink each repo skill into Claude Code's skills dir (setup.md step 2)."""
-    out = []
-    for src in sorted(p.parent for p in (repo / "skills").glob("*/SKILL.md")):
-        dest = skills / src.name
+def ensure_dev_link(repo: Path, claude: Path, dry: bool) -> list[Finding]:
+    """`--dev`: symlink the checkout into ~/.claude/skills as the plugin itself."""
+    dest = claude / "skills" / PLUGIN
+    if dest.is_symlink() and Path(os.path.realpath(dest)) == repo.resolve():
+        return [Finding(INFO, "install-ok", str(dest), f"loads this checkout ({repo})")]
+    if dest.exists() and not dest.is_symlink():
+        return [Finding(ERROR, "install-dev-link", str(dest),
+                        f"exists and is not a symlink; left alone (wanted -> {repo})")]
+    if not dry:
+        dest.parent.mkdir(parents=True, exist_ok=True)
         if dest.is_symlink():
-            if Path(os.path.realpath(dest)) == src.resolve():
-                continue
-            verb = "relink"
-        elif dest.exists():
-            out.append(Finding(WARN, "install-skill", str(dest),
-                               f"exists and is not a symlink; left alone (wanted -> {src})"))
-            continue
-        else:
-            verb = "link"
-        if not dry:
-            skills.mkdir(parents=True, exist_ok=True)
-            if dest.is_symlink():
-                dest.unlink()
-            dest.symlink_to(src)
-        out.append(Finding(INFO, "install-skill", str(dest),
-                           f"{'would ' + verb if dry else verb + 'ed'} -> {src}"))
-    return out or [Finding(INFO, "install-ok", str(skills), "skills linked")]
+            dest.unlink()
+        dest.symlink_to(repo.resolve())
+    return [Finding(INFO, "install-dev-link", str(dest),
+                    f"{'would link' if dry else 'linked'} -> {repo.resolve()}; loads as "
+                    f"{PLUGIN}@skills-dir from the next session")]
 
 
-def ensure_settings(path: Path, mem: str, dry: bool, stamp: str) -> list[Finding]:
-    """Merge the three hooks into settings.json (setup.md steps 3 to 3c)."""
+def ensure_plugin(repo: Path, claude: Path, dry: bool, stamp: str,
+                  source: str | None = None) -> list[Finding]:
+    """The plugin must be there; once it is, the pre-plugin wiring must not be."""
+    source = source or plugin_source(claude)
+    if not source:
+        return [Finding(WARN, "install-no-plugin", str(claude),
+                        f"the {PLUGIN} plugin is not installed, so no hook runs and no skill "
+                        "loads; see README (or `make install` for a dev checkout). Any "
+                        "pre-plugin hooks and skill links are left in place until it is")]
+    out = [Finding(INFO, "install-ok", str(claude), f"plugin present ({source})")]
+    names = {p.parent.name for p in (repo / "skills").glob("*/SKILL.md")}
+    skills = claude / "skills"
+    for name in sorted(names):
+        link = skills / name
+        target = Path(os.path.realpath(link))
+        if link.is_symlink() and target.parent.name == "skills" and (target / "SKILL.md").exists():
+            if not dry:
+                link.unlink()
+            out.append(Finding(INFO, "install-legacy-skill", str(link),
+                               f"{'would remove' if dry else 'removed'} pre-plugin link -> "
+                               f"{target}; the plugin ships this skill"))
+    path = claude / "settings.json"
     try:
         settings = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     except (OSError, ValueError) as e:
-        return [Finding(ERROR, "install-settings", str(path),
-                        f"not readable JSON, untouched: {e}")]
-    if not isinstance(settings, dict) or not isinstance(settings.get("hooks", {}), dict):
-        return [Finding(ERROR, "install-settings", str(path), "unexpected shape, untouched")]
-    changes = merge_hooks(settings, mem)
-    out = []
-    if not Path(mem).is_file():
-        out.append(Finding(WARN, "install-mem-missing", mem,
-                           "the hooks point here but nothing is installed; run `make install`"))
-    if not changes:
-        return out + [Finding(INFO, "install-ok", str(path), "memory hooks current")]
-    if not dry:
-        if path.exists():
-            backup = path.with_name(f"{path.name}.bak-{stamp}")
-            backup.write_bytes(path.read_bytes())
-            changes.append(f"backup at {backup.name}")
-        path.parent.mkdir(parents=True, exist_ok=True)
+        return out + [Finding(ERROR, "install-settings", str(path),
+                              f"not readable JSON, untouched: {e}")]
+    if not isinstance(settings, dict):
+        return out + [Finding(ERROR, "install-settings", str(path), "unexpected shape, untouched")]
+    gone = drop_hooks(settings)
+    if gone and not dry:
+        backup = path.with_name(f"{path.name}.bak-{stamp}")
+        backup.write_bytes(path.read_bytes())
         tmp = path.with_name(path.name + ".tmp")
         tmp.write_text(json.dumps(settings, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         os.replace(tmp, path)
-    return out + [Finding(INFO, "install-hook", str(path), ("would: " if dry else "") + c)
-                  for c in changes]
+        gone.append(f"backup at {backup.name}")
+    return out + [Finding(INFO, "install-legacy-hook", str(path),
+                          ("would: " if dry else "") + g + ("" if g.startswith("backup") else
+                                                            "; the plugin runs it now"))
+                  for g in gone]
 
 
 def ensure_rules(claude_md: Path, root: Path, dry: bool) -> list[Finding]:
@@ -300,13 +329,15 @@ def check_hooks(root: Path, mem: str, repo: Path, claude: Path = CLAUDE) -> list
 
 
 def run(root: Path, repo: Path = REPO, claude: Path = CLAUDE, mem: Path = MEM,
-        dry: bool = False) -> list[Finding]:
+        dry: bool = False, dev: bool = False) -> list[Finding]:
     now = dt.datetime.now()
+    link = ensure_dev_link(repo, claude, dry) if dev else []
+    # a dry run that would link the checkout counts it as present
+    source = "skills-dir" if dev and dry else None
     out = (ensure_store(root, repo, dry)
            + ensure_git(root, dry, now.date().isoformat())
-           + ensure_skills(repo, claude / "skills", dry)
-           + ensure_settings(claude / "settings.json", str(mem), dry,
-                             now.strftime("%Y%m%d-%H%M%S"))
+           + link
+           + ensure_plugin(repo, claude, dry, now.strftime("%Y%m%d-%H%M%S"), source)
            + ensure_rules(claude / "CLAUDE.md", root, dry))
     if dry or any(f.level == ERROR for f in out):
         return out

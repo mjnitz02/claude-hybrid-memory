@@ -197,7 +197,7 @@ def test_failures_retry_once_then_stay_failed(silos: Fixture, fake: Path):
 
 
 def test_validate():
-    schema = json.loads(summarize.AGENTS.joinpath("memory-summary.schema.json").read_text())
+    schema = json.loads(summarize.PROMPTS.joinpath("memory-summary.schema.json").read_text())
     ok = {"conclusion": "c", "description_verdict": "good", "kind": "record",
           "subject_repos": [], "territory_hint": None, "shape": ["index-only"], "verify": [],
           "obsolete": {"likely": False, "why": ""}, "confidence": "low"}
