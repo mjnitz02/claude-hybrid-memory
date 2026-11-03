@@ -4,6 +4,7 @@ Enforces docs/format-spec.md.
 
     mem audit
     mem audit --scan legacy
+    mem audit --refine
     mem fix --write
     mem fresh --run
     mem hook session-start
@@ -11,6 +12,7 @@ Enforces docs/format-spec.md.
     mem hook session-end
     mem events stats
     mem index [--rebuild]
+    mem new <slug> -d DESCRIPTION [-g GROUP] [-t TERRITORY] [--record] < body
     mem find <terms> [--territory T] [--all] [--superseded]
     mem show <slug> [--meta | --section H | --full] [--at REV]
     mem history <slug>
@@ -86,6 +88,9 @@ def _run(argv: list[str]) -> int:
                     help="fix: set last_verified to today where absent. Only when the claims "
                          "were genuinely just verified; mtime is never used.")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--refine", action="store_true",
+                    help="audit: include the refine-only findings (index size, degraded "
+                         "renders, field vocabulary) a plain audit leaves to the refine queue")
     ap.add_argument("--at", metavar="REV",
                     help="check the store as it was at this commit (read-only commands)")
     a = ap.parse_args(argv)
@@ -128,7 +133,7 @@ def _run(argv: list[str]) -> int:
     elif c == "links":
         f = audit.check_links(mems, routers, audit.superseded_paths(a.root))
     elif c == "fresh":
-        f = audit.check_freshness(mems, today, a.run)
+        f = audit.check_freshness(mems, today, a.run, audit.superseded_paths(a.root))
     elif c == "budget":
         f = audit.check_budget(a.root, mems)
     elif c == "drift":
@@ -140,6 +145,9 @@ def _run(argv: list[str]) -> int:
         f = audit.check_silos(a.legacy, a.root)
     else:  # audit
         f = audit.run_all(mems, routers, a.root, a.legacy, today)
+        if not a.refine:
+            from claude_hybrid_memory.spec import REFINE_CODES
+            f = [x for x in f if x.code not in REFINE_CODES]
         hdr = (f"scanned {len(mems)} memory files, {len(routers)} routers "
                f"({sum(1 for m in mems if m.scope=='store')} store, "
                f"{sum(1 for m in mems if m.scope=='legacy')} legacy)")
@@ -922,7 +930,7 @@ def _supersede(conn, root, old_spec: str, new_spec: str) -> int:
     import os
 
     from claude_hybrid_memory import cache, chains
-    from claude_hybrid_memory.spec import INDEX_LINK_RE
+    from claude_hybrid_memory.spec import entry_line_re
 
     old, new = _resolve_one(conn, old_spec), _resolve_one(conn, new_spec)
     if old is None or new is None:
@@ -959,11 +967,14 @@ def _supersede(conn, root, old_spec: str, new_spec: str) -> int:
     if others:
         print(f"note: {o.key} is also superseded by {', '.join(others)}")
     r = root / "territories" / o.container / "MEMORY.md"
-    if o.area == "territory" and r.is_file() and any(
-            os.path.basename(t) == os.path.basename(o.path)
-            for t in INDEX_LINK_RE.findall(r.read_text(encoding="utf-8", errors="replace"))):
-        print(f"{r} still lists {os.path.basename(o.path)}; drop that line so the index "
-              f"routes to {n.key}")
+    if o.area == "territory" and r.is_file():
+        from claude_hybrid_memory import render
+        text = r.read_text(encoding="utf-8", errors="replace")
+        if render.markers(text):
+            render.render(root, o.container)        # a rendered index drops it itself
+        elif entry_line_re(os.path.basename(o.path)).search(text):
+            print(f"{r} still lists {os.path.basename(o.path)}; drop that line so the index "
+                  f"routes to {n.key}")
     return 0
 
 
@@ -1148,6 +1159,9 @@ def main(argv: list[str] | None = None) -> int:
             return _storegit(args)
         if args[:1] == ["render"]:
             return _render(args[1:])
+        if args[:1] == ["new"]:
+            from claude_hybrid_memory import new
+            return new.main(args[1:])
         if args[:1] == ["install"]:
             return _install(args[1:])
         if args[:1] == ["migrate"]:

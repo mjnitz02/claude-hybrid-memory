@@ -28,8 +28,11 @@ def test_structure_flags_the_broken_file(fx: Fixture):
     found = {(f.code, f.path.rsplit("/", 1)[-1]) for f in audit.check_structure(mems)}
     assert ("missing-name", "kit_raw_notes.md") in found
     assert ("bad-slug", "kit_raw_notes.md") in found
-    assert ("bad-status", "kit-bad-recipe.md") in found
-    assert ("bad-date", "kit-bad-recipe.md") in found
+    # a value outside a field's vocabulary is a refine item, not an error (spec.REFINE_CODES)
+    bad = [f for f in audit.check_structure(mems)
+           if f.code == "field-invalid" and f.path.endswith("kit-bad-recipe.md")]
+    assert {f.message.split()[0] for f in bad} >= {"status", "last_verified"}
+    assert all(f.level == "info" for f in bad)
 
 
 def test_links(fx: Fixture):
@@ -171,3 +174,13 @@ def test_a_silo_whose_territory_was_renamed_is_an_error(fx: Fixture):
     (silo / "memory").symlink_to(fx.store / "territories" / "home" / "gone")
     by = {x.code: x for x in audit.check_silos(fx.projects, fx.store)}
     assert by["silo-dangling"].level == "error" and by["silo-dangling"].path == silo.name
+
+
+def test_a_superseded_memory_is_never_stale(fx: Fixture):
+    """It is never edited by design, so a staleness finding on it could never clear."""
+    v1 = fx.store / "territories/console/kit/kit-sync-v1.md"
+    v1.write_text(v1.read_text().replace("status: SHIPPED\n", "volatility: live\n"))
+    mems, _ = scanned(fx)
+    hit = lambda f: [x for x in f if x.path == str(v1)]  # noqa: E731 - the store copy only
+    assert hit(audit.check_freshness(mems, TODAY, run=False))
+    assert not hit(audit.check_freshness(mems, TODAY, False, audit.superseded_paths(fx.store)))

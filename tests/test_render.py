@@ -61,20 +61,22 @@ def test_adopt_write_renders_and_keeps_the_hand_written_head(fx: Fixture):
     assert meta["consumes"] == "home/lab"
     s, e = render.markers(text)
     assert text[s:e] == (
+        "Each name below is `<name>.md` beside this file.\n"
         "### Sync\n"
-        "- [kit-sync-design](kit-sync-design.md) — The current sync architecture; start here.\n"
+        "- kit-sync-design: The current sync architecture; start here.\n"
         "### Bench work\n"
-        "- [kit_raw_notes](kit_raw_notes.md) — SHIPPED raw notes from the bench.\n"
-        "- Records and history: [kit-fodder-corpus](kit-fodder-corpus.md)\n"
+        "- kit_raw_notes: SHIPPED raw notes from the bench.\n"
+        "- Records: kit-fodder-corpus\n"
         "### Other\n"
-        "- [kit-bad-recipe](kit-bad-recipe.md) — A recipe that pipes.\n"
-        "- [kit-unlisted-orphan](kit-unlisted-orphan.md) — Nothing links here and no router "
-        "lists it.\n")
+        "- kit-bad-recipe: A recipe that pipes.\n"
+        "- kit-unlisted-orphan: Nothing links here and no router lists it.\n")
     m, _, _ = parse_frontmatter((fx.store / KIT / "kit-fodder-corpus.md").read_text())
     assert m["group"] == "Bench work"
     # the superseded file is never edited, so it gets no group either
     assert "group:" not in (fx.store / KIT / "kit-sync-v1.md").read_text()
-    assert render.check(fx.store, ["console/kit"]) == []
+    # the two in Other have no group: refine items, nothing else
+    assert {(f.code, Path(f.path).name) for f in render.check(fx.store, ["console/kit"])} == {
+        ("field-invalid", "kit-bad-recipe.md"), ("field-invalid", "kit-unlisted-orphan.md")}
     rc, _, err = run(mem_cmd("render", "console/kit", "--adopt"), fx.env())
     assert rc == 2 and "already rendered" in err
 
@@ -84,14 +86,14 @@ def test_a_changed_description_is_stale_until_rendered(fx: Fixture):
     render.write_adoption(fx.store, render.adopt(fx.store, "console/kit"))
     p = fx.store / KIT / "kit-sync-design.md"
     p.write_text(p.read_text().replace("start here.", "start here; v1 is history."))
-    [f] = render.check(fx.store)
+    [f] = [f for f in render.check(fx.store) if f.code != "field-invalid"]
     assert f.code == "render-stale"
     rc, out, _ = run(mem_cmd("render", "--check"), fx.env())
     assert rc == 0 and "render-stale" in out
     rc, out, _ = run(mem_cmd("render"), fx.env())
     assert rc == 0 and "console/kit: re-rendered" in out
     assert "start here; v1 is history." in (fx.store / KIT / "MEMORY.md").read_text()
-    assert render.check(fx.store) == []
+    assert [f for f in render.check(fx.store) if f.code != "field-invalid"] == []
 
 
 def test_the_memories_section_is_budgeted_on_every_index(fx: Fixture):
@@ -99,12 +101,17 @@ def test_the_memories_section_is_budgeted_on_every_index(fx: Fixture):
     base = lab.read_text()
     lab.write_text(base + "- line\n" * 100)
     [f] = render.check(fx.store)
-    assert (f.level, f.code) == ("warn", "memories-over-target")
+    assert (f.level, f.code) == ("info", "memories-over-target")
     lab.write_text(base + "- line\n" * 150)
     [f] = render.check(fx.store)
-    assert (f.level, f.code) == ("error", "memories-over-cap")
-    rc, _, _ = run(mem_cmd("render", "--check"), fx.env())
-    assert rc == 1
+    assert (f.level, f.code) == ("warn", "memories-over-cap")
+    # size never fails a command: it is the refine pass's to act on
+    rc, out, _ = run(mem_cmd("render", "--check"), fx.env())
+    assert rc == 0 and "memories-over-cap" in out
+    rc, out, _ = run(mem_cmd("audit"), fx.env())
+    assert "memories-over-cap" not in out
+    rc, out, _ = run(mem_cmd("audit", "--refine"), fx.env())
+    assert "memories-over-cap" in out
 
 
 def test_the_head_is_not_budgeted_but_the_harness_cap_still_is(fx: Fixture):
@@ -115,7 +122,7 @@ def test_the_head_is_not_budgeted_but_the_harness_cap_still_is(fx: Fixture):
     assert render.check(fx.store) == []
     lab.write_text(head + "- line\n" * 90)
     [f] = render.check(fx.store)
-    assert (f.level, f.code) == ("error", "index-over-cap")
+    assert (f.level, f.code) == ("warn", "index-over-cap")
 
 
 def test_superseded_and_dropped_is_not_unlisted_or_orphaned(fx: Fixture):
@@ -170,7 +177,7 @@ def test_the_byte_cap_warns_a_kilobyte_early(fx: Fixture):
     head = base.replace("## MEMORIES", ("g" * 199 + "\n") * 121 + "## MEMORIES")
     lab.write_text(head)
     [f] = render.check(fx.store)
-    assert (f.level, f.code) == ("warn", "index-near-cap")
+    assert (f.level, f.code) == ("info", "index-near-cap")
 
 
 def test_an_appended_pointer_is_taken_into_the_section(fx: Fixture):
@@ -190,11 +197,11 @@ def test_an_appended_pointer_is_taken_into_the_section(fx: Fixture):
     rc, _, _ = run(mem_cmd("render"), fx.env())
     assert rc == 0
     text = index.read_text()
-    assert text.count("kit-new-probe.md") == 1 and "hand line" not in text
-    assert text.index("kit-new-probe.md") < text.index(render.END)
+    assert text.count("kit-new-probe") == 1 and "hand line" not in text
+    assert text.index("- kit-new-probe: ") < text.index(render.END)
     assert "not ours, kept" in text
     assert "- console/kit (7) :" in (fx.store / "ROUTER.md").read_text()
-    assert render.check(fx.store) == []
+    assert [f for f in render.check(fx.store) if f.code != "field-invalid"] == []
 
 
 def test_every_territory_is_on_the_map_and_every_memory_in_its_index(fx: Fixture):
@@ -236,3 +243,71 @@ def test_router_entries_reads_lists_counts_and_continuations():
     e = render.router_entries(text)
     assert sorted(e) == ["home/B-c", "home/a", "home/d"]
     assert e["home/a"].endswith("more.") and e["home/d"] == "- home/d : two."
+
+
+def test_index_entry_reads_both_forms_and_index_names_reads_lists():
+    from claude_hybrid_memory.spec import index_entry, index_names
+    assert index_entry("- [Title](a-b.md) — gloss") == ("a-b.md", "Title", "gloss")
+    assert index_entry("- a-b: gloss: more") == ("a-b.md", "a-b", "gloss: more")
+    assert index_entry("- Records: a b") is None
+    assert index_entry("- **bold**: prose") is None
+    assert index_names("- [T](x.md) — g\n- y: g\n- Records: r1 r2\n- Names: n1\n") == {
+        "x.md", "y.md", "r1.md", "r2.md", "n1.md"}
+
+
+def crowd(fx: Fixture, n: int, desc_bytes: int = 150) -> list[Path]:
+    """console/kit adopted, plus `n` grouped memories with descriptions of `desc_bytes`:
+    a console/tools-sized index made in bulk, never copied from the real store."""
+    grouped(fx)
+    render.write_adoption(fx.store, render.adopt(fx.store, "console/kit"))
+    out = []
+    for i in range(n):
+        g = ("Sync", "Bench work")[i % 2]
+        desc = (f"Memory {i} " + "word " * 60)[:desc_bytes].strip()
+        p = fx.store / KIT / f"kit-crowd-{i:03d}.md"
+        p.write_text(f"---\nname: kit-crowd-{i:03d}\ndescription: \"{desc}\"\n"
+                     f"group: \"{g}\"\n" + ("tier: record\n" if i % 7 == 0 else "")
+                     + "---\n\nBody.\n")
+        out.append(p)
+    return out
+
+
+def test_render_steps_down_to_fit_and_never_touches_a_description(fx: Fixture):
+    files = crowd(fx, 170)
+    before = {p: p.read_bytes() for p in files}
+    rc, out, _ = run(mem_cmd("render", "console/kit"), fx.env())
+    assert rc == 0 and "kit" in out
+    text = (fx.store / KIT / "MEMORY.md").read_text()
+    assert len(text.encode()) <= render.BYTE_TARGET and render.nlines(text) <= render.LINE_TARGET
+    assert {p: p.read_bytes() for p in files} == before
+    codes = {(f.level, f.code) for f in render.check(fx.store, ["console/kit"])}
+    assert ("info", "index-degraded") in codes
+    assert not any(level == "error" for level, _ in codes)
+    # a writing session's audit says nothing about it, and nothing is "unlisted"
+    rc, out, _ = run(mem_cmd("audit", "--scan", "store"), fx.env())
+    assert "index-degraded" not in out and "router-unlisted" not in out
+    rc, out, _ = run(mem_cmd("audit", "--scan", "store", "--refine"), fx.env())
+    assert "index-degraded" in out
+
+
+def test_the_ladder_is_mildest_first(fx: Fixture):
+    crowd(fx, 60)
+    t = render.load(fx.store, "console/kit")
+    steps = list(render.ladder(t))
+    assert steps[0].none and [s.desc for s in steps[:3]] == [160, 120, 80]
+    # a line step is tried with full descriptions first, since cutting saves no lines
+    assert [(s.records, s.desc) for s in steps[3:7]] == [
+        ("one", 160), ("one", 120), ("one", 80), ("none", 160)]
+    # groups collapse from the bottom of the index up: Other first, then groups: in reverse
+    assert steps[9].names_only == (None,) and steps[12].names_only == (None, "Bench work")
+    # a territory that fits is not degraded at all
+    _, _, d, _ = render.render_full(fx.store, "console/kit", False)
+    assert d.none
+
+
+def test_a_long_description_is_a_refine_item(fx: Fixture):
+    p = crowd(fx, 2, 0)[1]                  # [0] is a record, which gets no description line
+    p.write_text(p.read_text().replace('description: ""', 'description: "' + "x " * 120 + '"'))
+    render.render(fx.store, "console/kit")
+    [f] = [f for f in render.check(fx.store) if f.code == "description-long"]
+    assert f.level == "info" and f.path.endswith("kit-crowd-001.md")

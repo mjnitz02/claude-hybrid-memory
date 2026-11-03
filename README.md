@@ -100,6 +100,7 @@ alone lists the other targets.
     mem status          # migration state per silo
     mem link --territory <path> --write   # point a restored repo back at its territory
     mem budget          # the always-loaded layer, as the hook actually renders it
+    mem new <slug> -d DESC [-g GROUP] < body   # write a memory with the store's fields and index it
     mem find <terms>    # ranked memories + the sections that matched, as path:line
     mem show <slug>     # description + opening paragraph; --meta, --section H, --full; --at REV
     mem history <slug>  # version chain both ways + the file's git log
@@ -110,7 +111,8 @@ alone lists the other targets.
     mem log / mem diff  # the store's history and uncommitted changes
     mem restore <path>  # put files back from HEAD (or --from REV); commits first, never deletes
     mem audit --at REV  # any read-only check against the store as a past commit had it
-    mem render --check  # stale rendered indexes, and any MEMORY.md near the harness's 200 lines / 25 KB
+    mem render --check  # stale or degraded rendered indexes, and any MEMORY.md near the harness's cap
+    mem audit --refine  # the audit plus the refine-only findings (index size, field vocabulary)
     mem render <t> --adopt [--write]  # migrate a hand-written index to a rendered one
     mem install [--dry-run]  # set up or repair the store, its history, skills and hooks
     mem migrate inventory | summarize | summaries | map | apply | undo   # fast adoption
@@ -128,7 +130,8 @@ Three hooks are installed:
   `~/.claude/CLAUDE.md` imports (a hook's output is cut to a 2 KB preview past 10,000 chars,
   so the layer cannot ride in it). It also names the territory for the current directory and
   reports when the retrospective is overdue.
-- `PostToolUse` records usage and reindexes on writes.
+- `PostToolUse` records usage, refreshes the cache on writes, and re-renders a rendered
+  territory's index after a Write or Edit into it.
 - `SessionEnd` re-renders indexes and commits the store.
 
 To see exactly what a session is handed:

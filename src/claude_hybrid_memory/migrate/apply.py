@@ -41,6 +41,7 @@ from claude_hybrid_memory.render import (
     render,
     set_field,
 )
+from claude_hybrid_memory.spec import LINK_ENTRY_RE, index_entry, index_names
 from claude_hybrid_memory.store import parse_frontmatter, scan_store
 
 MODES = ("active", "parked")
@@ -212,29 +213,44 @@ def reindex(root: Path, territory: str, moved: frozenset[str] = frozenset()) -> 
     if markers(text):
         render(root, territory)
         return
-    link = re.compile(r"^- \[[^\]]*\]\(([^)/]+\.md)\)")
-    kept = [ln for ln in text.split("\n")
-            if not ((m := link.match(ln)) and m.group(1) in moved)]
+    kept = [ln for ln in text.split("\n") if own_entry(ln) not in moved]
     text = "\n".join(kept)
-    listed = set(re.findall(r"\]\(([^)/]+\.md)\)", text))
+    listed = index_names(text)
+    from claude_hybrid_memory.audit.relations import store_graph
+    superseded = store_graph(root).superseded()     # its successor holds the line
     new = []
     for f in sorted(tdir.glob("*.md")):
-        if f.name in ("MEMORY.md", "EXPORTS.md") or f.name in listed:
+        if (f.name in ("MEMORY.md", "EXPORTS.md") or f.name in listed
+                or f"territories/{territory}/{f.name}" in superseded):
             continue
         meta, _, _ = parse_frontmatter(f.read_text(encoding="utf-8"))
-        new.append(f"- [{f.stem}]({f.name}) — {clip(one_line(meta.get('description')))}")
+        new.append(entry_line(f.stem, one_line(meta.get("description"))))
     if new:
         text = after_last_entry(text, new)
     index.write_text(text, encoding="utf-8")
+
+
+def own_entry(line: str) -> str | None:
+    """The file an index entry line names, when that file sits beside the index: a link
+    with a directory in it (`../other.md`) is someone else's memory."""
+    e = index_entry(line)
+    if e is None or ((m := LINK_ENTRY_RE.match(line)) and "/" in m["file"]):
+        return None
+    return e[0]
+
+
+def entry_line(slug: str, description: str) -> str:
+    """A hand-written index's line for one memory, in the bare form render writes."""
+    return f"- {slug}: {clip(description)}"
 
 
 def after_last_entry(text: str, lines: list[str]) -> str:
     """`lines` after a hand-written index's last entry. Most hand-written indexes group
     entries under topic headings with no `## MEMORIES`, so a new section at the end would
     strand the lines away from the rest."""
-    entries = list(re.finditer(r"^- \[[^\]]*\]\([^)/]+\.md\).*$", text, re.M))
-    if entries:
-        end = entries[-1].end()
+    ends = [m.end() for m in re.finditer(r"^- .*$", text, re.M) if own_entry(m.group(0))]
+    if ends:
+        end = ends[-1]
     elif m := SECTION_RE.search(text):
         end = m.end()
     else:

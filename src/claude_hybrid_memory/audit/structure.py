@@ -41,7 +41,8 @@ def check_structure(mems: list[Memory]) -> list[Finding]:
         if not kind:
             out.append(Finding(WARN, "missing-kind", rel, "no `kind:`; assuming territory"))
         elif kind not in KINDS:
-            out.append(Finding(ERROR, "bad-kind", rel, f"kind {kind!r} not in {sorted(KINDS)}"))
+            out.append(Finding(INFO, "field-invalid", rel,
+                               f"kind {kind!r} not in {sorted(KINDS)}"))
         if m.volatility is None:
             # Not a defect: freshness defaults this to `slow` (90d), which is a safe
             # middle. Left as INFO so 140 migrated legacy files do not drown the report
@@ -49,17 +50,19 @@ def check_structure(mems: list[Memory]) -> list[Finding]:
             out.append(Finding(INFO, "no-volatility", rel,
                                "no `volatility:` and no `status:` to derive it from; "
                                "defaulting to slow (90d). Classify during a retrospective."))
+        # A field with a value outside its vocabulary is a refine item, never an error: it is
+        # what a session writing a memory gets wrong, and stopping that session to look up an
+        # enum costs more than the field is worth. Errors are for broken structure.
         elif m.volatility not in VOLATILITIES:
-            out.append(Finding(ERROR, "bad-volatility", rel,
+            out.append(Finding(INFO, "field-invalid", rel,
                                f"volatility {m.volatility!r} not in {sorted(VOLATILITIES)}"))
         for fld, allowed in (("status", STATUSES), ("role", ROLES), ("confidence", CONFIDENCES),
                              ("owner", OWNERS), ("mode", MODES), ("tier", TIERS)):
             v = m.meta.get(fld)
             if v and str(v).strip() not in allowed:
-                lvl = ERROR if fld == "status" else WARN
-                out.append(Finding(lvl, f"bad-{fld}", rel,
+                out.append(Finding(INFO, "field-invalid", rel,
                                    f"{fld} {str(v)!r} not in {sorted(allowed)}"))
         if m.meta.get("last_verified") and m.last_verified is None:
-            out.append(Finding(ERROR, "bad-date", rel,
+            out.append(Finding(INFO, "field-invalid", rel,
                                f"last_verified {m.meta['last_verified']!r} is not YYYY-MM-DD"))
     return out

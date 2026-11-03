@@ -387,7 +387,7 @@ def test_apply_lands_each_silo_in_two_commits(landed: Fixture, fake: Path):
     assert "`archive/fixture-alpha/old-thing.md`" in dn and not (alpha / "old-thing.md").exists()
     index = (alpha / "MEMORY.md").read_text()
     assert "territory: fixture/alpha" in index and "alpha: {mode: parked}" in index
-    assert "- [deploy-notes](deploy-notes.md) — Conclusion of deploy-notes.md" in index
+    assert "- deploy-notes: Conclusion of deploy-notes.md" in index
     router = (fx.store / "ROUTER.md").read_text()
     assert "## fixture\n- fixture/alpha (" in router
     assert "- home/lab (" in router and "- home/lab (3)" not in router
@@ -475,6 +475,8 @@ def test_refine_queue_derives_and_drops(landed: Fixture, fake: Path):
     h.write_text(h.read_text().replace("description: d", "description: A house rule"))
     q = items()
     assert f"shape:{dn}" not in q and f"verify:{dn}" not in q
+    f.write_text(f.read_text().replace("verify: true", "unrunnable: true", 1))
+    assert f"verify:{dn}" not in items()                           # declared unrunnable
     assert f"description:{hr}" not in q and f"standing-candidate:{hr}" in q
     (fx.store / "standing").mkdir(exist_ok=True)
     h.replace(fx.store / "standing" / "house-rule.md")             # promoted

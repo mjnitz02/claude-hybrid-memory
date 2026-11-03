@@ -181,7 +181,7 @@ same property the skills symlink has today. Hooks, maintenance and humans use it
 | `mem find <terms> [--territory] [--all]` | the same compact list `memory_find` returns | for humans and skills |
 | `mem show <slug> [--meta\|--summary\|--section H]` | partial reads | |
 | `mem history <slug>` | version chain + `git log` of the file | |
-| `mem render [<territory>] [--check] [--adopt]` | regenerate rendered sections; `--check` fails on drift or budget; `--adopt` migrates a hand-written index | |
+| `mem render [<territory>] [--check] [--adopt]` | regenerate rendered sections, fitting each to the harness cap (format-spec, *Render owns the budget*); `--check` reports drift and degradation; `--adopt` migrates a hand-written index | |
 | `mem supersede <old> <new>` | sets `supersedes:` on `<new>`, validates the chain | mechanical help only; writing the new memory is still Claude's job |
 | `mem audit` | today's checks plus: 200-line/25 KB cap per `MEMORY.md`, rendered-section drift, secret scan, broken chains, accretion markers, **split candidates** | split candidates rank oversized files by size × read frequency × accretion markers, so the retro asks *why* a file is 39 KB |
 | `mem fix --write` | today's autofixes, plus the provenance backfill | |
