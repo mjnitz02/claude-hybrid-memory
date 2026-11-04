@@ -127,3 +127,35 @@ def test_backfill_cli_will_not_write_over_uncommitted_changes(fx: Fixture):
     rc, _, err = run(mem_cmd("backfill-verified", *flags, "--write", "--root", str(fx.store)),
                      fx.env())
     assert rc == 2 and "uncommitted" in err
+
+
+def verified_cmd(fx: Fixture, *args: str):
+    return run(mem_cmd("verified", *args, "--root", str(fx.store)), fx.env())
+
+
+def test_verified_stamps_today_and_logs_the_note(fx: Fixture):
+    import json
+
+    rel = "territories/console/kit/kit-unlisted-orphan.md"
+    rc, out, err = verified_cmd(fx, "kit-unlisted-orphan", "-m", "  the  card is still there ")
+    assert rc == 0, err
+    today = dt.date.today().isoformat()
+    assert f"last_verified {today}" in out
+    assert str(parse_frontmatter((fx.store / rel).read_text())[0]["last_verified"]) == today
+    evs = [json.loads(ln) for f in sorted((fx.store / "events").glob("*.jsonl"))
+           for ln in f.read_text().splitlines()]
+    v = [e for e in evs if e["event"] == "verified"]
+    assert len(v) == 1 and v[0]["path"] == rel and v[0]["note"] == "the card is still there"
+
+
+def test_verified_refuses_records_superseded_and_an_empty_note(fx: Fixture):
+    kit = fx.store / "territories/console/kit"
+    (kit / "kit-a-record.md").write_text(
+        "---\nname: kit-a-record\ndescription: d\nkind: territory\ntier: record\n---\n\nB.\n")
+    for args, why in [(("kit-a-record", "-m", "x"), "record"),
+                      (("kit-sync-v1", "-m", "x"), "superseded"),
+                      (("kit-unlisted-orphan", "-m", "  "), "empty"),
+                      (("no-such-memory", "-m", "x"), "no memory")]:
+        rc, _, err = verified_cmd(fx, *args)
+        assert rc == 2 and why in err, (args, err)
+    assert "last_verified" not in (kit / "kit-a-record.md").read_text()

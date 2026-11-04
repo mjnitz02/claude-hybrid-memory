@@ -25,7 +25,8 @@ Exit codes: 0 clean, 1 findings at error level, 2 tool error.
 
 ## Reading and writing memories
 
-    mem new <slug> -d DESC [-g GROUP] [-t TERRITORY] < body   # write a memory and index it
+    mem new <slug> -d DESC -v VOL|-s STATUS [-g GROUP] [-t TERRITORY] < body   # write a memory and index it
+    mem verified <slug> -m WHAT-WAS-CHECKED   # a claim checked on use held: stamp today, log it
     mem find <terms> [--territory T] [--all] [--superseded]   # ranked memories + matching sections
     mem show <slug> [--meta | --section H | --full] [--at REV]
     mem history <slug>         # version chain both ways + the file's git log

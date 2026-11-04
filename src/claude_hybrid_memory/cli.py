@@ -17,6 +17,7 @@ Enforces docs/format-spec.md.
     mem show <slug> [--meta | --section H | --full] [--at REV]
     mem history <slug>
     mem supersede <old> <new>
+    mem verified <slug> -m WHAT-WAS-CHECKED
     mem backfill-verified [--baseline-date TERRITORY=DATE ...] [--write]
     mem commit [-m SUBJECT]
     mem log [PATH...] [-n N]
@@ -157,7 +158,7 @@ def _run(argv: list[str]) -> int:
     return report(f, a.json)
 
 
-CACHE_COMMANDS = ("index", "find", "show", "history", "supersede")
+CACHE_COMMANDS = ("index", "find", "show", "history", "supersede", "verified")
 GIT_COMMANDS = ("commit", "log", "diff", "restore", "revert")
 
 
@@ -689,6 +690,10 @@ def _cache(argv: list[str]) -> int:
         ap.add_argument("new", help="the memory replacing it; gets the `supersedes:` line")
     elif cmd == "history":
         ap.add_argument("spec", help="slug, territory/slug, or a store-relative path")
+    elif cmd == "verified":
+        ap.add_argument("spec", help="slug, territory/slug, or a store-relative path")
+        ap.add_argument("-m", "--note", required=True,
+                        help="what was checked against the world, e.g. 'HEAD is 4211e13'")
     else:
         ap.add_argument("spec", help="slug, territory/slug, or a store-relative path")
         part = ap.add_mutually_exclusive_group()
@@ -759,6 +764,8 @@ def _cache(argv: list[str]) -> int:
     path, container, slug = one
     if cmd == "history":
         return _history(conn, a.root, path, a.json)
+    if cmd == "verified":
+        return _verified(conn, a.root, path, a.note)
     p = a.root / path
     if cmd == "show":
         _log(a.root, "read", path, "mem show")
@@ -993,6 +1000,54 @@ def _supersede(conn, root, old_spec: str, new_spec: str) -> int:
         elif entry_line_re(os.path.basename(o.path)).search(text):
             print(f"{r} still lists {os.path.basename(o.path)}; drop that line so the index "
                   f"routes to {n.key}")
+    return 0
+
+
+def _verified(conn, root, path: str, note: str) -> int:
+    """`mem verified <slug> -m NOTE`: a session checked this memory's claim against the world
+    before acting on it, and it held. Stamps `last_verified:` with today and logs a
+    `verified` event carrying the note, which the retrospective counts. Like `mem new` it
+    never commits: the session-end hook commits the file and the event together.
+
+    A claim that did not hold is not this command's: edit the drift in place and then run
+    it, or `mem supersede` when the conclusion flipped."""
+    import datetime as dt
+
+    from claude_hybrid_memory import cache, verified
+    from claude_hybrid_memory.store import parse_frontmatter
+
+    note = " ".join(note.split())
+    if not note:
+        print("-m is empty; say what was checked", file=sys.stderr)
+        return 2
+    g = cache.graph(conn)
+    node = g.nodes[path]
+    if node.area == "archive":
+        print(f"{node.key} is in archive/; nothing acts on a retired memory", file=sys.stderr)
+        return 2
+    newer = [s.key for s in g.successors(path)]
+    if newer:
+        print(f"{node.key} is superseded by {', '.join(newer)}; verify that one",
+              file=sys.stderr)
+        return 2
+    p = root / path
+    text = p.read_text(encoding="utf-8")
+    meta = parse_frontmatter(text)[0]
+    if str(meta.get("tier") or "") == "record":
+        print(f"{node.key} is a record: dated history, never re-checked. If it is wrong, "
+              "write the correction and `mem supersede` it", file=sys.stderr)
+        return 2
+    today = dt.date.today()
+    new = verified.stamp(text, today)
+    if new is None:
+        print(f"{p}: frontmatter would not read back with the new date; fix it by hand",
+              file=sys.stderr)
+        return 2
+    was = meta.get("last_verified")
+    p.write_text(new, encoding="utf-8")
+    _log(root, "verified", path, "mem verified", note=note)
+    cache.refresh(conn, root)
+    print(f"{node.key}: last_verified {today}" + (f" (was {was})" if was else ""))
     return 0
 
 

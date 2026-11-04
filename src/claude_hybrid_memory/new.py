@@ -9,8 +9,10 @@ hand-written one gains a bare `- slug: description` line), then the near-duplica
 PostToolUse hook gives a new file.
 
 It stamps `last_verified:` with today. A memory is written from what the session just saw, so
-the claim is as verified as it will ever be on the day it lands; without it a `live` memory
-reads as `stale-live` from its first audit.
+the claim is as verified as it will ever be on the day it lands. And it requires `--volatility`
+or `--status` (which implies one), unless the memory is a `--record`: the writing session
+knows best whether it is recording state or a fact, and that is what sets how long a later
+session can act on the claim before checking it (verify-on-use, docs/direction.md).
 
 Creation only. Updating a memory is an ordinary edit to its file; replacing one is
 `mem supersede`. It never commits: the session-end hook does that for the whole session.
@@ -24,10 +26,9 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from claude_hybrid_memory.spec import ROLES, SLUG_RE, VOLATILITIES
+from claude_hybrid_memory.spec import ROLES, SLUG_RE, STATUSES, VOLATILITIES
 
 DEFAULT_ROLE = "reference"
-DEFAULT_VOLATILITY = "live"
 
 
 @dataclass
@@ -43,12 +44,17 @@ class Refused(ValueError):
 
 
 def frontmatter(slug: str, description: str, *, group: str | None = None,
-                role: str = DEFAULT_ROLE, volatility: str = DEFAULT_VOLATILITY,
-                record: bool = False, today: dt.date | None = None) -> str:
+                role: str = DEFAULT_ROLE, volatility: str | None = None,
+                status: str | None = None, record: bool = False,
+                today: dt.date | None = None) -> str:
     q = lambda s: json.dumps(s, ensure_ascii=False)  # noqa: E731 - YAML reads JSON strings
     lines = ["---", f"name: {slug}", f"description: {q(description)}", "kind: territory",
-             f"role: {role}", f"volatility: {volatility}",
-             f"last_verified: {(today or dt.date.today()).isoformat()}"]
+             f"role: {role}"]
+    if status:
+        lines.append(f"status: {status}")
+    if volatility:
+        lines.append(f"volatility: {volatility}")
+    lines.append(f"last_verified: {(today or dt.date.today()).isoformat()}")
     if group:
         lines.append(f"group: {q(group)}")
     if record:
@@ -58,7 +64,8 @@ def frontmatter(slug: str, description: str, *, group: str | None = None,
 
 def make(root: Path, territory: str, slug: str, description: str, body: str, *,
          group: str | None = None, role: str = DEFAULT_ROLE,
-         volatility: str = DEFAULT_VOLATILITY, record: bool = False) -> Made:
+         volatility: str | None = None, status: str | None = None,
+         record: bool = False) -> Made:
     """Write the memory and index it. Raises Refused, writing nothing, when it can't."""
     from claude_hybrid_memory.migrate import apply
 
@@ -76,14 +83,20 @@ def make(root: Path, territory: str, slug: str, description: str, body: str, *,
         raise Refused("no body on stdin; pipe the memory's text in")
     if role not in ROLES:
         raise Refused(f"--role {role!r} not in {sorted(ROLES)}")
-    if volatility not in VOLATILITIES:
+    if volatility and volatility not in VOLATILITIES:
         raise Refused(f"--volatility {volatility!r} not in {sorted(VOLATILITIES)}")
+    if status and status not in STATUSES:
+        raise Refused(f"--status {status!r} not in {sorted(STATUSES)}")
+    if not (volatility or status or record):
+        raise Refused("pass --volatility (stable: a fact or rule that does not drift; slow: "
+                      "changes over weeks; live: state such as HEAD, an open PR, what is "
+                      "next) or --status, which implies one")
     p = tdir / f"{slug}.md"
     if p.exists():
         raise Refused(f"{territory}/{slug} already exists; edit the file to update it, or "
                       "write the replacement under a new slug and `mem supersede` the old one")
     p.write_text(frontmatter(slug, description, group=group, role=role,
-                             volatility=volatility, record=record)
+                             volatility=volatility, status=status, record=record)
                  + "\n" + body.strip("\n") + "\n", encoding="utf-8")
     apply.reindex(root, territory)
     rel = f"territories/{territory}/{p.name}"
@@ -118,7 +131,10 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--territory", "-t",
                     help="e.g. console/tools (default: the territory this directory maps to)")
     ap.add_argument("--role", default=DEFAULT_ROLE, choices=sorted(ROLES))
-    ap.add_argument("--volatility", default=DEFAULT_VOLATILITY, choices=sorted(VOLATILITIES))
+    ap.add_argument("--volatility", "-v", choices=sorted(VOLATILITIES),
+                    help="how fast its claims drift; required unless --status or --record")
+    ap.add_argument("--status", "-s", choices=sorted(STATUSES),
+                    help="e.g. SHIPPED or IN FLIGHT; implies the volatility")
     ap.add_argument("--record", action="store_true",
                     help="a dated record, written once and never edited (tier: record)")
     ap.add_argument("--root", type=Path, default=STORE)
@@ -134,7 +150,8 @@ def main(argv: list[str]) -> int:
     body = "" if sys.stdin.isatty() else sys.stdin.read()
     try:
         made = make(a.root, territory, a.slug, a.description, body, group=a.group,
-                    role=a.role, volatility=a.volatility, record=a.record)
+                    role=a.role, volatility=a.volatility, status=a.status,
+                    record=a.record)
     except Refused as e:
         print(f"mem new: {e}", file=sys.stderr)
         return 2

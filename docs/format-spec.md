@@ -17,12 +17,12 @@ If a rule here ever makes writing a memory feel like paperwork, the rule is wron
 
 **Write a new territory memory with `mem new`**, body on stdin:
 
-    mem new <slug> -d "the conclusion, one line" [-g GROUP] [-t TERRITORY] [--record] <<'EOF'
+    mem new <slug> -d "the conclusion, one line" -v stable|slow|live [-g GROUP] [-t TERRITORY] [--record] <<'EOF'
     The fact first. **Why:** ... **How to apply:** ...
     EOF
 
-It fills in the frontmatter (`kind: territory`, `role: reference`, `volatility: live`,
-`last_verified:` today), refuses a slug that exists, and indexes the memory: a rendered index
+It fills in the frontmatter (`kind: territory`, `role: reference`, the `volatility:` or `status:`
+you pass, `last_verified:` today), refuses a slug that exists, and indexes the memory: a rendered index
 re-renders, a hand-written one gains a bare `- slug: description` line. The territory defaults
 to the one the current directory maps to. It never commits; the SessionEnd hook does.
 **Do not use the harness's auto-memory recipe** (a Write into `projects/*/memory/` plus a
