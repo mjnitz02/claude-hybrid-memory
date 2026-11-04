@@ -34,6 +34,7 @@ Enforces docs/format-spec.md.
     mem migrate map [--rebuild] [--approve]
     mem migrate apply [--silo S ...] [--dry-run]
     mem migrate undo --silo S
+    mem migrate volatility [--territory T] [--dry-run] [--write] [--sample N]
     mem refine queue [--territory T] [--limit N] [--json]
     mem mv-territory OLD NEW [--write]
     mem mv SLUG... TERRITORY [--write]
@@ -328,7 +329,7 @@ def _migrate(argv: list[str]) -> int:
 
     ap = argparse.ArgumentParser(prog="mem migrate")
     ap.add_argument("stage", choices=["inventory", "summarize", "summaries", "map", "apply",
-                                      "undo"])
+                                      "undo", "volatility"])
     ap.add_argument("--root", type=Path, default=STORE, help=f"store root (default {STORE})")
     ap.add_argument("--legacy", type=Path, default=LEGACY, help="legacy projects dir")
     ap.add_argument("--source", type=Path, action="append",
@@ -341,9 +342,16 @@ def _migrate(argv: list[str]) -> int:
     ap.add_argument("--rebuild", action="store_true",
                     help="map: redraft the plan; the old one is kept as plan.prev.yaml")
     ap.add_argument("--approve", action="store_true", help="map: approve the plan as it is")
+    ap.add_argument("--territory", help="volatility: only this territory (or below it)")
+    ap.add_argument("--write", action="store_true",
+                    help="volatility: land the cached verdicts in the store")
+    ap.add_argument("--sample", type=int, default=15,
+                    help="volatility: random verdicts to show for a spot check")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
 
+    if a.stage == "volatility":
+        return _volatility(a)
     if a.stage == "undo":
         return _undo(a)
     if a.stage == "apply":
@@ -402,6 +410,91 @@ def _migrate(argv: list[str]) -> int:
           f"{len(failed)} failed; ${sum(r.get('cost_usd', 0) for r in ran):.2f}, "
           f"{sum(r.get('tokens_in', 0) for r in ran):,} tokens in, "
           f"{sum(r.get('tokens_out', 0) for r in ran):,} out")
+    return 1 if failed else 0
+
+
+def _volatility(a) -> int:
+    """`mem migrate volatility`: classify every memory with no volatility, then land it.
+
+    Without --write it runs the classifier (cached) and shows the result; nothing in the
+    store changes. --write lands the cached verdicts and runs nothing new, so what lands is
+    exactly what was shown."""
+    import collections
+    import json
+    import random
+
+    from claude_hybrid_memory import storegit
+    from claude_hybrid_memory.migrate import summarize
+    from claude_hybrid_memory.migrate import volatility as V
+
+    ts = V.targets(a.root, a.territory)
+    jobs = [V.job(t) for t in ts]
+    by = {t.rel: t for t in ts}
+    if not jobs:
+        print("nothing to classify: every memory has a volatility, a status that implies one, "
+              "or is a record")
+        return 0
+    have = summarize.cached(a.root, jobs, a.model, V.SUBDIR)
+    todo = [j for j in jobs if a.force or have.get(j.id, {}).get("status") != "ok"]
+    if a.dry_run:
+        print(f"{len(jobs)} to classify: {len(todo)} to run, {len(jobs) - len(todo)} cached, "
+              f"model {a.model}, about ${0.015 * len(todo):.2f}")
+        for terr, n in sorted(collections.Counter(t.territory for t in ts).items()):
+            print(f"  {terr}: {n}")
+        return 0
+    if a.write:
+        if todo:
+            print(f"{len(todo)} have no cached verdict; run without --write first, look at the "
+                  "result, then land it", file=sys.stderr)
+            return 2
+        if storegit.pending(a.root):
+            print("the store has uncommitted changes; `mem commit` them first so this lands "
+                  "as its own commit", file=sys.stderr)
+            return 2
+        verdicts = {j.id: have[j.id]["summary"]["volatility"] for j in jobs}
+        skipped, c = V.apply(a.root, verdicts)
+        for f in skipped:
+            print(f"  left untouched, frontmatter would not read back: {f}")
+        if c:
+            print(f"{c.status}: {c.detail}" + (f" ({c.sha})" if c.sha else ""))
+            return 0 if c.status == "committed" else 2
+        return 0
+
+    def progress(n, total, r):
+        how = ("cached" if r["cached"]
+               else f"{r.get('ms', 0) / 1000:.1f}s ${r.get('cost_usd', 0):.3f}")
+        got = r["summary"]["volatility"] if r["status"] == "ok" else r.get("error", "")[:100]
+        print(f"[{n}/{total}] {r['status']:6} {got:6} {r['id'][-70:]}  {how}", file=sys.stderr)
+
+    res = summarize.run(a.root, jobs, a.model, a.jobs, a.force, progress, V.SUBDIR)
+    ran = [r for r in res if not r["cached"]]
+    ok = [r for r in res if r["status"] == "ok"]
+    failed = [r for r in res if r["status"] != "ok"]
+    if a.json:
+        print(json.dumps([{"path": r["id"], **r["summary"]} for r in ok], indent=1,
+                         ensure_ascii=False))
+        return 1 if failed else 0
+    print(f"{len(res)} classified: {len(ran)} run, {len(res) - len(ran)} cached, "
+          f"{len(failed)} failed; ${sum(r.get('cost_usd', 0) for r in ran):.2f}")
+    dist = collections.Counter(r["summary"]["volatility"] for r in ok)
+    print("  " + ", ".join(f"{k} {dist[k]}" for k in ("stable", "slow", "live")))
+    per = collections.defaultdict(collections.Counter)
+    for r in ok:
+        per[by[r["id"]].territory][r["summary"]["volatility"]] += 1
+    for terr, c in sorted(per.items()):
+        print(f"  {terr}: " + ", ".join(f"{k} {c[k]}" for k in ("stable", "slow", "live")
+                                         if c[k]))
+    pick = random.sample(ok, min(a.sample, len(ok)))
+    if pick:
+        print(f"\n{len(pick)} at random, to spot-check:")
+        for r in sorted(pick, key=lambda r: r["id"]):
+            t = by[r["id"]]
+            desc = str(t.mem.meta.get("description") or "")[:100]
+            print(f"  {r['summary']['volatility']:6} {t.territory}/{t.mem.slug}\n"
+                  f"         {desc}\n         why: {r['summary']['why']}")
+    for r in failed:
+        print(f"  FAILED {r['id']}: {r.get('error', '')[:160]}")
+    print("\nNothing written. `mem migrate volatility --write` lands these verdicts as-is.")
     return 1 if failed else 0
 
 

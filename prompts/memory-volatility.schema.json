@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["volatility", "why"],
+  "properties": {
+    "volatility": {"type": "string", "enum": ["stable", "slow", "live"]},
+    "why": {"type": "string"}
+  }
+}

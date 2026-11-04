@@ -24,24 +24,29 @@ from pathlib import Path
 from claude_hybrid_memory import storegit
 from claude_hybrid_memory.store import parse_frontmatter, scan_store
 
-LV_RE = re.compile(r"^last_verified:[^\n]*$", re.M)
 
-
-def stamp(text: str, date: dt.date) -> str | None:
-    """`text` with `last_verified:` set to `date` at the top level of its frontmatter, or None
-    when the result would not read back as exactly that date."""
+def set_field(text: str, key: str, value: str) -> str | None:
+    """`text` with top-level frontmatter `key: value`, replacing the line if there is one,
+    else appending it to the block; None when the result would not read back as exactly
+    that value. `value` is a plain scalar (a date, an enum word): never quoted."""
     if not text.startswith("---\n"):
         return None
     end = text.find("\n---", 3)
     if end < 0:
         return None
-    block, line = text[4:end + 1], f"last_verified: {date.isoformat()}"
-    block = LV_RE.sub(line, block, count=1) if LV_RE.search(block) else block + line + "\n"
+    block, line = text[4:end + 1], f"{key}: {value}"
+    rx = re.compile(rf"^{re.escape(key)}:[^\n]*$", re.M)
+    block = rx.sub(lambda _: line, block, count=1) if rx.search(block) else block + line + "\n"
     new = text[:4] + block + text[end + 1:]
     meta, _, problems = parse_frontmatter(new)
-    if problems or str(meta.get("last_verified")) != date.isoformat():
+    if problems or str(meta.get(key)) != value:
         return None
     return new
+
+
+def stamp(text: str, date: dt.date) -> str | None:
+    """`text` with `last_verified:` set to `date`, or None (see set_field)."""
+    return set_field(text, "last_verified", date.isoformat())
 
 
 @dataclass
