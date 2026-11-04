@@ -17,6 +17,7 @@ Enforces docs/format-spec.md.
     mem show <slug> [--meta | --section H | --full] [--at REV]
     mem history <slug>
     mem supersede <old> <new>
+    mem backfill-verified [--baseline-date TERRITORY=DATE ...] [--write]
     mem commit [-m SUBJECT]
     mem log [PATH...] [-n N]
     mem diff [PATH...] [--stat]
@@ -1179,6 +1180,9 @@ def main(argv: list[str] | None = None) -> int:
         if args[:1] == ["new"]:
             from claude_hybrid_memory import new
             return new.main(args[1:])
+        if args[:1] == ["backfill-verified"]:
+            from claude_hybrid_memory import verified
+            return verified.backfill_main(args[1:])
         if args[:1] == ["install"]:
             return _install(args[1:])
         if args[:1] == ["migrate"]:
