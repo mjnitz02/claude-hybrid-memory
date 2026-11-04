@@ -55,7 +55,7 @@ def test_new_lookalike_memory_gets_a_hint_and_an_edit_does_not(fx: Fixture):
     ctx = json.loads(out)["hookSpecificOutput"]
     assert rc == 0 and ctx["hookEventName"] == "PostToolUse"
     note = ctx["additionalContext"]
-    assert "lab-backup-plan" in note and "supersedes:" in note
+    assert "lab-backup-plan" in note and "`mem supersede <old> lab-nightly-backups`" in note
     # the same file edited later is not new to the cache: no repeated nagging
     new.write_text(new.read_text() + "\nMore.\n")
     assert post(fx, "Edit", new) == (0, "")

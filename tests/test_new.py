@@ -29,6 +29,9 @@ def test_new_writes_store_frontmatter_and_indexes_a_hand_written_territory(fx: F
                        "-g", "Hardware")
     assert rc == 0, err
     assert f"wrote {KIT}/kit-card-reader.md" in out
+    # a hand-written index can't honour -g, and says so instead of "indexed it"
+    assert "indexed it" not in out and "--group 'Hardware' was NOT honoured" in out
+    assert "mem render console/kit --adopt" in out
     assert "byte" not in out and "cap" not in out           # nothing about size, ever
     text = (fx.store / KIT / "kit-card-reader.md").read_text()
     meta, body, problems = parse_frontmatter(text)
@@ -49,8 +52,9 @@ def test_new_writes_store_frontmatter_and_indexes_a_hand_written_territory(fx: F
 def test_new_re_renders_a_rendered_territory(fx: Fixture):
     rc, _, err = run(mem_cmd("render", "console/kit", "--adopt", "--write"), fx.env())
     assert rc == 0, err
-    rc, _, err = new(fx, "kit-probe", "-d", "The probe works.", "--record")
+    rc, out, err = new(fx, "kit-probe", "-d", "The probe works.", "--record")
     assert rc == 0, err
+    assert "indexed it in console/kit/MEMORY.md" in out
     idx = (fx.store / KIT / "MEMORY.md").read_text()
     s, e = render.markers(idx)
     assert "kit-probe" in idx[s:e] and "kit-probe" not in idx[e:]
@@ -109,3 +113,17 @@ def test_new_requires_volatility_or_status_unless_a_record(fx: Fixture):
     assert rc == 0, err
     meta = parse_frontmatter((fx.store / KIT / "kit-a-run.md").read_text())[0]
     assert meta["tier"] == "record" and "volatility" not in meta
+
+
+def test_the_help_example_runs_as_typed(fx: Fixture):
+    # The example broke twice: once missing the then-new -v, once naming a group no store
+    # has after -g became strict. Run it straight out of --help, in a rendered territory.
+    import shlex
+    rc, _, err = run(mem_cmd("render", "console/kit", "--adopt", "--write"), fx.env())
+    assert rc == 0, err
+    p = subprocess.run(mem_cmd("new", "--help"), capture_output=True, text=True, env=fx.env())
+    line = next(ln for ln in p.stdout.splitlines() if ln.startswith("example: mem new "))
+    argv = shlex.split(line.removeprefix("example: mem new ").split("<<")[0])
+    rc, out, err = new(fx, *argv)
+    assert rc == 0, err
+    assert "indexed it" in out

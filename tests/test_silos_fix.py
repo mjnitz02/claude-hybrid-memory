@@ -48,7 +48,8 @@ def test_fix_quotes_frontmatter_yaml_misreads(fx: Fixture):
         [x for x in f if x.path == str(p)][0].message
     meta, body, problems = parse_frontmatter(p.read_text())
     assert not problems and body == "Body.\n"
-    assert meta["description"] == desc and meta["metadata"]["note"] == "a: b"
+    # the harness block is flattened in the same pass, so `note` lands at the top level
+    assert meta["description"] == desc and meta["note"] == "a: b" and "metadata" not in meta
 
 
 def test_fix_leaves_frontmatter_it_cannot_verify(fx: Fixture):
@@ -84,9 +85,41 @@ def test_fix_strips_retired_fields_nested_under_harness_metadata(fx: Fixture):
                  "  last_verified: 2026-10-27\nvolatility: slow\n---\n\nB.\n")
     mems, routers = scan_store(fx.store)
     do_fix(mems, routers, write=True, stamp_today=False)
-    assert p.read_text() == ("---\nname: kit-nested\ndescription: d\nmetadata:\n"
-                             "  kind: territory\n  last_verified: 2026-10-27\n"
+    assert p.read_text() == ("---\nname: kit-nested\ndescription: d\n"
+                             "kind: territory\nlast_verified: 2026-10-27\n"
                              "volatility: slow\n---\n\nB.\n")
+
+
+def test_fix_flattens_the_harness_metadata_block(fx: Fixture):
+    """Synthetic, in the shape of the 228 real files of 2026-11-04: the harness's own keys
+    go, everything else moves up a level, a top-level key wins over its nested copy, and
+    `modified` survives only where there is no last_verified to stand in for it."""
+    from claude_hybrid_memory.fix import flatten_harness
+    text = ("---\nname: kit-h\ndescription: d\nmetadata:\n  node_type: memory\n"
+            "  kind: territory\n  type: project\n  originSessionId: 0000\n"
+            "  modified: 2026-08-13T23:58:04.986Z\n  description: older\n"
+            "last_verified: 2026-09-11\nvolatility: slow\n---\n\nBody.\n")
+    new, actions = flatten_harness(text)
+    assert new == ("---\nname: kit-h\ndescription: d\nkind: territory\n"
+                   "last_verified: 2026-09-11\nvolatility: slow\n---\n\nBody.\n")
+    assert "dropped description (already at top level)" in actions
+    no_lv = text.replace("last_verified: 2026-09-11\n", "")
+    assert "modified: 2026-08-13T23:58:04.986Z\n" in flatten_harness(no_lv)[0]
+    # a router: nested maps dedent, the empty harness name goes, modified never stays
+    router = ("---\nname: \"\"\nmetadata:\n  node_type: memory\n  territory: solo/x\n"
+              "  members:\n    x:\n      mode: active\n  modified: 2026-10-24T12:59:07Z\n"
+              "---\n\n# solo/x\n")
+    new, _ = flatten_harness(router, router=True)
+    assert new == ("---\nterritory: solo/x\nmembers:\n  x:\n    mode: active\n---\n\n"
+                   "# solo/x\n")
+    assert flatten_harness("---\nname: a\nkind: territory\n---\nB.\n") is None
+
+
+def test_audit_warns_on_a_harness_written_memory(fx: Fixture):
+    from claude_hybrid_memory.audit.structure import check_structure
+    mems, _ = scan_store(fx.store)
+    f = [x for x in check_structure(mems) if x.code == "harness-frontmatter"]
+    assert [x.path.rsplit("/", 1)[1] for x in f] == ["lab-backup-plan.md"]
 
 
 def test_fix_dry_run_writes_nothing(fx: Fixture):
@@ -110,7 +143,7 @@ def test_link_refuses_an_occupied_silo(fx: Fixture, tmp_path: Path):
 
 def test_link_writes_and_is_idempotent(fx: Fixture):
     f = do_link(fx.store, fx.projects, "home/lab", fx.elsewhere, write=True)
-    assert [x.code for x in f] == ["link-done"]
+    assert [x.code for x in f] == ["link-done", "link-members"]
     again = do_link(fx.store, fx.projects, "home/lab", fx.elsewhere, write=True)
     assert [x.code for x in again] == ["link-already"]
 
@@ -144,5 +177,29 @@ def test_link_repoints_a_silo_whose_territory_is_gone(fx: Fixture):
     silo.mkdir(parents=True, exist_ok=True)
     (silo / "memory").symlink_to(fx.store / "territories" / "home" / "gone")
     f = do_link(fx.store, fx.projects, "home/lab", fx.elsewhere, write=True)
-    assert [x.code for x in f] == ["link-done"]
+    assert [x.code for x in f] == ["link-done", "link-members"]
     assert (silo / "memory" / "MEMORY.md").is_file()
+
+
+def test_link_records_the_repo_in_members_and_keeps_the_rest(fx: Fixture, tmp_path: Path):
+    # Synthetic. `link --write` was the one writer of the repo-territory relationship and
+    # never recorded it, so `members:` drifted from the silos (eval 2026-11-04).
+    from claude_hybrid_memory.silos import has_member, with_member
+    idx = fx.store / "territories/home/lab/MEMORY.md"
+    before = idx.read_text()
+    assert do_link(fx.store, fx.projects, "home/lab", fx.elsewhere, write=False)[0].message \
+        .endswith(f"and add `{fx.elsewhere.name}` to its members: (rerun with --write)")
+    assert idx.read_text() == before                     # a dry run writes nothing
+    do_link(fx.store, fx.projects, "home/lab", fx.elsewhere, write=True)
+    after = idx.read_text()
+    assert has_member(after, fx.elsewhere.name)
+    assert f"  {fx.elsewhere.name}: {{owner: self, mode: active}}\n" in after
+    assert after.replace(f"members:\n  {fx.elsewhere.name}: {{owner: self, mode: active}}\n",
+                         "") == before                  # nothing else in the file moved
+    # an existing block keeps its entries, flow style and comments
+    text = ("---\nterritory: x\nmembers:\n  a: {owner: self, mode: dead}  # parked\n"
+            "consumes: none\n---\n# x\n")
+    out = with_member(text, "b")
+    assert out == ("---\nterritory: x\nmembers:\n  a: {owner: self, mode: dead}  # parked\n"
+                   "  b: {owner: self, mode: active}\nconsumes: none\n---\n# x\n")
+    assert has_member(out, "a") and has_member(out, "b") and not has_member(out, "c")

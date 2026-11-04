@@ -24,7 +24,8 @@ and whether it should be separate memories; that is a question for Matt, not an 
 make unprompted. The answer is often a split into one state memory plus dated
 `tier: record` memories, the original kept by git (`docs/format-spec.md`, "Version
 chains"). `superseded-still-indexed` means a
-territory index still lists a memory a newer one replaced: drop that line.
+territory index still lists a memory a newer one replaced: drop that line (`mem supersede`
+does this itself since 2026-11-04, so a hit means the line was added by hand afterwards).
 `mem events stats` shows which memories sessions actually read; a
 memory never read across months of events is a candidate for archive, with the same
 caveat as parked repos: absence of use is not proof of uselessness.

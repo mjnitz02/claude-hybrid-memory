@@ -414,6 +414,13 @@ def check(root: Path, names: list[str] | None = None) -> list[Finding]:
                                 f"{name}'s groups")
                         for e in t.entries if e.group is None]
             text = new
+        elif names:
+            # Named and silent before (eval 2026-11-04), while a plain render of the same
+            # territory refused it. A hand-written index is where `mem new` cannot honour
+            # --group. Only when named: a whole-store check stays about rendered indexes.
+            out.append(Finding(INFO, "index-not-rendered", str(p),
+                               f"hand-written: `mem new -g` cannot file into it; "
+                               f"`mem render {name} --adopt` previews the migration"))
         out += budget(p, text)
     return out
 

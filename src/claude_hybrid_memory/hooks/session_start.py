@@ -162,9 +162,59 @@ def territory_for(cwd: Path, store: Path) -> tuple[str | None, list[str]]:
                 target = Path(os.path.realpath(link))
                 if tdir_r == target.parent or tdir_r in target.parents:
                     return str(target.relative_to(tdir_r)), all_t
+                # The silo points into another store (the real one, when this is a
+                # scratch copy under --root): the same territory path, read here.
+                parts = target.parts
+                if "territories" in parts:
+                    rel = Path(*parts[len(parts) - parts[::-1].index("territories"):])
+                    if (tdir / rel / "MEMORY.md").is_file():
+                        return str(rel), all_t
         except (OSError, ValueError):
             continue
     return None, all_t
+
+
+def repo_root(cwd: Path) -> Path:
+    """The git root above `cwd`, else `cwd`."""
+    probe = cwd
+    for _ in range(40):
+        if (probe / ".git").exists():
+            return probe
+        if probe.parent == probe:
+            break
+        probe = probe.parent
+    return cwd
+
+
+def guess_territory(store: Path, repo: Path,
+                    all_t: list[str]) -> tuple[str, str, bool] | None:
+    """(territory, why, firm) for an unmapped repo, or None. A cheap text scan, never the
+    cache: the hook runs on every session start. Firm when a territory's `members:` names
+    the repo (a parked repo cloned back) or its MEMORY.md has the repo's full name; a match
+    on one part of the name is only "possibly", since one passing word is weak evidence and
+    a bold wrong guess invites a wrong link (`random-notes` -> cards/archive on "random",
+    independent review 2026-11-04). Advisory: printed as a command, never run."""
+    name = repo.name.lower()
+    parts = sorted((w for w in re.split(r"[-_.\s]+", name) if len(w) >= 4 and w != name),
+                   key=len, reverse=True)
+    member = re.compile(rf"^\s+{re.escape(repo.name)}\s*:", re.M | re.I)
+    texts = {t: read(store / "territories" / t / "MEMORY.md") for t in all_t}
+    for t, text in texts.items():
+        head = text.split("\n---", 1)[0] if text.startswith("---") else ""
+        if member.search(head):
+            return t, f"its `members:` lists {repo.name}", True
+
+    def most(word: str) -> tuple[int, str] | None:
+        counts = [(text.lower().count(word), t) for t, text in texts.items()]
+        counts = [c for c in counts if c[0]]
+        return max(counts) if counts else None
+
+    if hit := most(name):
+        return hit[1], f"its MEMORY.md mentions `{name}` {hit[0]}x", True
+    for word in parts[:1]:
+        if hit := most(word):
+            return hit[1], f"its MEMORY.md mentions `{word}` {hit[0]}x, part of the name", False
+    return None
 
 
 def retro_overdue(router: str) -> int | None:
@@ -363,10 +413,22 @@ def output(store: Path, cwd: Path, claude_md: Path = CLAUDE_MD, write: bool = Tr
         notes.append(f"Territory for this directory: **{terr}**. Its MEMORY.md is "
                      "auto-loaded; read its internals on demand.")
     elif all_t:
+        repo = repo_root(cwd)
+        guess = guess_territory(store, repo, all_t)
+        if guess and guess[2]:
+            pick = (f"Best guess: **{guess[0]}** ({guess[1]}). If that is right, run "
+                    f"`mem link --territory {guess[0]} --write` from {repo}")
+        elif guess:
+            pick = (f"Possibly {guess[0]} ({guess[1]}), which is weak evidence: check "
+                    "ROUTER.md, then `mem link --territory <territory> --write` from "
+                    f"{repo}")
+        else:
+            pick = ("Pick its territory from ROUTER.md and run "
+                    f"`mem link --territory <territory> --write` from {repo}")
         notes.append(f"**This directory maps to NO territory.** ({cwd}) Memory written "
                      "here will land in an unrouted per-directory silo, which is the "
-                     "problem the store exists to fix. Consider pointing it at one of: "
-                     + ", ".join(all_t) + " (see docs/setup.md step 5).")
+                     f"problem the store exists to fix. {pick}; confirm with the user first if "
+                     "unsure. Territories: " + ", ".join(all_t) + ".")
     overdue = retro_overdue(read(store / "ROUTER.md"))
     if overdue is not None:
         notes.append(f"Memory retrospective is **{overdue} days** old "

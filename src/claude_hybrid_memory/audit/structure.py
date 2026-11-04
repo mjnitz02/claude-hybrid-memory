@@ -33,6 +33,14 @@ def check_structure(mems: list[Memory]) -> list[Finding]:
         elif m.name != m.stem:
             out.append(Finding(ERROR, "name-filename-mismatch", rel,
                                f"name: {m.name!r} != filename stem {m.stem!r} (fixable)"))
+        if isinstance(m.meta.get("metadata"), dict):
+            # The harness's auto-memory recipe (a Write plus nested `metadata:`) is the one
+            # write path a session is handed by default, and it used to pass with an INFO
+            # (eval 2026-11-04). A WARN, so the session that just did it sees it.
+            out.append(Finding(WARN, "harness-frontmatter", rel,
+                               "written the harness's auto-memory way (nested `metadata:`); "
+                               "`mem fix --write` flattens it. Write memories with `mem new`, "
+                               "which also sets volatility (fixable)"))
         old = [k for k in OBSOLETE_FIELDS if k in m.meta]
         if old:
             out.append(Finding(INFO, "obsolete-field", rel,

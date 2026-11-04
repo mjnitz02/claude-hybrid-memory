@@ -109,6 +109,7 @@ mem audit             # everything wrong with the store, in one report
 mem fix --write       # fix what can be fixed automatically
 mem find <terms>      # search memories
 mem show <slug>       # read one
+mem show <territory>  # read a territory's index
 mem log               # the store's history
 mem restore <path>    # undo a change; never deletes
 mem link --territory <path> --write   # reconnect a repo you cloned again

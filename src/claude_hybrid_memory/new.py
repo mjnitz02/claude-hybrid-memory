@@ -37,6 +37,8 @@ class Made:
     territory: str
     rel: str
     hint: str = ""
+    rendered: bool = True       # False: a hand-written index, where the line was appended
+    group_note: str = ""        # how -g was resolved, when it was not an exact match
 
 
 class Refused(ValueError):
@@ -62,10 +64,36 @@ def frontmatter(slug: str, description: str, *, group: str | None = None,
     return "\n".join(lines) + "\n---\n"
 
 
+def resolve_group(root: Path, territory: str, group: str,
+                  new_group: bool = False) -> tuple[str, str]:
+    """(the group to write, a note) for `-g` in a rendered territory. Exact (any case) wins;
+    else a unique prefix of one existing group; else a new group only when asked for. The
+    eval's `-g "Card identity"` beside `Card identity, naming and writes` made a second,
+    near-identical heading and still said "indexed it" (independent review, 2026-11-04).
+    Raises Refused, listing the groups, when it cannot tell."""
+    from claude_hybrid_memory import render
+
+    t = render.load(root, territory)
+    known = list(dict.fromkeys([*t.groups, *(e.group for e in t.entries if e.group)]))
+    if not known or new_group:
+        return group, (f"new group {group!r}" if known and group not in known else "")
+    want = " ".join(group.split()).lower()
+    exact = [g for g in known if g.lower() == want]
+    if exact:
+        return exact[0], ""
+    pre = [g for g in known if g.lower().startswith(want)]
+    if len(pre) == 1:
+        return pre[0], f"-g {group!r} matched the existing group {pre[0]!r}"
+    listing = "\n".join(f"  {g}" for g in known)
+    why = "matches several groups" if pre else "is not one of its groups"
+    raise Refused(f"-g {group!r} {why} in {territory}:\n{listing}\nPass one of these (a "
+                  "unique prefix is enough), or add --new-group to start a new heading")
+
+
 def make(root: Path, territory: str, slug: str, description: str, body: str, *,
          group: str | None = None, role: str = DEFAULT_ROLE,
          volatility: str | None = None, status: str | None = None,
-         record: bool = False) -> Made:
+         record: bool = False, new_group: bool = False) -> Made:
     """Write the memory and index it. Raises Refused, writing nothing, when it can't."""
     from claude_hybrid_memory.migrate import apply
 
@@ -88,9 +116,15 @@ def make(root: Path, territory: str, slug: str, description: str, body: str, *,
     if status and status not in STATUSES:
         raise Refused(f"--status {status!r} not in {sorted(STATUSES)}")
     if not (volatility or status or record):
-        raise Refused("pass --volatility (stable: a fact or rule that does not drift; slow: "
-                      "changes over weeks; live: state such as HEAD, an open PR, what is "
-                      "next) or --status, which implies one")
+        raise Refused("pass --volatility (stable: a fact, rule or procedure that does not "
+                      "drift, such as a hardware quirk or a preference; slow: changes over "
+                      "weeks, such as a repo's layout or setup; live: state such as HEAD, an "
+                      "open PR, what is next) or --status, which implies one")
+    note = ""
+    if group:
+        from claude_hybrid_memory import render
+        if render.markers((tdir / "MEMORY.md").read_text(encoding="utf-8", errors="replace")):
+            group, note = resolve_group(root, territory, " ".join(group.split()), new_group)
     p = tdir / f"{slug}.md"
     if p.exists():
         raise Refused(f"{territory}/{slug} already exists; edit the file to update it, or "
@@ -99,8 +133,16 @@ def make(root: Path, territory: str, slug: str, description: str, body: str, *,
                              volatility=volatility, status=status, record=record)
                  + "\n" + body.strip("\n") + "\n", encoding="utf-8")
     apply.reindex(root, territory)
+    from claude_hybrid_memory import render
+    # ROUTER's `(N)` and the ALWAYS.md rendered from it, so the session's own audit does
+    # not show a router-count warning the write just caused (eval 2026-11-04).
+    if render.router_counts(root):
+        from claude_hybrid_memory.hooks import session_start
+        session_start.write_always(root)
+    rendered = bool(render.markers((tdir / "MEMORY.md").read_text(encoding="utf-8",
+                                                                   errors="replace")))
     rel = f"territories/{territory}/{p.name}"
-    return Made(p, territory, rel, _near(root, rel))
+    return Made(p, territory, rel, _near(root, rel), rendered, note)
 
 
 def _near(root: Path, rel: str) -> str:
@@ -122,17 +164,34 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(
         prog="mem new",
         description="Write a new territory memory (body on stdin) and index it.",
-        epilog="example: mem new card-reader-panics --description 'The built-in SD reader "
-               "panics under sustained I/O; use the USB one' --group Hardware <<'EOF' ... EOF")
+        # No --group in the example: a group must already exist in the territory, and no
+        # literal one exists in every store, so an example naming one fails as typed (it did:
+        # `--group Hardware`, independent review 2026-11-04). Omitting it always works.
+        epilog="example: mem new card-reader-panics -v stable --description 'The built-in SD "
+               "reader panics under sustained I/O; use the USB one' <<'EOF' ... EOF\n\n"
+               "-g files it under one of the territory's existing groups (`mem show "
+               "<territory>` lists them; omit -g to file it under Other).\n\n"
+               "To replace a memory: `mem new` the replacement first, then "
+               "`mem supersede <old> <new>`.",
+        formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("slug", help="kebab-case; becomes <slug>.md")
     ap.add_argument("--description", "-d", required=True,
                     help="one line: the conclusion, as the index will show it")
-    ap.add_argument("--group", "-g", help="the index heading to file it under")
+    ap.add_argument("--group", "-g",
+                    help="the index heading to file it under: one of the territory's groups "
+                         "(a unique prefix is enough); refused otherwise, with the list")
+    ap.add_argument("--new-group", action="store_true",
+                    help="-g names a heading the territory does not have yet; start it")
     ap.add_argument("--territory", "-t",
                     help="e.g. console/tools (default: the territory this directory maps to)")
     ap.add_argument("--role", default=DEFAULT_ROLE, choices=sorted(ROLES))
     ap.add_argument("--volatility", "-v", choices=sorted(VOLATILITIES),
-                    help="how fast its claims drift; required unless --status or --record")
+                    help="how fast its claims drift, which sets how long a later session may "
+                         "act on it unchecked (stable 365d, slow 30d, live 14d). stable: a "
+                         "rule, a preference, a hardware fact or procedure, why a decision "
+                         "was made; slow: a repo's layout, a tool's setup, a project's plan; "
+                         "live: HEAD, an open PR, what is next, a version number. Required "
+                         "unless --status or --record")
     ap.add_argument("--status", "-s", choices=sorted(STATUSES),
                     help="e.g. SHIPPED or IN FLIGHT; implies the volatility")
     ap.add_argument("--record", action="store_true",
@@ -151,13 +210,24 @@ def main(argv: list[str]) -> int:
     try:
         made = make(a.root, territory, a.slug, a.description, body, group=a.group,
                     role=a.role, volatility=a.volatility, status=a.status,
-                    record=a.record)
+                    record=a.record, new_group=a.new_group)
     except Refused as e:
         print(f"mem new: {e}", file=sys.stderr)
         return 2
     from claude_hybrid_memory.cli import _log
     _log(a.root, "write", made.rel, "mem new")
-    print(f"wrote {made.rel} and indexed it in {territory}/MEMORY.md")
+    if made.rendered:
+        print(f"wrote {made.rel} and indexed it in {territory}/MEMORY.md; the store commits it "
+              "at session end")
+        if made.group_note:
+            print(made.group_note)
+    else:
+        # Said plainly: a hand-written index has no groups to honour, and "indexed it" read
+        # as success when the line had landed under whatever heading came last (eval).
+        print(f"wrote {made.rel}, but {territory}/MEMORY.md is hand-written: its line was "
+              "appended at the end" + (f" and --group {a.group!r} was NOT honoured" if a.group
+                                       else "") + f". Move the line under the right heading, "
+              f"or adopt the index with `mem render {territory} --adopt`.")
     if made.hint:
         print(made.hint)
     return 0

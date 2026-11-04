@@ -1,44 +1,44 @@
-"""mem - audit and repair the Claude memory store, and run its hooks.
+"""mem - the Claude memory store: read, write, audit and repair it, and run its hooks.
 
-Enforces docs/format-spec.md.
+Flags such as --root and --json go before or after the command. `mem <command> --help`
+describes one command. Enforces docs/format-spec.md.
 
-    mem audit
-    mem audit --scan legacy
-    mem audit --refine
-    mem fix --write
-    mem fresh
-    mem hook session-start
-    mem hook post-tool
-    mem hook session-end
-    mem events stats
-    mem index [--rebuild]
-    mem new <slug> -d DESCRIPTION [-g GROUP] [-t TERRITORY] [--record] < body
-    mem find <terms> [--territory T] [--all] [--superseded]
-    mem show <slug> [--meta | --section H | --full] [--at REV]
+Read
+    mem find <words> [--territory T] [--all] [--superseded]   # PAST WINDOW flagged
+    mem show <slug>|<territory> [--meta | --section H | --full] [--at REV]
     mem history <slug>
-    mem supersede <old> <new>
-    mem verified <slug> -m WHAT-WAS-CHECKED
+    mem index [--rebuild]
+    mem events stats
+
+Write
+    mem new <slug> -d DESCRIPTION -v VOL|-s STATUS|--record [-g GROUP] [-t TERRITORY] < body
+    mem verified <slug> -m WHAT-WAS-CHECKED      # the claim held; a drift is an Edit first
+    mem supersede <old> <new>                    # `mem new` <new> first; relinks [[old]]
+    mem mv SLUG... TERRITORY [--write]
+    mem mv-territory OLD NEW [--write]
+    mem archive TERRITORY|SLUG... --why TEXT [--as GROUP] [--write]
+    mem link --territory T [--dir DIR] [--write] # point this repo at a territory
+
+Audit and repair
+    mem audit [--scan store|legacy|both] [--refine] [--at REV]
+    mem links | fresh | budget | drift | dup | status   # one audit check each
+    mem fix [--write] [--stamp-today]
+    mem render [TERRITORY] [--check]
+    mem render TERRITORY --adopt [--write]
+    mem refine queue [--territory T] [--limit N] [--json]
     mem backfill-verified [--baseline-date TERRITORY=DATE ...] [--write]
+
+Store history (the store's own git; never run git on it directly)
     mem commit [-m SUBJECT]
     mem log [PATH...] [-n N]
     mem diff [PATH...] [--stat]
     mem restore PATH... [--from REV]
     mem revert SHA...
-    mem audit --at REV
-    mem render [TERRITORY] [--check]
-    mem render TERRITORY --adopt [--write]
+
+Setup and hooks
     mem install [--dry-run] [--dev]
-    mem migrate inventory [--source DIR ...]
-    mem migrate summarize [--silo S ...] [--jobs N] [--model M] [--force] [--dry-run]
-    mem migrate summaries [--silo S ...] [--json]
-    mem migrate map [--rebuild] [--approve]
-    mem migrate apply [--silo S ...] [--dry-run]
-    mem migrate undo --silo S
-    mem migrate volatility [--territory T] [--dry-run] [--write] [--sample N]
-    mem refine queue [--territory T] [--limit N] [--json]
-    mem mv-territory OLD NEW [--write]
-    mem mv SLUG... TERRITORY [--write]
-    mem archive TERRITORY|SLUG... --why TEXT [--as GROUP] [--write]
+    mem hook session-start | post-tool | session-end [--root DIR]
+    mem migrate inventory | summarize | summaries | map | apply | undo | volatility
 
 Exit codes: 0 clean, 1 findings at error level, 2 tool error.
 """
@@ -50,8 +50,17 @@ HOOKS = ("session-start", "post-tool", "session-end")
 
 
 def _hook(args: list[str], t0: float | None = None) -> int:
-    """Run a hook. Never breaks a session: any failure exits 0 with nothing printed."""
+    """Run a hook. Never breaks a session: any failure exits 0 with nothing printed.
+
+    `--root DIR` points it at another store (CLAUDE_MEMORY_STORE, which the hook modules
+    read on import), so a scratch store can be exercised end to end."""
     try:
+        if "--root" in args:
+            import os
+            i = args.index("--root")
+            if i + 1 < len(args):
+                os.environ["CLAUDE_MEMORY_STORE"] = args[i + 1]
+            args = args[:i] + args[i + 2:]
         if args == ["session-start"]:
             from claude_hybrid_memory.hooks import session_start
             return session_start.main()
@@ -76,27 +85,55 @@ def _run(argv: list[str]) -> int:
     from claude_hybrid_memory.findings import report
     from claude_hybrid_memory.store import LEGACY, STORE, Memory, scan_legacy, scan_store
 
-    ap = argparse.ArgumentParser(prog="mem", description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["audit", "fix", "links", "fresh", "budget",
-                                        "drift", "dup", "status", "link"])
-    ap.add_argument("--territory", help="link: territory path, e.g. cards/archive-tools")
-    ap.add_argument("--dir", type=Path, default=None,
-                    help="link: the repo checkout to point at it (default: cwd)")
+    if not argv or argv[0] not in AUDIT_COMMANDS:
+        print(f"mem: unknown command {argv[0] if argv else ''!r}; `mem --help` lists them",
+              file=sys.stderr)
+        return 2
+    cmd = argv[0]
+    ap = argparse.ArgumentParser(prog=f"mem {cmd}", description=AUDIT_COMMANDS[cmd])
     ap.add_argument("--root", type=Path, default=STORE, help=f"store root (default {STORE})")
     ap.add_argument("--legacy", type=Path, default=LEGACY, help="legacy projects dir")
-    ap.add_argument("--scan", choices=["store", "legacy", "both"], default="both")
-    ap.add_argument("--write", action="store_true", help="fix: apply changes")
-    ap.add_argument("--stamp-today", action="store_true",
-                    help="fix: set last_verified to today where absent. Only when the claims "
-                         "were genuinely just verified; mtime is never used.")
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--refine", action="store_true",
-                    help="audit: include the refine-only findings (index size, degraded "
-                         "renders, field vocabulary) a plain audit leaves to the refine queue")
+    if cmd == "link":
+        ap.add_argument("--territory", "-t", required=True,
+                        help="the territory to point this repo at, e.g. console/tools")
+        ap.add_argument("--dir", type=Path, default=None,
+                        help="the repo checkout to point at it (default: cwd)")
+        ap.add_argument("--write", action="store_true",
+                        help="make the link and add the repo to the territory's members: "
+                             "(default: a dry run that says what it would do)")
+    else:
+        ap.add_argument("--scan", choices=["store", "legacy", "both"], default="both")
+        if cmd != "fix":
+            ap.add_argument("--territory", "-t",
+                            help="only findings in this territory (and those under it)")
+            ap.add_argument("--changed", action="store_true",
+                            help="only findings on files changed since the store's last "
+                                 "commit, which is this session's writes: the store commits "
+                                 "at session end")
+    if cmd == "fix":
+        ap.add_argument("--write", action="store_true",
+                        help="apply the fixes (default: a dry run that lists them)")
+        ap.add_argument("--stamp-today", action="store_true",
+                        help="set last_verified to today where absent. Only when the claims "
+                             "were genuinely just verified; mtime is never used.")
+    if cmd == "audit":
+        ap.add_argument("--refine", action="store_true",
+                        help="include the refine-only findings (index size, degraded renders, "
+                             "field vocabulary) a plain audit leaves to the refine queue")
     ap.add_argument("--at", metavar="REV",
-                    help="check the store as it was at this commit (read-only commands)")
-    a = ap.parse_args(argv)
+                    help="check the store as it was at this commit (read-only commands only)")
+    a = ap.parse_args(argv[1:])
+    a.command = cmd
+    for k, v in (("scan", "both"), ("write", False), ("stamp_today", False), ("changed", False),
+                 ("refine", False), ("at", None), ("territory", None), ("dir", None)):
+        if not hasattr(a, k):
+            setattr(a, k, v)
+    if a.territory and cmd != "link" and not (
+            a.root / "territories" / a.territory.strip("/") / "MEMORY.md").is_file():
+        print(f"no territory {a.territory!r} (no territories/{a.territory}/MEMORY.md)",
+              file=sys.stderr)
+        return 2
     if a.at:
         return _run_at(a, argv)
 
@@ -115,6 +152,13 @@ def _run(argv: list[str]) -> int:
     if a.command == "link":
         if not a.territory:
             print("link requires --territory", file=sys.stderr)
+            return 2
+        if a.root.resolve() != STORE.resolve() and a.legacy.resolve() == LEGACY.resolve():
+            # A scratch store with the real projects dir would symlink a real silo at the
+            # scratch copy: the one way an eval under --root wrote outside it (2026-11-04).
+            print(f"refused: --root is {a.root} but --legacy is the real {LEGACY}; pass "
+                  "--legacy too, so the link lands beside the store it points at",
+                  file=sys.stderr)
             return 2
         from claude_hybrid_memory.silos import do_link
         return report(do_link(a.root, a.legacy, a.territory,
@@ -143,7 +187,8 @@ def _run(argv: list[str]) -> int:
         f = (audit.check_router_drift(mems, routers, audit.superseded_paths(a.root))
              + audit.check_exports(a.root, routers))
     elif c == "dup":
-        f = audit.check_dup(mems)
+        from claude_hybrid_memory.audit.dup import check_near
+        f = audit.check_dup(mems) + (check_near(a.root) if a.scan != "legacy" else [])
     elif c == "status":
         f = audit.check_silos(a.legacy, a.root)
     else:  # audit
@@ -151,12 +196,62 @@ def _run(argv: list[str]) -> int:
         if not a.refine:
             from claude_hybrid_memory.spec import REFINE_CODES
             f = [x for x in f if x.code not in REFINE_CODES]
+        if a.territory:
+            f = _in_territory(f, a.root, a.territory)
+        if a.changed:
+            f = _in_changed(f, a.root)
+            if f is None:
+                return 2
         hdr = (f"scanned {len(mems)} memory files, {len(routers)} routers "
                f"({sum(1 for m in mems if m.scope=='store')} store, "
                f"{sum(1 for m in mems if m.scope=='legacy')} legacy)")
         print(hdr, file=sys.stderr if a.json else sys.stdout)
+    if a.territory and c != "audit":
+        f = _in_territory(f, a.root, a.territory)
+    if a.changed and c != "audit":
+        f = _in_changed(f, a.root)
+        if f is None:
+            return 2
     return report(f, a.json)
 
+
+def _in_changed(findings, root):
+    """The findings on files the store's next commit would take; None, said on stderr,
+    when the store has no history to compare with."""
+    import os
+
+    from claude_hybrid_memory import storegit
+    real = os.path.realpath(root)
+    if not storegit.is_repo(type(root)(real)):
+        print(f"--changed needs the store's history; {real} is not a git repository",
+              file=sys.stderr)
+        return None
+    pend = {os.path.join(real, p.strip('"')) for p in storegit.pending(type(root)(real))}
+    return [x for x in findings if os.path.realpath(str(x.path)) in pend]
+
+
+def _in_territory(findings, root, territory: str):
+    """The findings whose path lies in `territory` or under it."""
+    import os
+    base = os.path.realpath(root / "territories" / territory.strip("/"))
+    return [x for x in findings
+            if os.path.realpath(str(x.path)) == base
+            or os.path.realpath(str(x.path)).startswith(base + os.sep)]
+
+
+AUDIT_COMMANDS = {
+    "audit": "Every check over the store (and legacy silos), at error/warn/info.",
+    "fix": ("Autofix what is mechanical (slugs, quoting, obsolete fields), report what is "
+            "not. Dry run unless --write."),
+    "links": "Wikilinks and index links that resolve to nothing.",
+    "fresh": "Memories past their check-on-use window (volatility vs last_verified).",
+    "budget": "The always-loaded layer's size against its token budget.",
+    "drift": "Routers and EXPORTS against what the territories actually hold.",
+    "dup": ("Duplicate hints, never verdicts: description overlap across territories, plus "
+            "the BM25 near-duplicate pass over every live memory (about 2.5 s)."),
+    "status": "Migration state of legacy silos, plus silos whose working directory is gone.",
+    "link": "Point this repo's silo at a territory, so its MEMORY.md auto-loads here.",
+}
 
 CACHE_COMMANDS = ("index", "find", "show", "history", "supersede", "verified")
 GIT_COMMANDS = ("commit", "log", "diff", "restore", "revert")
@@ -341,7 +436,7 @@ def _migrate(argv: list[str]) -> int:
     ap.add_argument("--rebuild", action="store_true",
                     help="map: redraft the plan; the old one is kept as plan.prev.yaml")
     ap.add_argument("--approve", action="store_true", help="map: approve the plan as it is")
-    ap.add_argument("--territory", help="volatility: only this territory (or below it)")
+    ap.add_argument("--territory", "-t", help="volatility: only this territory (or below it)")
     ap.add_argument("--write", action="store_true",
                     help="volatility: land the cached verdicts in the store")
     ap.add_argument("--sample", type=int, default=15,
@@ -629,6 +724,28 @@ def _summaries(jobs, have: dict, as_json: bool) -> int:
     return 0
 
 
+def _store_paths(root, specs: list[str]) -> tuple[list[str], list[str]]:
+    """Store-relative paths for specs that are a path, a territory, or a memory."""
+    from claude_hybrid_memory import cache
+
+    out, bad, conn = [], [], None
+    for p in specs:
+        if (root / p).exists():
+            out.append(p)
+        elif (root / "territories" / p.strip("/")).is_dir():
+            out.append(f"territories/{p.strip('/')}")
+        else:
+            if conn is None:
+                conn = cache.connect(root)
+                cache.refresh(conn, root)
+            rows = cache.resolve(conn, p)
+            if len(rows) == 1:
+                out.append(rows[0][0])
+            else:
+                bad.append(p)
+    return out, bad
+
+
 def _storegit(argv: list[str]) -> int:
     """`mem commit | log | diff | restore | revert`: git on the store, and only the store
     (direction §16.1)."""
@@ -684,6 +801,15 @@ def _storegit(argv: list[str]) -> int:
         return 0 if r.status == "committed" else 1
     paths = [os.path.relpath(os.path.realpath(p), root) if os.path.isabs(p) else p
              for p in a.paths]
+    if cmd in ("log", "diff"):
+        # `mem log cards/cairn` and `mem log cairn-status` as a session types them, not only
+        # store-relative paths. A name that is none of these says so: an empty log read as
+        # "no history" (eval 2026-11-04).
+        paths, bad = _store_paths(root, paths)
+        if bad:
+            print(f"no store path, territory or memory {', '.join(map(repr, bad))}",
+                  file=sys.stderr)
+            return 2
     if cmd == "restore":
         r = storegit.restore(root, paths, a.rev)
         if a.json:
@@ -783,23 +909,38 @@ def _cache(argv: list[str]) -> int:
     if cmd == "index":
         ap.add_argument("--rebuild", action="store_true", help="drop and rebuild every row")
     elif cmd == "find":
-        ap.add_argument("terms", nargs="+", help="each argument is one phrase; all must match")
-        ap.add_argument("--territory", help="only this territory and those under it")
+        ap.add_argument("terms", nargs="*",
+                        help="words, matched as prefixes anywhere in a memory; memories with "
+                             "every word first, else those with the most, labelled partial")
+        ap.add_argument("--territory", "-t", help="only this territory and those under it")
         ap.add_argument("--all", action="store_true", help="include archive/")
         ap.add_argument("--superseded", action="store_true",
                         help="include memories a newer one supersedes")
         ap.add_argument("--limit", type=int, default=10)
     elif cmd == "supersede":
+        ap.description = ("Mark <new> as replacing <old>. Write <new> first with `mem new`: "
+                          "nothing is carried over from <old>, on purpose. Writes at once: "
+                          "`supersedes:` into <new>, every live [[old]] link rewritten to "
+                          "[[new]] (each printed) except in always-loaded gate text (GATES.md, "
+                          "MACHINE.md, ROUTER.md, standing/, a MEMORY.md GATES section), which "
+                          "is listed for you to Edit; and <old> dropped from its index. <old> "
+                          "itself is never edited. Undo with `mem restore`.")
         ap.add_argument("old", help="the memory being replaced")
         ap.add_argument("new", help="the memory replacing it; gets the `supersedes:` line")
     elif cmd == "history":
         ap.add_argument("spec", help="slug, territory/slug, or a store-relative path")
     elif cmd == "verified":
+        ap.description = ("Record that this memory's claim was checked against the world and "
+                          "HELD: stamps last_verified with today. It means the content is "
+                          "right, not that you looked. If it drifted, `Edit` the line at the "
+                          "path `mem show` prints first; if the conclusion flipped, `mem new` "
+                          "the replacement and `mem supersede` this one.")
         ap.add_argument("spec", help="slug, territory/slug, or a store-relative path")
         ap.add_argument("-m", "--note", required=True,
                         help="what was checked against the world, e.g. 'HEAD is 4211e13'")
     else:
-        ap.add_argument("spec", help="slug, territory/slug, or a store-relative path")
+        ap.add_argument("spec", help="slug, territory/slug, a store-relative path, or a "
+                                     "territory (prints its MEMORY.md)")
         part = ap.add_mutually_exclusive_group()
         part.add_argument("--meta", action="store_true", help="frontmatter and outline")
         part.add_argument("--section", metavar="HEADING",
@@ -824,6 +965,11 @@ def _cache(argv: list[str]) -> int:
                   f"{st.touched} touched, {st.unchanged} unchanged")
         return 0
 
+    if cmd == "find" and not a.terms:
+        hint = (f"; to read a territory's index, `mem show {a.territory}`" if a.territory
+                else "")
+        print(f"mem find: give at least one word{hint}", file=sys.stderr)
+        return 2
     if cmd == "find":
         found = cache.find(conn, a.terms, a.territory, a.all, a.superseded, a.limit)
         _log(a.root, "search", a.territory or "", "mem find", query=a.terms,
@@ -832,24 +978,31 @@ def _cache(argv: list[str]) -> int:
             print(json.dumps({"hits": [h.__dict__ for h in found.hits],
                               "archive_hidden": found.archive_hidden,
                               "superseded_hidden": found.superseded_hidden,
-                              "partial": found.partial}, indent=2))
+                              "partial": found.partial,
+                              "elsewhere": found.elsewhere}, indent=2))
             return 0
+        words = cache.query_words(a.terms)
         if found.partial:
-            print("No memory has every term; showing memories with any of them.\n")
+            print(f"No memory has every word ({' '.join(words)}); showing those with the "
+                  "most, labelled.\n")
         for h in found.hits:
-            head = " · ".join(x for x in (h.container, h.slug, h.status, h.tier,
-                                          h.last_verified and f"verified {h.last_verified}") if x)
+            line = h.sections[0][1] if h.sections else 1
+            secs = " · ".join(dict.fromkeys(s for s, _ in h.sections[:2]))
+            head = " · ".join(x for x in (
+                f"{h.path}:{line}", h.status, h.tier,
+                h.last_verified and f"verified {h.last_verified}", h.due,
+                found.partial and f"{h.matched}/{len(words)} words",
+                h.superseded_by and f"SUPERSEDED by {', '.join(h.superseded_by)}",
+                secs and f"§ {secs}") if x)
             print(head)
-            if h.superseded_by:
-                print(f"  SUPERSEDED by {', '.join(h.superseded_by)}")
             if h.description:
                 d = h.description
                 print("  " + (d if len(d) <= 220 else d[:217] + "..."))
-            line = h.sections[0][1] if h.sections else 1
-            secs = " · ".join(dict.fromkeys(s for s, _ in h.sections[:3]))
-            print(f"  {a.root / h.path}:{line}" + (f"  § {secs}" if secs else ""))
         if not found.hits:
-            print("no matches")
+            print("no matches" + (f" in {a.territory}" if a.territory else ""))
+            if found.elsewhere:
+                print(f"{found.elsewhere} match{'es' if found.elsewhere != 1 else ''} in other "
+                      "territories; drop --territory to see them")
         if found.archive_hidden or found.superseded_hidden:
             print()
         for n, where, flag in ((found.archive_hidden, "in archive/", "--all"),
@@ -862,6 +1015,13 @@ def _cache(argv: list[str]) -> int:
         return _supersede(conn, a.root, a.old, a.new)
     if cmd == "show" and a.at:
         return _show_at(conn, a)
+    idx = cmd == "show" and not cache.resolve(conn, a.spec) and _territory_index(a.root, a.spec)
+    if idx:
+        # ROUTER says "PULL WHEN ..."; this is the pull. A territory's MEMORY.md, whole.
+        _log(a.root, "read", str(idx.relative_to(a.root)), "mem show")
+        print(f"{idx.parent.relative_to(a.root / 'territories')}  {idx}\n")
+        print(idx.read_text(encoding="utf-8", errors="replace"), end="")
+        return 0
     one = _resolve_one(conn, a.spec)
     if one is None:
         return 2
@@ -876,10 +1036,11 @@ def _cache(argv: list[str]) -> int:
     fid = conn.execute("SELECT id FROM files WHERE path=?", (path,)).fetchone()[0]
     newer = cache.superseded_by(conn, fid)
     text = p.read_text(encoding="utf-8", errors="replace")
-    return _show_text(a, text, p, container, slug, newer)
+    return _show_text(a, text, p, container, slug, newer, conn)
 
 
-def _show_text(a, text: str, p, container: str, slug: str, newer: list[str]) -> int:
+def _show_text(a, text: str, p, container: str, slug: str, newer: list[str],
+               conn=None) -> int:
     import json
 
     from claude_hybrid_memory import cache
@@ -910,6 +1071,13 @@ def _show_text(a, text: str, p, container: str, slug: str, newer: list[str]) -> 
     print(f"{container}/{slug}  {p}")
     if newer:
         print(f"SUPERSEDED by {', '.join(newer)}; `mem history {slug}` for the chain")
+    elif not a.at and not container.startswith("archive"):   # `--at` shows the past, not now
+        import datetime as dt
+
+        from claude_hybrid_memory.audit.freshness import past_window
+        if due := past_window(meta, dt.date.today()):
+            print(f"{due.marker()}: check the claim you will rely on, then `Edit` this path "
+                  "or `mem verified`")
     if a.meta:
         for k, v in meta.items():
             if k == "metadata" and isinstance(v, dict):
@@ -919,6 +1087,15 @@ def _show_text(a, text: str, p, container: str, slug: str, newer: list[str]) -> 
         for s in cache.sections_of(text):
             if s.heading:
                 print(f"  {'  ' * (s.level - 1)}{s.heading}  :{s.line}")
+        if conn is not None and not a.at:
+            # "Does anything depend on this?" had to be answered from absence with rg (eval)
+            from claude_hybrid_memory import relink
+            g = cache.graph(conn)
+            node = g.nodes.get(str(p.relative_to(a.root)))
+            links = relink.backlinks(a.root, list(g.nodes.values()), node) if node else []
+            print(f"  linked from ({len(links)}):" if links else "  linked from: nothing")
+            for c in links:
+                print(f"    {c.path}:{c.line}")
         return 0
     desc = str(meta.get("description") or "").strip()
     if desc:
@@ -926,6 +1103,14 @@ def _show_text(a, text: str, p, container: str, slug: str, newer: list[str]) -> 
     para = cache.opening_paragraph(text)
     if para:
         print(f"\n{para}")
+    # Said, not implied: the default view is the description and the opening paragraph,
+    # and a 24-line memory showing 5 read as the whole file (eval 2026-11-04).
+    _, body, _ = parse_frontmatter(text)
+    rest = len([ln for ln in body.strip().split("\n")]) - (para.count("\n") + 1 if para else 0)
+    heads = [x.heading for x in cache.sections_of(text) if x.heading]
+    if rest > 0:
+        outline = f"; sections: {' · '.join(heads[:6])}" if heads else ""
+        print(f"\n({rest} more lines: `--full` for all, `--section H` for one{outline})")
     return 0
 
 
@@ -976,6 +1161,14 @@ def _log(root, event: str, path: str, tool: str, **extra) -> None:
         pass
 
 
+def _territory_index(root, spec: str):
+    """The MEMORY.md a spec names as a territory (`home/unraid`, `territories/home/unraid`,
+    or its MEMORY.md path), else None."""
+    t = spec.strip("/").removeprefix("territories/").removesuffix("/MEMORY.md")
+    p = root / "territories" / t / "MEMORY.md"
+    return p if t and p.is_file() else None
+
+
 def _resolve_one(conn, spec: str):
     """(path, container, slug) for exactly one memory, else say why on stderr."""
     from claude_hybrid_memory import cache
@@ -988,7 +1181,8 @@ def _resolve_one(conn, spec: str):
         for _, container, slug in rows:
             print(f"  {container}/{slug}", file=sys.stderr)
     else:
-        print(f"no memory {spec!r}; try `mem find {spec}`", file=sys.stderr)
+        print(f"no memory or territory {spec!r}; try `mem find {spec}`, or ROUTER.md for "
+              "territory names", file=sys.stderr)
     return None
 
 
@@ -1059,7 +1253,6 @@ def _supersede(conn, root, old_spec: str, new_spec: str) -> int:
     import os
 
     from claude_hybrid_memory import cache, chains
-    from claude_hybrid_memory.spec import entry_line_re
 
     old, new = _resolve_one(conn, old_spec), _resolve_one(conn, new_spec)
     if old is None or new is None:
@@ -1095,15 +1288,29 @@ def _supersede(conn, root, old_spec: str, new_spec: str) -> int:
     others = [s.key for s in g.successors(o.path) if s.path != n.path]
     if others:
         print(f"note: {o.key} is also superseded by {', '.join(others)}")
+    from claude_hybrid_memory import relink
+    changes = relink.relink(root, list(g.nodes.values()), o, n)
+    done = [c for c in changes if not c.protected]
+    held = [c for c in changes if c.protected]
+    for c in done:
+        print(f"relinked {c.path}:{c.line}\n  - {c.before.strip()}\n  + {c.after.strip()}")
+    if done:
+        _log(root, "write", n.path, "mem supersede", relinked=sorted({c.path for c in done}))
+    if held:
+        print(f"\nNOT rewritten: {len(held)} link(s) in always-loaded gate text, which needs the "
+              "user's named go-ahead to edit. Ask, then Edit each line:")
+        for c in held:
+            print(f"  {root / c.path}:{c.line}\n  - {c.before.strip()}\n  + {c.after.strip()}")
     r = root / "territories" / o.container / "MEMORY.md"
     if o.area == "territory" and r.is_file():
         from claude_hybrid_memory import render
         text = r.read_text(encoding="utf-8", errors="replace")
         if render.markers(text):
             render.render(root, o.container)        # a rendered index drops it itself
-        elif entry_line_re(os.path.basename(o.path)).search(text):
-            print(f"{r} still lists {os.path.basename(o.path)}; drop that line so the index "
-                  f"routes to {n.key}")
+        else:
+            for line in relink.drop_entry(r, os.path.basename(o.path)):
+                print(f"dropped from {r.relative_to(root)}: {line}")
+    cache.refresh(conn, root)
     return 0
 
 
@@ -1213,7 +1420,7 @@ def _refine(argv: list[str]) -> int:
     ap.add_argument("action", choices=["queue"])
     ap.add_argument("--root", type=Path, default=STORE, help=f"store root (default {STORE})")
     ap.add_argument("--legacy", type=Path, default=LEGACY, help="legacy projects dir")
-    ap.add_argument("--territory", help="only items in this territory (or below it)")
+    ap.add_argument("--territory", "-t", help="only items in this territory (or below it)")
     ap.add_argument("--limit", type=int, default=20, help="items to print (default 20)")
     ap.add_argument("--json", action="store_true", help="print the whole queue as JSON")
     a = ap.parse_args(argv)
@@ -1319,10 +1526,34 @@ def _archive(argv: list[str]) -> int:
     return report(move.apply_archive(a.root, a.legacy, ar), a.json)
 
 
+# Flags every command takes, and the ones among them that carry a value. A session types
+# `mem --root X find ...` as readily as `mem find ... --root X`; every session in the
+# 2026-11-04 eval hit `invalid choice` on the first form at least once.
+VALUE_FLAGS = {"--root", "--territory", "-t", "--legacy", "--scan", "--dir", "--at"}
+
+
+def _hoist(args: list[str]) -> list[str]:
+    """Move flags given before the subcommand to after it, where its parser reads them."""
+    lead, i = [], 0
+    while i < len(args) and args[i].startswith("-") and args[i] not in ("-h", "--help"):
+        lead.append(args[i])
+        i += 1
+        if "=" not in lead[-1] and lead[-1] in VALUE_FLAGS and i < len(args):
+            lead.append(args[i])
+            i += 1
+    if not lead or i >= len(args):
+        return args
+    return [args[i], *args[i + 1:], *lead]
+
+
 def main(argv: list[str] | None = None) -> int:
     import time
     t0 = time.perf_counter()
     args = sys.argv[1:] if argv is None else argv
+    if not args or args[0] in ("-h", "--help"):
+        print(__doc__)
+        return 0
+    args = _hoist(args)
     # The hook path runs at the start of every session, so it is dispatched before argparse
     # or any audit module is imported. tests/test_import_discipline.py holds that line.
     if args[:1] == ["hook"]:
