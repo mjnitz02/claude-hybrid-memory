@@ -15,8 +15,8 @@ Read `docs/self-verification.md` first; it defines the split between what the to
 decides and what you decide. Then:
 
     mem audit
-    mem hook session-start | jq -r .hookSpecificOutput.additionalContext | head -40
     mem events stats
+    tail -5 ~/.claude/memory/ALWAYS.md
 
 `mem audit` ranks **split candidates** (files over 10 KB, weighted by accretion markers and
 by how often events show them read). For each of the top few, ask *why* it is that big
@@ -43,15 +43,19 @@ Report the `verified` count with a few of their notes, the `stale-live` count, a
 evidence-based answer to "did a session act on a stale claim?". Zero `verified` events
 across two retros goes to Matt as a finding about the directive.
 
-**The third command is not optional, and it is the one a retrospective skips.** Run the hook
-and look at what it actually emits — length, and whether the `MEMORY STATUS` block reports a
-degradation. `mem budget` tells you the layer's size; only the hook tells you what a
-session is really handed. On 2026-10-02 the layer had been ~19% past `MAX_CHARS` for roughly
-three weeks: the budget reported a soft warn, three retrospectives read it and reasonably
-deferred, and all the while the hook was silently dropping the **end** of `ROUTER.md`, which
-was where the binding gates lived. Reading the number was not enough; nobody had looked at
-the output. The failure mode is fixed — degradation is now ordered and announces itself — but
-the habit is the real safeguard, because the next such defect will be a different one.
+**The `tail` is not optional, and it is the one a retrospective skips.** The layer reaches a
+session through `~/.claude/rules/claude-hybrid-memory.md`, which imports `ALWAYS.md`; the
+SessionStart hook prints only the short `MEMORY STATUS` block, so its output says nothing
+about the layer. `mem audit` covers the numbers: `budget-not-imported` and
+`budget-imported-twice` (the import exists exactly once), `budget-always-stale` (`ALWAYS.md`
+matches its sources), `budget-truncating` (it renders whole). Then look at the output: this
+session is itself a fresh session, so check that the lines `tail` printed are in your own
+context, once. That is the check no number can make. On 2026-10-02 the layer had been ~19%
+past `MAX_CHARS` for roughly three weeks: the budget reported a soft warn, three
+retrospectives read it and reasonably deferred, and all the while the **end** of `ROUTER.md`,
+where the binding gates lived, never reached a session. Reading the number was not enough;
+nobody had looked at the output. The failure mode is fixed, but the habit is the real
+safeguard, because the next such defect will be a different one.
 
 **Read the Declined sections of previous `RETRO.md` runs before reporting anything.** A
 finding already declined with a reason does not get re-raised unless the reason no longer
@@ -109,6 +113,11 @@ is more likely.
 Appending a dated section to `~/.claude/memory/RETRO.md` with **Acted**, **Declined, with
 reasons**, and **Pending**. Update `last_retrospective:` in `ROUTER.md`, which is what
 silences the hook's overdue line.
+
+**Before a question goes under Pending, look for its answer in the store.** Read the owning
+territory's `MEMORY.md` and search the territory for the subject. On 2026-11-03 the retro
+asked Matt whether the Character-Tools work had landed; `cards/clients` already recorded it
+as archived and obsolete. A question the store can answer is not Pending.
 
 Then report to Matt: what the tool found, what you judged, what you changed, and what you
 declined. Do not commit anything.

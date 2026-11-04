@@ -59,7 +59,7 @@ def check_structure(mems: list[Memory]) -> list[Finding]:
         # A field with a value outside its vocabulary is a refine item, never an error: it is
         # what a session writing a memory gets wrong, and stopping that session to look up an
         # enum costs more than the field is worth. Errors are for broken structure.
-        elif m.volatility not in VOLATILITIES:
+        elif m.volatility is not None and m.volatility not in VOLATILITIES:
             out.append(Finding(INFO, "field-invalid", rel,
                                f"volatility {m.volatility!r} not in {sorted(VOLATILITIES)}"))
         for fld, allowed in (("status", STATUSES), ("role", ROLES), ("confidence", CONFIDENCES),
