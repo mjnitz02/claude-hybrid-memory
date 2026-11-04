@@ -146,6 +146,11 @@ healthy or the run was not honest, and the second is more likely.
     nothing to do with worth, so tail-truncation reliably sacrifices the most important
     thing if the most important thing happens to be written last. Degrade in a declared
     order, cheapest first, and make every degradation announce itself in-band.
+  - **The output to look at has moved; the lesson has not.** Since 2026-11-03 the layer no
+    longer travels in hook output: `~/.claude/rules/claude-hybrid-memory.md` imports
+    `ALWAYS.md`, and the hook prints only `MEMORY STATUS`, so running the hook shows nothing
+    about the layer. The output is now `ALWAYS.md` itself and whether it reached a session's
+    context once and whole. The retro skill's procedure says how to check both.
 - **Task state colonises an always-loaded file.** Directives acquire punch lists; the punch
   list outgrows the directive. It is paid in every session and is invisible in the audit,
   which only counts files and tokens. The retro's judgment pass asks about it directly.

@@ -84,7 +84,7 @@ def test_a_record_is_never_stale_and_needs_no_volatility(fx: Fixture):
     mems, _ = scanned(fx)
     hit = lambda f: [x.code for x in f if x.path == str(rec)]  # noqa: E731
     assert hit(audit.check_freshness(mems, TODAY)) == []
-    assert "no-volatility" not in hit(audit.check_structure(mems))
+    assert hit(audit.check_structure(mems)) == []
 
 
 def test_retired_recipe_fields_are_flagged(fx: Fixture):
