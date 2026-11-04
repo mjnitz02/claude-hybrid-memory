@@ -48,7 +48,8 @@ def test_fix_quotes_frontmatter_yaml_misreads(fx: Fixture):
         [x for x in f if x.path == str(p)][0].message
     meta, body, problems = parse_frontmatter(p.read_text())
     assert not problems and body == "Body.\n"
-    assert meta["description"] == desc and meta["metadata"]["note"] == "a: b"
+    # the harness block is flattened in the same pass, so `note` lands at the top level
+    assert meta["description"] == desc and meta["note"] == "a: b" and "metadata" not in meta
 
 
 def test_fix_leaves_frontmatter_it_cannot_verify(fx: Fixture):
@@ -84,9 +85,41 @@ def test_fix_strips_retired_fields_nested_under_harness_metadata(fx: Fixture):
                  "  last_verified: 2026-10-27\nvolatility: slow\n---\n\nB.\n")
     mems, routers = scan_store(fx.store)
     do_fix(mems, routers, write=True, stamp_today=False)
-    assert p.read_text() == ("---\nname: kit-nested\ndescription: d\nmetadata:\n"
-                             "  kind: territory\n  last_verified: 2026-10-27\n"
+    assert p.read_text() == ("---\nname: kit-nested\ndescription: d\n"
+                             "kind: territory\nlast_verified: 2026-10-27\n"
                              "volatility: slow\n---\n\nB.\n")
+
+
+def test_fix_flattens_the_harness_metadata_block(fx: Fixture):
+    """Synthetic, in the shape of the 228 real files of 2026-11-04: the harness's own keys
+    go, everything else moves up a level, a top-level key wins over its nested copy, and
+    `modified` survives only where there is no last_verified to stand in for it."""
+    from claude_hybrid_memory.fix import flatten_harness
+    text = ("---\nname: kit-h\ndescription: d\nmetadata:\n  node_type: memory\n"
+            "  kind: territory\n  type: project\n  originSessionId: 0000\n"
+            "  modified: 2026-08-13T23:58:04.986Z\n  description: older\n"
+            "last_verified: 2026-09-11\nvolatility: slow\n---\n\nBody.\n")
+    new, actions = flatten_harness(text)
+    assert new == ("---\nname: kit-h\ndescription: d\nkind: territory\n"
+                   "last_verified: 2026-09-11\nvolatility: slow\n---\n\nBody.\n")
+    assert "dropped description (already at top level)" in actions
+    no_lv = text.replace("last_verified: 2026-09-11\n", "")
+    assert "modified: 2026-08-13T23:58:04.986Z\n" in flatten_harness(no_lv)[0]
+    # a router: nested maps dedent, the empty harness name goes, modified never stays
+    router = ("---\nname: \"\"\nmetadata:\n  node_type: memory\n  territory: solo/x\n"
+              "  members:\n    x:\n      mode: active\n  modified: 2026-10-24T12:59:07Z\n"
+              "---\n\n# solo/x\n")
+    new, _ = flatten_harness(router, router=True)
+    assert new == ("---\nterritory: solo/x\nmembers:\n  x:\n    mode: active\n---\n\n"
+                   "# solo/x\n")
+    assert flatten_harness("---\nname: a\nkind: territory\n---\nB.\n") is None
+
+
+def test_audit_warns_on_a_harness_written_memory(fx: Fixture):
+    from claude_hybrid_memory.audit.structure import check_structure
+    mems, _ = scan_store(fx.store)
+    f = [x for x in check_structure(mems) if x.code == "harness-frontmatter"]
+    assert [x.path.rsplit("/", 1)[1] for x in f] == ["lab-backup-plan.md"]
 
 
 def test_fix_dry_run_writes_nothing(fx: Fixture):

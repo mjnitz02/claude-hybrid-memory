@@ -15,7 +15,8 @@ Exit codes: 0 clean, 1 findings at error level, 2 tool error.
     mem audit                  # everything, one report
     mem audit --refine         # plus the refine-only findings (index size, field vocabulary)
     mem audit --at REV         # any read-only check against the store as a past commit had it
-    mem fix --write            # autofix slugs, names, links, router refs
+    mem audit -t TERRITORY     # only that territory's findings (also links, fresh, drift, ...)
+    mem fix --write            # autofix slugs, names, links, router refs; flatten harness `metadata:` blocks
     mem fresh                  # memories past their check-on-use window
     mem budget                 # the always-loaded layer, as the hook actually renders it
     mem render --check         # stale or degraded rendered indexes, and any MEMORY.md near the cap
@@ -29,7 +30,7 @@ Exit codes: 0 clean, 1 findings at error level, 2 tool error.
     mem new <slug> -d DESC -v VOL|-s STATUS [-g GROUP] [-t TERRITORY] < body   # write a memory and index it
     mem verified <slug> -m WHAT-WAS-CHECKED   # a claim checked on use held: stamp today, log it
     mem find <words> [--territory T] [--all] [--superseded]   # prefix words, every word first; PAST WINDOW flagged
-    mem show <slug> [--meta | --section H | --full] [--at REV]   # PAST WINDOW flagged; prints the path to Edit
+    mem show <slug> [--meta | --section H | --full] [--at REV]   # PAST WINDOW flagged; prints the path to Edit; --meta lists what links here
     mem show <territory>       # print a territory's MEMORY.md: the ROUTER's "PULL WHEN"
     mem history <slug>         # version chain both ways + the file's git log
     mem supersede <old> <new>  # `mem new` <new> first; writes `supersedes:`, relinks every live [[old]], drops <old> from its index; <old> is never touched
@@ -41,8 +42,8 @@ Exit codes: 0 clean, 1 findings at error level, 2 tool error.
 The store is its own git repo with no remote. Every git operation on it goes through `mem`.
 
     mem commit [-m SUBJECT]    # commit now (the SessionEnd hook does this on its own)
-    mem log [PATH...] [-n N]   # the store's history, or one file's
-    mem diff [PATH...] [--stat]
+    mem log [PATH...] [-n N]   # the store's history, or one path's; a territory or slug works too
+    mem diff [PATH...] [--stat]   # same PATH forms as log
     mem restore PATH... [--from REV]   # put files back; commits first, never deletes
     mem revert SHA...                  # undo store commits as new commits; commits first
 

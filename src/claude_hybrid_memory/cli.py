@@ -104,6 +104,10 @@ def _run(argv: list[str]) -> int:
                              "(default: a dry run that says what it would do)")
     else:
         ap.add_argument("--scan", choices=["store", "legacy", "both"], default="both")
+        if cmd != "fix":
+            ap.add_argument("--territory", "-t",
+                            help="only findings in this territory (and those under it), so "
+                                 "a session can check what it just changed")
     if cmd == "fix":
         ap.add_argument("--write", action="store_true",
                         help="apply the fixes (default: a dry run that lists them)")
@@ -122,6 +126,11 @@ def _run(argv: list[str]) -> int:
                  ("refine", False), ("at", None), ("territory", None), ("dir", None)):
         if not hasattr(a, k):
             setattr(a, k, v)
+    if a.territory and cmd != "link" and not (
+            a.root / "territories" / a.territory.strip("/") / "MEMORY.md").is_file():
+        print(f"no territory {a.territory!r} (no territories/{a.territory}/MEMORY.md)",
+              file=sys.stderr)
+        return 2
     if a.at:
         return _run_at(a, argv)
 
@@ -140,6 +149,13 @@ def _run(argv: list[str]) -> int:
     if a.command == "link":
         if not a.territory:
             print("link requires --territory", file=sys.stderr)
+            return 2
+        if a.root.resolve() != STORE.resolve() and a.legacy.resolve() == LEGACY.resolve():
+            # A scratch store with the real projects dir would symlink a real silo at the
+            # scratch copy: the one way an eval under --root wrote outside it (2026-11-04).
+            print(f"refused: --root is {a.root} but --legacy is the real {LEGACY}; pass "
+                  "--legacy too, so the link lands beside the store it points at",
+                  file=sys.stderr)
             return 2
         from claude_hybrid_memory.silos import do_link
         return report(do_link(a.root, a.legacy, a.territory,
@@ -176,11 +192,24 @@ def _run(argv: list[str]) -> int:
         if not a.refine:
             from claude_hybrid_memory.spec import REFINE_CODES
             f = [x for x in f if x.code not in REFINE_CODES]
+        if a.territory:
+            f = _in_territory(f, a.root, a.territory)
         hdr = (f"scanned {len(mems)} memory files, {len(routers)} routers "
                f"({sum(1 for m in mems if m.scope=='store')} store, "
                f"{sum(1 for m in mems if m.scope=='legacy')} legacy)")
         print(hdr, file=sys.stderr if a.json else sys.stdout)
+    if a.territory and c != "audit":
+        f = _in_territory(f, a.root, a.territory)
     return report(f, a.json)
+
+
+def _in_territory(findings, root, territory: str):
+    """The findings whose path lies in `territory` or under it."""
+    import os
+    base = os.path.realpath(root / "territories" / territory.strip("/"))
+    return [x for x in findings
+            if os.path.realpath(str(x.path)) == base
+            or os.path.realpath(str(x.path)).startswith(base + os.sep)]
 
 
 AUDIT_COMMANDS = {
@@ -667,6 +696,28 @@ def _summaries(jobs, have: dict, as_json: bool) -> int:
     return 0
 
 
+def _store_paths(root, specs: list[str]) -> tuple[list[str], list[str]]:
+    """Store-relative paths for specs that are a path, a territory, or a memory."""
+    from claude_hybrid_memory import cache
+
+    out, bad, conn = [], [], None
+    for p in specs:
+        if (root / p).exists():
+            out.append(p)
+        elif (root / "territories" / p.strip("/")).is_dir():
+            out.append(f"territories/{p.strip('/')}")
+        else:
+            if conn is None:
+                conn = cache.connect(root)
+                cache.refresh(conn, root)
+            rows = cache.resolve(conn, p)
+            if len(rows) == 1:
+                out.append(rows[0][0])
+            else:
+                bad.append(p)
+    return out, bad
+
+
 def _storegit(argv: list[str]) -> int:
     """`mem commit | log | diff | restore | revert`: git on the store, and only the store
     (direction §16.1)."""
@@ -722,6 +773,15 @@ def _storegit(argv: list[str]) -> int:
         return 0 if r.status == "committed" else 1
     paths = [os.path.relpath(os.path.realpath(p), root) if os.path.isabs(p) else p
              for p in a.paths]
+    if cmd in ("log", "diff"):
+        # `mem log cards/cairn` and `mem log cairn-status` as a session types them, not only
+        # store-relative paths. A name that is none of these says so: an empty log read as
+        # "no history" (eval 2026-11-04).
+        paths, bad = _store_paths(root, paths)
+        if bad:
+            print(f"no store path, territory or memory {', '.join(map(repr, bad))}",
+                  file=sys.stderr)
+            return 2
     if cmd == "restore":
         r = storegit.restore(root, paths, a.rev)
         if a.json:
@@ -946,10 +1006,11 @@ def _cache(argv: list[str]) -> int:
     fid = conn.execute("SELECT id FROM files WHERE path=?", (path,)).fetchone()[0]
     newer = cache.superseded_by(conn, fid)
     text = p.read_text(encoding="utf-8", errors="replace")
-    return _show_text(a, text, p, container, slug, newer)
+    return _show_text(a, text, p, container, slug, newer, conn)
 
 
-def _show_text(a, text: str, p, container: str, slug: str, newer: list[str]) -> int:
+def _show_text(a, text: str, p, container: str, slug: str, newer: list[str],
+               conn=None) -> int:
     import json
 
     from claude_hybrid_memory import cache
@@ -996,6 +1057,15 @@ def _show_text(a, text: str, p, container: str, slug: str, newer: list[str]) -> 
         for s in cache.sections_of(text):
             if s.heading:
                 print(f"  {'  ' * (s.level - 1)}{s.heading}  :{s.line}")
+        if conn is not None and not a.at:
+            # "Does anything depend on this?" had to be answered from absence with rg (eval)
+            from claude_hybrid_memory import relink
+            g = cache.graph(conn)
+            node = g.nodes.get(str(p.relative_to(a.root)))
+            links = relink.backlinks(a.root, list(g.nodes.values()), node) if node else []
+            print(f"  linked from ({len(links)}):" if links else "  linked from: nothing")
+            for c in links:
+                print(f"    {c.path}:{c.line}")
         return 0
     desc = str(meta.get("description") or "").strip()
     if desc:
@@ -1003,6 +1073,14 @@ def _show_text(a, text: str, p, container: str, slug: str, newer: list[str]) -> 
     para = cache.opening_paragraph(text)
     if para:
         print(f"\n{para}")
+    # Said, not implied: the default view is the description and the opening paragraph,
+    # and a 24-line memory showing 5 read as the whole file (eval 2026-11-04).
+    _, body, _ = parse_frontmatter(text)
+    rest = len([ln for ln in body.strip().split("\n")]) - (para.count("\n") + 1 if para else 0)
+    heads = [x.heading for x in cache.sections_of(text) if x.heading]
+    if rest > 0:
+        outline = f"; sections: {' · '.join(heads[:6])}" if heads else ""
+        print(f"\n({rest} more lines: `--full` for all, `--section H` for one{outline})")
     return 0
 
 

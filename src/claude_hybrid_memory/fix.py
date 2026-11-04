@@ -67,6 +67,77 @@ def quote_frontmatter(text: str) -> tuple[str, list[str]] | None:
     return new, sorted(k for _, k in quoted)
 
 
+# What the harness's auto-memory recipe nests under `metadata:`, and the store never reads.
+# `modified` is kept (hoisted) only where there is no last_verified, since backfill-verified
+# reads it as the date a file was written (verified.written_date).
+HARNESS_FIELDS = ("node_type", "type", "originSessionId", "modified")
+
+
+def flatten_harness(text: str, router: bool = False) -> tuple[str, list[str]] | None:
+    """Fold a harness `metadata:` block into flat frontmatter: drop HARNESS_FIELDS, hoist
+    everything else one level (a key already at the top level wins, as the loader's hoist
+    already decided), and drop the harness's empty `name: ""`. As text, so comments and flow
+    style survive. None when there is no block, or the result would not read back with
+    every kept value unchanged. A router (MEMORY.md) has no last_verified to stand in for,
+    so it never keeps `modified`."""
+    if not text.startswith("---"):
+        return None
+    end = text.find("\n---", 3)
+    if end == -1:
+        return None
+    lines = text[4:end].split("\n") if text.startswith("---\n") else None
+    if lines is None:
+        return None
+    try:
+        i = next(n for n, ln in enumerate(lines) if re.match(r"^metadata:\s*$", ln))
+    except StopIteration:
+        return None
+    j = i + 1
+    while j < len(lines) and (lines[j][:1] in (" ", "\t") or not lines[j].strip()):
+        j += 1
+    block, top = lines[i + 1:j], lines[:i] + lines[j:]
+    top_keys = {m.group(1) for ln in top if (m := re.match(r"^([A-Za-z_][\w.-]*)\s*:", ln))}
+    has_lv = router or "last_verified" in top_keys or any(
+        re.match(r"^\s+last_verified\s*:", ln) for ln in block)
+    base = min((len(ln) - len(ln.lstrip()) for ln in block if ln.strip()), default=0)
+    kept, actions, skip = [], [], False
+    for ln in block:
+        if not ln.strip():
+            continue
+        depth = len(ln) - len(ln.lstrip())
+        if depth == base:
+            key = ln.strip().split(":", 1)[0].strip()
+            drop = (key in HARNESS_FIELDS and not (key == "modified" and not has_lv)) \
+                or key in top_keys
+            skip = drop
+            if drop:
+                actions.append(f"dropped {key}" + (" (already at top level)"
+                                                   if key in top_keys else ""))
+                continue
+            actions.append(f"hoisted {key}")
+        elif skip:
+            continue
+        kept.append(ln[base:])
+    empty_name = [n for n, ln in enumerate(top) if re.match(r'^name:\s*(""|\'\')?\s*$', ln)]
+    if empty_name and not any(re.match(r"^name\s*:", ln) for ln in kept):
+        actions.append('dropped name: ""')
+    for n in reversed(empty_name):
+        top.pop(n)
+    new_lines = top[:i] + kept + top[i:]
+    new = "---\n" + "\n".join(new_lines) + text[end:]
+    before, _, _ = parse_frontmatter(text)
+    after, _, problems = parse_frontmatter(new)
+    if problems or "metadata" in after:
+        return None
+    for k, v in after.items():
+        if k in before and before[k] != v and not (k == "name" and not before[k]):
+            return None
+    for k, v in before.items():
+        if k not in ("metadata", "name", *HARNESS_FIELDS) and after.get(k) != v:
+            return None
+    return new, actions
+
+
 def do_fix(mems: list[Memory], routers: dict, write: bool, stamp_today: bool) -> list[Finding]:
     """Plan every change first, then apply once per file.
 
@@ -117,8 +188,15 @@ def do_fix(mems: list[Memory], routers: dict, write: bool, stamp_today: bool) ->
                                    "frontmatter is not valid YAML and quoting would not read "
                                    "back verbatim; fix by hand"))
 
+        flat = flatten_harness(text)
+        if flat:
+            text = flat[0]
+            actions.append("flattened harness metadata: (" + ", ".join(flat[1]) + ")")
+
         if not m.name:
-            if m.meta:
+            if m.meta and re.search(r"^name\s*:", text[:text.find("\n---", 3)], re.M):
+                text = re.sub(r"^(name\s*:).*$", rf"\g<1> {want}", text, count=1, flags=re.M)
+            elif m.meta:
                 text = re.sub(r"^---\n", f"---\nname: {want}\n", text, count=1)
             else:
                 text = f"---\nname: {want}\nkind: territory\n---\n" + text
@@ -171,12 +249,18 @@ def do_fix(mems: list[Memory], routers: dict, write: bool, stamp_today: bool) ->
             if target != m.path:
                 m.path.unlink()
 
-    # 3. routers reference files by path, so they must move too
+    # 3. routers reference files by path, so they must move too; and a router's frontmatter
+    # gets the same flattening (cards/archive/MEMORY.md had a harness block, 2026-11-04)
     for r in routers.values():
         text = rewrite_links(r.raw)
+        what = ["updated renamed file references"] if text != r.raw else []
+        flat = flatten_harness(text, router=True)
+        if flat:
+            text = flat[0]
+            what.append("flattened harness metadata: (" + ", ".join(flat[1]) + ")")
         if text == r.raw:
             continue
-        out.append(Finding(INFO, "fix-router", str(r.path), "updated renamed file references"))
+        out.append(Finding(INFO, "fix-router", str(r.path), "; ".join(what)))
         if write:
             r.path.write_text(text, encoding="utf-8")
 

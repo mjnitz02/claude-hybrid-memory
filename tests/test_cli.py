@@ -104,3 +104,82 @@ def test_the_no_territory_note_names_the_link_command(fx: Fixture, tmp_path: Pat
     ctx = json.loads(out)["hookSpecificOutput"]["additionalContext"]
     assert "maps to NO territory" in ctx and "docs/setup.md step 5" not in ctx
     assert "`mem link --territory " in ctx and "--write`" in ctx
+
+
+# --- P3 polish from the same eval -------------------------------------------------------
+
+def test_show_says_how_much_it_left_out(fx: Fixture):
+    rc, out, _ = run(mem_cmd("show", "lab-backup-plan"), fx.env())
+    assert rc == 0 and "more lines: `--full` for all" in out and "Current · History" in out
+
+
+def test_show_meta_lists_what_links_here(fx: Fixture):
+    rc, out, _ = run(mem_cmd("show", "--meta", "lab-ssh-read-only"), fx.env())
+    assert "linked from (2):" in out
+    assert "territories/home/lab/MEMORY.md:" in out
+    assert "territories/console/kit/kit-sync-design.md:" in out
+
+
+def test_render_check_names_an_unrendered_territory(fx: Fixture):
+    rc, out, _ = run(mem_cmd("render", "home/lab", "--check"), fx.env())
+    assert "index-not-rendered" in out and "mem render home/lab --adopt" in out
+
+
+def test_log_takes_a_territory_or_a_slug_and_refuses_a_typo(fx: Fixture):
+    import subprocess
+    subprocess.run(["git", "init", "-q", str(fx.store)], check=True)
+    subprocess.run(["git", "-C", str(fx.store), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(fx.store), "-c", "user.name=t", "-c", "user.email=t@t",
+                    "commit", "-qm", "baseline"], check=True)
+    for spec in ("home/lab", "lab-backup-plan", "territories/home/lab"):
+        rc, out, err = run(mem_cmd("log", spec), fx.env())
+        assert rc == 0 and "baseline" in out, (spec, err)
+    rc, _, err = run(mem_cmd("log", "home/nowhere"), fx.env())
+    assert rc == 2 and "no store path, territory or memory 'home/nowhere'" in err
+
+
+def test_new_keeps_the_router_count_true(fx: Fixture):
+    import subprocess
+    p = subprocess.run(mem_cmd("new", "lab-probe", "-t", "home/lab", "-v", "slow", "-d", "x"),
+                       input="Body.\n", capture_output=True, text=True, env=fx.env())
+    assert p.returncode == 0, p.stderr
+    real = len(list((fx.store / "territories/home/lab").glob("*.md"))) - 2  # MEMORY, EXPORTS
+    assert f"- home/lab ({real}) :" in (fx.store / "ROUTER.md").read_text()
+    rc, out, _ = run(mem_cmd("audit", "--json", "-t", "home/lab"), fx.env())
+    assert not [f for f in json.loads(out) if f["code"] == "router-count"]
+
+
+def test_audit_scopes_to_a_territory(fx: Fixture):
+    rc, out, _ = run(mem_cmd("audit", "--json", "-t", "console/kit"), fx.env())
+    paths = [f["path"] for f in json.loads(out)]
+    assert paths and all("/territories/console/kit" in p for p in paths)
+    rc, _, err = run(mem_cmd("audit", "-t", "console/nowhere"), fx.env())
+    assert rc == 2 and "no territory" in err
+
+
+def test_link_under_a_scratch_root_needs_legacy_too(fx: Fixture, tmp_path: Path):
+    import shutil
+    scratch = tmp_path / "scratch"
+    shutil.copytree(fx.store, scratch)
+    env = fx.env()
+    env["HOME"] = str(fx.home)
+    rc, _, err = run(mem_cmd("link", "-t", "home/lab", "--root", str(scratch), "--write"), env)
+    assert rc == 2 and "pass --legacy too" in err
+    rc, _, err = run(mem_cmd("link", "-t", "home/lab", "--root", str(scratch),
+                             "--legacy", str(tmp_path / "projects"), "--write"), env)
+    assert rc == 0, err
+
+
+def test_cwd_territory_resolves_inside_a_scratch_root(fx: Fixture, tmp_path: Path):
+    # fx.repo's silo points into fx.store; under --root a copy, `mem new` must land in the
+    # copy's territory, not fail to map (eval 2026-11-04) or write the original.
+    import shutil
+    import subprocess
+    scratch = tmp_path / "scratch"
+    shutil.copytree(fx.store, scratch)
+    p = subprocess.run(mem_cmd("new", "kit-probe", "-v", "slow", "-d", "x", "--root",
+                               str(scratch)), input="Body.\n", capture_output=True,
+                       text=True, env=fx.env(), cwd=fx.repo)
+    assert p.returncode == 0, p.stderr
+    assert (scratch / "territories/console/kit/kit-probe.md").is_file()
+    assert not (fx.store / "territories/console/kit/kit-probe.md").exists()

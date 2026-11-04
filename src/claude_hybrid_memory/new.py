@@ -89,9 +89,10 @@ def make(root: Path, territory: str, slug: str, description: str, body: str, *,
     if status and status not in STATUSES:
         raise Refused(f"--status {status!r} not in {sorted(STATUSES)}")
     if not (volatility or status or record):
-        raise Refused("pass --volatility (stable: a fact or rule that does not drift; slow: "
-                      "changes over weeks; live: state such as HEAD, an open PR, what is "
-                      "next) or --status, which implies one")
+        raise Refused("pass --volatility (stable: a fact, rule or procedure that does not "
+                      "drift, such as a hardware quirk or a preference; slow: changes over "
+                      "weeks, such as a repo's layout or setup; live: state such as HEAD, an "
+                      "open PR, what is next) or --status, which implies one")
     p = tdir / f"{slug}.md"
     if p.exists():
         raise Refused(f"{territory}/{slug} already exists; edit the file to update it, or "
@@ -101,6 +102,11 @@ def make(root: Path, territory: str, slug: str, description: str, body: str, *,
                  + "\n" + body.strip("\n") + "\n", encoding="utf-8")
     apply.reindex(root, territory)
     from claude_hybrid_memory import render
+    # ROUTER's `(N)` and the ALWAYS.md rendered from it, so the session's own audit does
+    # not show a router-count warning the write just caused (eval 2026-11-04).
+    if render.router_counts(root):
+        from claude_hybrid_memory.hooks import session_start
+        session_start.write_always(root)
     rendered = bool(render.markers((tdir / "MEMORY.md").read_text(encoding="utf-8",
                                                                    errors="replace")))
     rel = f"territories/{territory}/{p.name}"
@@ -139,7 +145,12 @@ def main(argv: list[str]) -> int:
                     help="e.g. console/tools (default: the territory this directory maps to)")
     ap.add_argument("--role", default=DEFAULT_ROLE, choices=sorted(ROLES))
     ap.add_argument("--volatility", "-v", choices=sorted(VOLATILITIES),
-                    help="how fast its claims drift; required unless --status or --record")
+                    help="how fast its claims drift, which sets how long a later session may "
+                         "act on it unchecked (stable 365d, slow 30d, live 14d). stable: a "
+                         "rule, a preference, a hardware fact or procedure, why a decision "
+                         "was made; slow: a repo's layout, a tool's setup, a project's plan; "
+                         "live: HEAD, an open PR, what is next, a version number. Required "
+                         "unless --status or --record")
     ap.add_argument("--status", "-s", choices=sorted(STATUSES),
                     help="e.g. SHIPPED or IN FLIGHT; implies the volatility")
     ap.add_argument("--record", action="store_true",
@@ -165,7 +176,8 @@ def main(argv: list[str]) -> int:
     from claude_hybrid_memory.cli import _log
     _log(a.root, "write", made.rel, "mem new")
     if made.rendered:
-        print(f"wrote {made.rel} and indexed it in {territory}/MEMORY.md")
+        print(f"wrote {made.rel} and indexed it in {territory}/MEMORY.md; the store commits it "
+              "at session end")
     else:
         # Said plainly: a hand-written index has no groups to honour, and "indexed it" read
         # as success when the line had landed under whatever heading came last (eval).

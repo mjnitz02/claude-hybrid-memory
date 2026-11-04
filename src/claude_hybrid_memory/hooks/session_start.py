@@ -162,6 +162,13 @@ def territory_for(cwd: Path, store: Path) -> tuple[str | None, list[str]]:
                 target = Path(os.path.realpath(link))
                 if tdir_r == target.parent or tdir_r in target.parents:
                     return str(target.relative_to(tdir_r)), all_t
+                # The silo points into another store (the real one, when this is a
+                # scratch copy under --root): the same territory path, read here.
+                parts = target.parts
+                if "territories" in parts:
+                    rel = Path(*parts[len(parts) - parts[::-1].index("territories"):])
+                    if (tdir / rel / "MEMORY.md").is_file():
+                        return str(rel), all_t
         except (OSError, ValueError):
             continue
     return None, all_t

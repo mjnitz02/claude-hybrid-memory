@@ -47,41 +47,59 @@ def live_files(root: Path):
         yield p, rel
 
 
+def _scan(root: Path, nodes: list[chains.Node], old: chains.Node, skip: tuple[str, ...],
+          target: str | None) -> list[tuple[Path, list[str], list[Change]]]:
+    """Every live line with a wikilink resolving to `old`, per file, and the line with
+    those links renamed to `target` (unchanged when `target` is None)."""
+    found = []
+    for p, rel in live_files(root):
+        if str(rel) in skip:
+            continue
+        text = p.read_text(encoding="utf-8", errors="replace")
+        if "[[" not in text:
+            continue
+        near = _container(rel)
+        lines, changes = text.split("\n"), []
+        for i, line in enumerate(lines):
+            if "[[" not in line:
+                continue
+            hit = False
+
+            def swap(m: re.Match, near=near) -> str:
+                nonlocal hit
+                ref, bar, rest = m.group(1).partition("|")
+                found_ = chains.lookup(nodes, ref.strip(), near)
+                if len(found_) == 1 and found_[0].path == old.path:
+                    hit = True
+                    return f"[[{target}{bar}{rest}]]" if target else m.group(0)
+                return m.group(0)
+
+            after = WIKILINK_RE.sub(swap, line)
+            if hit:
+                changes.append(Change(str(rel), i + 1, line, after))
+                lines[i] = after
+        if changes:
+            found.append((p, lines, changes))
+    return found
+
+
+def backlinks(root: Path, nodes: list[chains.Node], node: chains.Node) -> list[Change]:
+    """Every live line that links to `node`; `before` is the line."""
+    return [c for _, _, cs in _scan(root, nodes, node, (node.path,), None) for c in cs]
+
+
 def relink(root: Path, nodes: list[chains.Node], old: chains.Node, new: chains.Node,
            write: bool = True) -> list[Change]:
     """Rewrite each wikilink that resolves to `old` so it names `new`. The new name is the
     bare slug when that is unique in the store, else container/slug."""
     unique = len(chains.lookup(nodes, new.slug)) == 1
     target = new.slug if unique else new.key
-    changes: list[Change] = []
-    for p, rel in live_files(root):
-        if str(rel) in (old.path, new.path):
-            continue
-        text = p.read_text(encoding="utf-8", errors="replace")
-        if "[[" not in text:
-            continue
-        near = _container(rel)
-
-        def swap(m: re.Match, near=near) -> str:
-            ref, bar, rest = m.group(1).partition("|")
-            hits = chains.lookup(nodes, ref.strip(), near)
-            if len(hits) == 1 and hits[0].path == old.path:
-                return f"[[{target}{bar}{rest}]]"
-            return m.group(0)
-
-        lines = text.split("\n")
-        touched = False
-        for i, line in enumerate(lines):
-            if "[[" not in line:
-                continue
-            after = WIKILINK_RE.sub(swap, line)
-            if after != line:
-                changes.append(Change(str(rel), i + 1, line, after))
-                lines[i] = after
-                touched = True
-        if touched and write:
+    out: list[Change] = []
+    for p, lines, changes in _scan(root, nodes, old, (old.path, new.path), target):
+        out += changes
+        if write:
             p.write_text("\n".join(lines), encoding="utf-8")
-    return changes
+    return out
 
 
 def drop_entry(index: Path, filename: str) -> list[str]:
