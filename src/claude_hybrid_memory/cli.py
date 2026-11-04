@@ -12,7 +12,7 @@ Enforces docs/format-spec.md.
     mem hook session-end
     mem events stats
     mem index [--rebuild]
-    mem new <slug> -d DESCRIPTION [-g GROUP] [-t TERRITORY] [--record] < body
+    mem new <slug> -d DESCRIPTION -v VOL|-s STATUS|--record [-g GROUP] [-t TERRITORY] < body
     mem find <terms> [--territory T] [--all] [--superseded]
     mem show <slug> [--meta | --section H | --full] [--at REV]
     mem history <slug>
@@ -783,18 +783,30 @@ def _cache(argv: list[str]) -> int:
     if cmd == "index":
         ap.add_argument("--rebuild", action="store_true", help="drop and rebuild every row")
     elif cmd == "find":
-        ap.add_argument("terms", nargs="+", help="each argument is one phrase; all must match")
+        ap.add_argument("terms", nargs="+",
+                        help="words, matched as prefixes anywhere in a memory; memories with "
+                             "every word first, else those with the most, labelled partial")
         ap.add_argument("--territory", help="only this territory and those under it")
         ap.add_argument("--all", action="store_true", help="include archive/")
         ap.add_argument("--superseded", action="store_true",
                         help="include memories a newer one supersedes")
         ap.add_argument("--limit", type=int, default=10)
     elif cmd == "supersede":
+        ap.description = ("Mark <new> as replacing <old>. Write <new> first with `mem new`: "
+                          "nothing is carried over from <old>, on purpose. Writes at once: "
+                          "`supersedes:` into <new>, every live [[old]] link rewritten to "
+                          "[[new]] (each printed), and <old> dropped from its index. <old> "
+                          "itself is never edited. Undo with `mem restore`.")
         ap.add_argument("old", help="the memory being replaced")
         ap.add_argument("new", help="the memory replacing it; gets the `supersedes:` line")
     elif cmd == "history":
         ap.add_argument("spec", help="slug, territory/slug, or a store-relative path")
     elif cmd == "verified":
+        ap.description = ("Record that this memory's claim was checked against the world and "
+                          "HELD: stamps last_verified with today. It means the content is "
+                          "right, not that you looked. If it drifted, `Edit` the line at the "
+                          "path `mem show` prints first; if the conclusion flipped, `mem new` "
+                          "the replacement and `mem supersede` this one.")
         ap.add_argument("spec", help="slug, territory/slug, or a store-relative path")
         ap.add_argument("-m", "--note", required=True,
                         help="what was checked against the world, e.g. 'HEAD is 4211e13'")
@@ -832,24 +844,31 @@ def _cache(argv: list[str]) -> int:
             print(json.dumps({"hits": [h.__dict__ for h in found.hits],
                               "archive_hidden": found.archive_hidden,
                               "superseded_hidden": found.superseded_hidden,
-                              "partial": found.partial}, indent=2))
+                              "partial": found.partial,
+                              "elsewhere": found.elsewhere}, indent=2))
             return 0
+        words = cache.query_words(a.terms)
         if found.partial:
-            print("No memory has every term; showing memories with any of them.\n")
+            print(f"No memory has every word ({' '.join(words)}); showing those with the "
+                  "most, labelled.\n")
         for h in found.hits:
-            head = " · ".join(x for x in (h.container, h.slug, h.status, h.tier,
-                                          h.last_verified and f"verified {h.last_verified}") if x)
+            line = h.sections[0][1] if h.sections else 1
+            secs = " · ".join(dict.fromkeys(s for s, _ in h.sections[:2]))
+            head = " · ".join(x for x in (
+                f"{h.path}:{line}", h.status, h.tier,
+                h.last_verified and f"verified {h.last_verified}", h.due,
+                found.partial and f"{h.matched}/{len(words)} words",
+                h.superseded_by and f"SUPERSEDED by {', '.join(h.superseded_by)}",
+                secs and f"§ {secs}") if x)
             print(head)
-            if h.superseded_by:
-                print(f"  SUPERSEDED by {', '.join(h.superseded_by)}")
             if h.description:
                 d = h.description
                 print("  " + (d if len(d) <= 220 else d[:217] + "..."))
-            line = h.sections[0][1] if h.sections else 1
-            secs = " · ".join(dict.fromkeys(s for s, _ in h.sections[:3]))
-            print(f"  {a.root / h.path}:{line}" + (f"  § {secs}" if secs else ""))
         if not found.hits:
-            print("no matches")
+            print("no matches" + (f" in {a.territory}" if a.territory else ""))
+            if found.elsewhere:
+                print(f"{found.elsewhere} match{'es' if found.elsewhere != 1 else ''} in other "
+                      "territories; drop --territory to see them")
         if found.archive_hidden or found.superseded_hidden:
             print()
         for n, where, flag in ((found.archive_hidden, "in archive/", "--all"),
@@ -910,6 +929,13 @@ def _show_text(a, text: str, p, container: str, slug: str, newer: list[str]) -> 
     print(f"{container}/{slug}  {p}")
     if newer:
         print(f"SUPERSEDED by {', '.join(newer)}; `mem history {slug}` for the chain")
+    elif not a.at and not container.startswith("archive"):   # `--at` shows the past, not now
+        import datetime as dt
+
+        from claude_hybrid_memory.audit.freshness import past_window
+        if due := past_window(meta, dt.date.today()):
+            print(f"{due.marker()}: check the claim you will rely on, then `Edit` this path "
+                  "or `mem verified`")
     if a.meta:
         for k, v in meta.items():
             if k == "metadata" and isinstance(v, dict):
@@ -1059,7 +1085,6 @@ def _supersede(conn, root, old_spec: str, new_spec: str) -> int:
     import os
 
     from claude_hybrid_memory import cache, chains
-    from claude_hybrid_memory.spec import entry_line_re
 
     old, new = _resolve_one(conn, old_spec), _resolve_one(conn, new_spec)
     if old is None or new is None:
@@ -1095,15 +1120,22 @@ def _supersede(conn, root, old_spec: str, new_spec: str) -> int:
     others = [s.key for s in g.successors(o.path) if s.path != n.path]
     if others:
         print(f"note: {o.key} is also superseded by {', '.join(others)}")
+    from claude_hybrid_memory import relink
+    changes = relink.relink(root, list(g.nodes.values()), o, n)
+    for c in changes:
+        print(f"relinked {c.path}:{c.line}\n  - {c.before.strip()}\n  + {c.after.strip()}")
+    if changes:
+        _log(root, "write", n.path, "mem supersede", relinked=sorted({c.path for c in changes}))
     r = root / "territories" / o.container / "MEMORY.md"
     if o.area == "territory" and r.is_file():
         from claude_hybrid_memory import render
         text = r.read_text(encoding="utf-8", errors="replace")
         if render.markers(text):
             render.render(root, o.container)        # a rendered index drops it itself
-        elif entry_line_re(os.path.basename(o.path)).search(text):
-            print(f"{r} still lists {os.path.basename(o.path)}; drop that line so the index "
-                  f"routes to {n.key}")
+        else:
+            for line in relink.drop_entry(r, os.path.basename(o.path)):
+                print(f"dropped from {r.relative_to(root)}: {line}")
+    cache.refresh(conn, root)
     return 0
 
 

@@ -266,6 +266,14 @@ def superseded_by(conn, file_id: int) -> list[str]:
 
 # --- find -------------------------------------------------------------------------------
 
+# A dated record or a HISTORICAL memory still answers a search, but below every current
+# memory with as many words matched: in the 2026-11-04 eval, `find sillytavern docker unraid`
+# put five home/unraid records above the memory that held the answer. A tier in the sort,
+# not a score factor, so no amount of keyword density lifts history over current state.
+HEADLINE = 3.0      # a word in the slug or description multiplies that word's score
+MIN_PREFIX = 3      # words shorter than this match exactly, never as a prefix
+
+
 @dataclass
 class Hit:
     path: str
@@ -279,73 +287,137 @@ class Hit:
     score: float
     sections: list = field(default_factory=list)    # [(heading, line)], best first
     superseded_by: list = field(default_factory=list)
+    matched: int = 0                                 # how many of the query's words it has
+    due: str = ""                                    # PAST WINDOW marker, else ""
 
 
 class Found(NamedTuple):
     hits: list
     archive_hidden: int
     superseded_hidden: int
-    partial: bool       # fell back from all terms to any
+    partial: bool       # nothing had every word; these have some
+    elsewhere: int = 0  # full matches outside --territory, when it found none inside
+
+
+def query_words(terms: list[str]) -> list[str]:
+    """Every word in every argument, lowercased, once each. `"card reader"` is two words,
+    not a phrase: the eval found every session expected that, and none guessed otherwise."""
+    out: list[str] = []
+    for t in terms:
+        for w in re.findall(r"\w+", t.lower()):
+            if w not in out:
+                out.append(w)
+    return out
 
 
 def fts_query(terms: list[str], op: str) -> str:
-    """Each argument is one phrase; FTS5 syntax in the input is never interpreted."""
+    """Each term as one quoted FTS5 phrase, joined by `op`; FTS5 syntax in the input is
+    never interpreted. Used by `near_duplicates`."""
     phrases = ['"' + t.replace('"', '""') + '"' for t in terms if re.search(r"\w", t)]
     return f" {op} ".join(phrases)
 
 
+def _word_query(w: str) -> str:
+    q = '"' + w.replace('"', '""') + '"'
+    return q + " *" if len(w) >= MIN_PREFIX else q
+
+
 def find(conn, terms: list[str], territory: str | None = None, include_archive=False,
-         include_superseded=False, limit: int = 10) -> Found:
-    """All terms must match; only when nothing has every term does it fall back to any, and
-    says so, so a partial hit is never mistaken for a full one.
+         include_superseded=False, limit: int = 10, today=None) -> Found:
+    """Each word matches as a prefix (`delet` finds `deletion`), anywhere in the file: one
+    section need not hold them all. Files with every word come first; only when none has
+    every word does it fall back to the files with the most, and says so, so a partial hit
+    is never mistaken for a full one. Records and HISTORICAL memories rank below the rest.
 
     Archive and superseded memories are left out unless asked for, and counted, so a
-    session knows there is something to ask about without paying to read it.
+    session knows there is something to ask about without paying to read it. A
+    `--territory` with no full match counts the full matches elsewhere.
     """
-    partial = False
-    hits = _search(conn, fts_query(terms, "AND"), territory)
-    if not hits and len(terms) > 1:
-        hits, partial = _search(conn, fts_query(terms, "OR"), territory), True
-    archived = 0
-    if not include_archive:
-        archived = sum(1 for h in hits if h.area == "archive")
-        hits = [h for h in hits if h.area != "archive"]
+    import datetime as dt
+
+    from claude_hybrid_memory.audit.freshness import past_window
+
+    words = query_words(terms)
+    if not words:
+        return Found([], 0, 0, False)
+    ranked = _search(conn, words)
     old = {p for (p,) in conn.execute(f"SELECT path FROM files WHERE id IN ({SUPERSEDED})")}
-    superseded = 0
-    if not include_superseded:
-        superseded = sum(1 for h in hits if h.path in old)
-        hits = [h for h in hits if h.path not in old]
-    hits = hits[:limit]
+
+    def visible(h):
+        return (include_archive or h.area != "archive") and (
+            include_superseded or h.path not in old)
+
+    def inside(h):
+        return not territory or h.container == territory or h.container.startswith(
+            territory + "/")
+
+    scoped = [h for h in ranked if inside(h)]
+    full = [h for h in scoped if h.matched == len(words)]
+    partial = not full and len(words) > 1
+    pool = full or (scoped if partial else [])
+    archived = sum(1 for h in pool if h.area == "archive" and not include_archive)
+    superseded = sum(1 for h in pool if h.path in old and not include_superseded
+                     and (include_archive or h.area != "archive"))
+    hits = [h for h in pool if visible(h)][:limit]
+    elsewhere = 0
+    if territory and not hits:
+        elsewhere = sum(1 for h in ranked if not inside(h) and visible(h)
+                        and h.matched == len(words))
+    today = today or dt.date.today()
     for h in hits:
         if h.path in old:
             fid = conn.execute("SELECT id FROM files WHERE path=?", (h.path,)).fetchone()[0]
             h.superseded_by = superseded_by(conn, fid)
-    return Found(hits, archived, superseded, partial)
+        meta = json.loads(conn.execute("SELECT meta FROM files WHERE path=?",
+                                       (h.path,)).fetchone()[0])
+        if h.area != "archive" and h.path not in old and (due := past_window(meta, today)):
+            h.due = due.marker()
+    return Found(hits, archived, superseded, partial, elsewhere)
 
 
-def _search(conn, q: str, territory: str | None) -> list[Hit]:
-    if not q:
-        return []
-    rows = conn.execute(
-        f"SELECT s.file_id, s.heading, s.line, bm25(sections_fts, {', '.join(map(str, WEIGHTS))})"
-        " FROM sections_fts JOIN sections s ON s.id = sections_fts.rowid"
-        " WHERE sections_fts MATCH ? ORDER BY 4", (q,)).fetchall()
+def _search(conn, words: list[str]) -> list[Hit]:
+    """Every file matching any word, with `matched` and a score summed over its words (each
+    word's best section), best first."""
+    weights = ", ".join(map(str, WEIGHTS))
     by_file: dict[int, Hit] = {}
-    files = {}
-    for fid, heading, line, score in rows:
-        if fid not in files:
-            files[fid] = conn.execute(
-                "SELECT path, area, container, slug, description, status, tier,"
-                " last_verified FROM files WHERE id=?", (fid,)).fetchone()
-        f = files[fid]
-        if territory and not (f[2] == territory or f[2].startswith(territory + "/")):
-            continue
-        hit = by_file.get(fid)
-        if hit is None:
-            hit = by_file[fid] = Hit(*f, score=score)
-        if heading:
-            hit.sections.append((heading, line))
-    return sorted(by_file.values(), key=lambda h: (h.score, h.path))
+    secs: dict[int, dict[tuple, float]] = {}
+    for w in words:
+        best: dict[int, float] = {}
+        for fid, heading, line, score in conn.execute(
+                f"SELECT s.file_id, s.heading, s.line, bm25(sections_fts, {weights})"
+                " FROM sections_fts JOIN sections s ON s.id = sections_fts.rowid"
+                " WHERE sections_fts MATCH ? ORDER BY 4", (_word_query(w),)):
+            best[fid] = min(best.get(fid, 0.0), score)
+            if heading:
+                k = (heading, line)
+                d = secs.setdefault(fid, {})
+                d[k] = min(d.get(k, 0.0), score)
+        # A word in the slug or description is what the memory is ABOUT; body sections that
+        # merely repeat it ("delete" 12 times in a procedure) otherwise outrank the one
+        # memory whose conclusion it is (eval 2026-11-04: `find delet` put the standing
+        # deletions rule 21st).
+        for (fid,) in conn.execute(
+                "SELECT DISTINCT s.file_id FROM sections_fts JOIN sections s"
+                " ON s.id = sections_fts.rowid WHERE sections_fts MATCH ?",
+                ("{slug description} : " + _word_query(w),)):
+            if fid in best:
+                best[fid] *= HEADLINE
+        for fid, score in best.items():
+            hit = by_file.get(fid)
+            if hit is None:
+                row = conn.execute(
+                    "SELECT path, area, container, slug, description, status, tier,"
+                    " last_verified FROM files WHERE id=?", (fid,)).fetchone()
+                hit = by_file[fid] = Hit(*row, score=0.0)
+            hit.matched += 1
+            hit.score += score
+    for fid, hit in by_file.items():
+        hit.sections = [k for k, _ in sorted(secs.get(fid, {}).items(), key=lambda x: x[1])]
+    return sorted(by_file.values(), key=lambda h: (-h.matched, _is_history(h), h.score, h.path))
+
+
+def _is_history(h: Hit) -> bool:
+    return h.tier == "record" or h.status.upper() == "HISTORICAL"
 
 
 # --- near duplicates --------------------------------------------------------------------

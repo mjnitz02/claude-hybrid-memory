@@ -115,7 +115,9 @@ def test_supersede_writes_the_newer_file_only_and_logs_it(fx: Fixture):
     before = old.read_bytes()
     rc, out, _ = mem(fx, "supersede", "lab-backup-plan", "lab-ssh-read-only")
     assert rc == 0 and "home/lab/lab-ssh-read-only now supersedes home/lab/lab-backup-plan" in out
-    assert "MEMORY.md still lists lab-backup-plan.md" in out
+    # a hand-written index loses the old entry line instead of being told to
+    assert "dropped from territories/home/lab/MEMORY.md: - [Backup plan](lab-backup-plan.md)" in out
+    assert "lab-backup-plan.md" not in (fx.store / "territories/home/lab/MEMORY.md").read_text()
     assert old.read_bytes() == before
     assert "\nsupersedes: lab-backup-plan\n---" in new.read_text()
     [e] = list(events.read_all(fx.store))
@@ -125,6 +127,47 @@ def test_supersede_writes_the_newer_file_only_and_logs_it(fx: Fixture):
     assert rc == 0 and "already supersedes" in out
     rc, _, err = mem(fx, "supersede", "lab-ssh-read-only", "lab-backup-plan")
     assert rc == 2 and "loop" in err
+
+
+def test_supersede_relinks_every_live_backlink_including_gate_prose(fx: Fixture):
+    # Synthetic fixture. The eval case: a territory's GATE still pointed at the superseded
+    # memory after `supersede`, and so did another memory's body.
+    new = fx.store / "territories/home/lab/lab-ssh-policy.md"
+    new.write_text("---\nname: lab-ssh-policy\nkind: territory\nrole: gate\n"
+                   "description: SSH to the lab box is read-only; hand Matt the change.\n"
+                   "volatility: stable\nlast_verified: 2026-11-04\n---\n\n"
+                   "Replaces [[lab-ssh-read-only]].\n")
+    rc, out, _ = mem(fx, "supersede", "lab-ssh-read-only", "lab-ssh-policy")
+    assert rc == 0
+    gate = (fx.store / "territories/home/lab/MEMORY.md").read_text()
+    assert "→ [[lab-ssh-policy]]" in gate and "[[lab-ssh-read-only]]" not in gate
+    design = (fx.store / DESIGN).read_text()
+    assert "Uses [[lab-ssh-policy]] and [[kit-missing-note]]." in design
+    assert "[[ var ]]" in design and "[[override]]" in design      # not links, untouched
+    assert "relinked territories/home/lab/MEMORY.md:" in out and f"relinked {DESIGN}:" in out
+    # the new memory naming what it replaced is deliberate, and the old one is never edited
+    assert "Replaces [[lab-ssh-read-only]]." in new.read_text()
+    old = (fx.store / "territories/home/lab/lab-ssh-read-only.md").read_text()
+    assert "supersedes" not in old
+
+
+def test_relink_leaves_a_same_slug_in_another_territory_alone(fx: Fixture):
+    # Synthetic. A bare [[slug]] resolves beside the file that holds it, so a link to a
+    # different memory that shares the old slug must not move.
+    from claude_hybrid_memory import relink
+    twin = fx.store / "territories/console/kit/lab-ssh-read-only.md"
+    twin.write_text("---\nname: lab-ssh-read-only\nkind: territory\n"
+                    "description: A kit note that happens to share the slug.\n"
+                    "volatility: slow\nlast_verified: 2026-11-04\n---\n\nBody.\n")
+    conn = cache.connect(fx.store)
+    cache.refresh(conn, fx.store)
+    g = cache.graph(conn)
+    old = g.nodes["territories/home/lab/lab-ssh-read-only.md"]
+    new = g.nodes["territories/home/lab/lab-backup-plan.md"]
+    changed = {c.path for c in relink.relink(fx.store, list(g.nodes.values()), old, new,
+                                             write=False)}
+    assert "territories/home/lab/MEMORY.md" in changed
+    assert DESIGN not in changed        # its bare link resolves to the console/kit twin
 
 
 def test_supersede_appends_to_an_existing_ref_and_refuses_archive_as_the_newer(fx: Fixture):

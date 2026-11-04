@@ -27,10 +27,10 @@ Exit codes: 0 clean, 1 findings at error level, 2 tool error.
 
     mem new <slug> -d DESC -v VOL|-s STATUS [-g GROUP] [-t TERRITORY] < body   # write a memory and index it
     mem verified <slug> -m WHAT-WAS-CHECKED   # a claim checked on use held: stamp today, log it
-    mem find <terms> [--territory T] [--all] [--superseded]   # ranked memories + matching sections
-    mem show <slug> [--meta | --section H | --full] [--at REV]
+    mem find <words> [--territory T] [--all] [--superseded]   # prefix words, every word first; PAST WINDOW flagged
+    mem show <slug> [--meta | --section H | --full] [--at REV]   # PAST WINDOW flagged; prints the path to Edit
     mem history <slug>         # version chain both ways + the file's git log
-    mem supersede <old> <new>  # write `supersedes:` into <new>; <old> is never touched
+    mem supersede <old> <new>  # `mem new` <new> first; writes `supersedes:`, relinks every live [[old]], drops <old> from its index; <old> is never touched
     mem index [--rebuild]      # refresh the derived cache (find/show do this themselves)
     mem events stats           # usage: reads/writes/searches by tool, hook cost, most-read
 

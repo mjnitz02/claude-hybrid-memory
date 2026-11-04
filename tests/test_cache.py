@@ -46,7 +46,7 @@ def test_refresh_is_incremental(fx: Fixture):
 
 def test_find_names_the_matching_section_and_its_line(fx: Fixture):
     conn, _ = index(fx)
-    hits, _, _, partial = cache.find(conn, ["03:00"])
+    hits, _, _, partial, _ = cache.find(conn, ["03:00"])
     assert not partial and [h.slug for h in hits] == ["lab-backup-plan"]
     heading, line = hits[0].sections[0]
     lines = (fx.store / hits[0].path).read_text().split("\n")
@@ -55,17 +55,17 @@ def test_find_names_the_matching_section_and_its_line(fx: Fixture):
 
 def test_find_hides_archive_but_counts_it(fx: Fixture):
     conn, _ = index(fx)
-    hits, hidden, _, _ = cache.find(conn, ["nightly"])
+    hits, hidden, _, _, _ = cache.find(conn, ["nightly"])
     assert hidden == 2 and all(h.area != "archive" for h in hits)
-    hits, hidden, _, _ = cache.find(conn, ["nightly"], include_archive=True)
+    hits, hidden, _, _, _ = cache.find(conn, ["nightly"], include_archive=True)
     assert hidden == 0 and {"kit-legacy-sync", "README"} <= {h.slug for h in hits}
 
 
 def test_find_needs_every_term_before_it_falls_back(fx: Fixture):
     conn, _ = index(fx)
-    hits, _, _, partial = cache.find(conn, ["nightly", "verified"])
+    hits, _, _, partial, _ = cache.find(conn, ["nightly", "verified"])
     assert not partial and [h.slug for h in hits] == ["lab-backup-plan"]
-    hits, _, _, partial = cache.find(conn, ["nightly", "zeppelin"])
+    hits, _, _, partial, _ = cache.find(conn, ["nightly", "zeppelin"])
     assert partial and hits
 
 
@@ -123,3 +123,67 @@ def test_show_cli(fx: Fixture):
 def test_find_cli_reports_hidden_archive(fx: Fixture):
     rc, out, _ = run(mem_cmd("find", "nightly", "--root", str(fx.store)), fx.env())
     assert rc == 0 and "lab-backup-plan" in out and "2 matches in archive/ not shown" in out
+
+
+# --- find, as reworked after the 2026-11-04 usability eval ---------------------------------
+# Synthetic fixtures. The eval's real failures (`find "card reader"`, `find delet`,
+# `find sillytavern docker unraid`) are rerun against a scratch copy of the real store as the
+# acceptance check; these pin the rules that fixed them.
+
+def _mem(fx: Fixture, terr: str, slug: str, desc: str, body: str, **meta) -> None:
+    extra = "".join(f"{k}: {v}\n" for k, v in meta.items())
+    (fx.store / "territories" / terr / f"{slug}.md").write_text(
+        f"---\nname: {slug}\nkind: territory\ndescription: {desc}\n{extra}---\n\n{body}\n")
+
+
+def test_find_splits_an_argument_into_words_that_may_sit_in_different_sections(fx: Fixture):
+    _mem(fx, "console/kit", "kit-sd-panic", "The built-in slot panics under load.",
+         "## Hardware\n\nThe SD card goes in the side.\n\n## Fix\n\nUse the USB reader.",
+         volatility="stable", last_verified="2026-11-01")
+    conn, _ = index(fx)
+    found = cache.find(conn, ["card reader"])        # one argument, two words, two sections
+    assert not found.partial and [h.slug for h in found.hits] == ["kit-sd-panic"]
+
+
+def test_find_matches_words_as_prefixes(fx: Fixture):
+    _mem(fx, "console/kit", "kit-no-deletions", "Never run deletions yourself.", "List them.",
+         volatility="stable", last_verified="2026-11-01")
+    conn, _ = index(fx)
+    assert "kit-no-deletions" in {h.slug for h in cache.find(conn, ["delet"]).hits}
+
+
+def test_find_labels_a_single_argument_partial_when_no_memory_has_every_word(fx: Fixture):
+    conn, _ = index(fx)
+    found = cache.find(conn, ["nightly zeppelin"])   # used to be one phrase: "no matches"
+    assert found.partial and found.hits and all(h.matched == 1 for h in found.hits)
+
+
+def test_find_ranks_records_and_historical_below_current_state(fx: Fixture):
+    body = "Docker on the unraid box, and the sillytavern container."
+    _mem(fx, "home/lab", "lab-st-now", "Where ST runs today.", body,
+         volatility="slow", last_verified="2026-11-01")
+    for slug in ("lab-st-record-a", "lab-st-record-b"):
+        _mem(fx, "home/lab", slug, "Where ST ran, sillytavern docker unraid.", body * 3,
+             tier="record")
+    _mem(fx, "home/lab", "lab-st-old", "Where ST ran, sillytavern docker unraid.", body * 3,
+         status="HISTORICAL", last_verified="2026-11-01")
+    conn, _ = index(fx)
+    hits = cache.find(conn, ["sillytavern", "docker", "unraid"]).hits
+    assert hits[0].slug == "lab-st-now"
+
+
+def test_find_counts_full_matches_outside_an_empty_territory(fx: Fixture):
+    conn, _ = index(fx)
+    found = cache.find(conn, ["fodder"], territory="home/lab")
+    assert found.hits == [] and found.elsewhere >= 1
+
+
+def test_find_flags_a_memory_past_its_window(fx: Fixture):
+    import datetime as dt
+    _mem(fx, "home/lab", "lab-old-claim", "A live claim, long unchecked.", "Body.",
+         volatility="live", last_verified="2026-09-11")
+    _mem(fx, "home/lab", "lab-fresh-claim", "A live claim, checked.", "Body.",
+         volatility="live", last_verified="2026-11-01")
+    conn, _ = index(fx)
+    due = {h.slug: h.due for h in cache.find(conn, ["claim"], today=dt.date(2026, 11, 4)).hits}
+    assert due == {"lab-old-claim": "PAST WINDOW 54d > 14d live", "lab-fresh-claim": ""}

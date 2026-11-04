@@ -37,6 +37,7 @@ class Made:
     territory: str
     rel: str
     hint: str = ""
+    rendered: bool = True       # False: a hand-written index, where the line was appended
 
 
 class Refused(ValueError):
@@ -99,8 +100,11 @@ def make(root: Path, territory: str, slug: str, description: str, body: str, *,
                              volatility=volatility, status=status, record=record)
                  + "\n" + body.strip("\n") + "\n", encoding="utf-8")
     apply.reindex(root, territory)
+    from claude_hybrid_memory import render
+    rendered = bool(render.markers((tdir / "MEMORY.md").read_text(encoding="utf-8",
+                                                                   errors="replace")))
     rel = f"territories/{territory}/{p.name}"
-    return Made(p, territory, rel, _near(root, rel))
+    return Made(p, territory, rel, _near(root, rel), rendered)
 
 
 def _near(root: Path, rel: str) -> str:
@@ -122,8 +126,11 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(
         prog="mem new",
         description="Write a new territory memory (body on stdin) and index it.",
-        epilog="example: mem new card-reader-panics --description 'The built-in SD reader "
-               "panics under sustained I/O; use the USB one' --group Hardware <<'EOF' ... EOF")
+        epilog="example: mem new card-reader-panics -v stable --description 'The built-in SD "
+               "reader panics under sustained I/O; use the USB one' --group Hardware "
+               "<<'EOF' ... EOF\n\nTo replace a memory: `mem new` the replacement first, then "
+               "`mem supersede <old> <new>`.",
+        formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("slug", help="kebab-case; becomes <slug>.md")
     ap.add_argument("--description", "-d", required=True,
                     help="one line: the conclusion, as the index will show it")
@@ -157,7 +164,15 @@ def main(argv: list[str]) -> int:
         return 2
     from claude_hybrid_memory.cli import _log
     _log(a.root, "write", made.rel, "mem new")
-    print(f"wrote {made.rel} and indexed it in {territory}/MEMORY.md")
+    if made.rendered:
+        print(f"wrote {made.rel} and indexed it in {territory}/MEMORY.md")
+    else:
+        # Said plainly: a hand-written index has no groups to honour, and "indexed it" read
+        # as success when the line had landed under whatever heading came last (eval).
+        print(f"wrote {made.rel}, but {territory}/MEMORY.md is hand-written: its line was "
+              "appended at the end" + (f" and --group {a.group!r} was NOT honoured" if a.group
+                                       else "") + f". Move the line under the right heading, "
+              f"or adopt the index with `mem render {territory} --adopt`.")
     if made.hint:
         print(made.hint)
     return 0

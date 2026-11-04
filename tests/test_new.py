@@ -29,6 +29,9 @@ def test_new_writes_store_frontmatter_and_indexes_a_hand_written_territory(fx: F
                        "-g", "Hardware")
     assert rc == 0, err
     assert f"wrote {KIT}/kit-card-reader.md" in out
+    # a hand-written index can't honour -g, and says so instead of "indexed it"
+    assert "indexed it" not in out and "--group 'Hardware' was NOT honoured" in out
+    assert "mem render console/kit --adopt" in out
     assert "byte" not in out and "cap" not in out           # nothing about size, ever
     text = (fx.store / KIT / "kit-card-reader.md").read_text()
     meta, body, problems = parse_frontmatter(text)
@@ -49,8 +52,9 @@ def test_new_writes_store_frontmatter_and_indexes_a_hand_written_territory(fx: F
 def test_new_re_renders_a_rendered_territory(fx: Fixture):
     rc, _, err = run(mem_cmd("render", "console/kit", "--adopt", "--write"), fx.env())
     assert rc == 0, err
-    rc, _, err = new(fx, "kit-probe", "-d", "The probe works.", "--record")
+    rc, out, err = new(fx, "kit-probe", "-d", "The probe works.", "--record")
     assert rc == 0, err
+    assert "indexed it in console/kit/MEMORY.md" in out
     idx = (fx.store / KIT / "MEMORY.md").read_text()
     s, e = render.markers(idx)
     assert "kit-probe" in idx[s:e] and "kit-probe" not in idx[e:]
