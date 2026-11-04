@@ -101,9 +101,13 @@ def do_link(root: Path, legacy: Path, territory: str, target_dir: Path,
                                "knowledge in a directory nothing reads"))
             return out
 
+    index = tpath / "MEMORY.md"
+    name = target_dir.name
+    listed = has_member(index.read_text(encoding="utf-8", errors="replace"), name)
     if not write:
+        also = "" if listed else f", and add `{name}` to its members:"
         out.append(Finding(INFO, "link-would", silo.name,
-                           f"would point {md} -> {tpath} (rerun with --write)"))
+                           f"would point {md} -> {tpath}{also} (rerun with --write)"))
         return out
 
     silo.mkdir(parents=True, exist_ok=True)
@@ -113,4 +117,55 @@ def do_link(root: Path, legacy: Path, territory: str, target_dir: Path,
         md.rename(silo / "memory.premigration")
     md.symlink_to(tpath)
     out.append(Finding(INFO, "link-done", silo.name, f"-> {territory}"))
+    if not listed:
+        text = index.read_text(encoding="utf-8", errors="replace")
+        new = with_member(text, name)
+        if new is None:
+            out.append(Finding(WARN, "link-members", str(index),
+                               f"no frontmatter to add `{name}` to; add it to members: by hand"))
+        else:
+            index.write_text(new, encoding="utf-8")
+            out.append(Finding(INFO, "link-members", str(index),
+                               f"added `{name}: {NEW_MEMBER}` to members:; correct owner/mode "
+                               "if this repo is not your own active work"))
     return out
+
+
+# What a newly linked repo is recorded as. Linking is what a session does when it starts
+# working in a repo, so active is the likely truth; owner is a guess the output names.
+NEW_MEMBER = "{owner: self, mode: active}"
+
+
+def _frontmatter_span(text: str) -> tuple[int, int] | None:
+    if not text.startswith("---\n"):
+        return None
+    end = text.find("\n---", 3)
+    return (4, end + 1) if end != -1 else None
+
+
+def has_member(text: str, name: str) -> bool:
+    """Whether a territory MEMORY.md's `members:` already names this repo."""
+    span = _frontmatter_span(text)
+    if span is None:
+        return False
+    head = text[span[0]:span[1]]
+    m = re.search(r"^members:[^\n]*\n((?:[ \t]+[^\n]*\n)*)", head, re.M)
+    return bool(m and re.search(rf"^[ \t]+{re.escape(name)}\s*:", m.group(1), re.M))
+
+
+def with_member(text: str, name: str) -> str | None:
+    """The MEMORY.md with `name` added under `members:` (created if absent), as text so
+    the hand-written flow style and comments survive. None without frontmatter. The link was
+    the one writer of this relationship and never recorded it (eval 2026-11-04)."""
+    span = _frontmatter_span(text)
+    if span is None:
+        return None
+    a, b = span
+    head = text[a:b]
+    line = f"  {name}: {NEW_MEMBER}\n"
+    m = re.search(r"^members:[ \t]*(\{\})?[ \t]*\n((?:[ \t]+[^\n]*\n)*)", head, re.M)
+    if m:
+        head = head[:m.start()] + "members:\n" + m.group(2) + line + head[m.end():]
+    else:
+        head = head + "members:\n" + line
+    return text[:a] + head + text[b:]

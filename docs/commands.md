@@ -3,7 +3,8 @@
 `mem` is the `claude_hybrid_memory` package in `src/`. The `hybrid-memory` plugin runs it
 through `bin/mem`, which is on the PATH inside Claude Code sessions (setup.md, "The
 plugin"); for a terminal `mem`, `uv tool install -e .` in a clone. `mem --help` prints this
-list too. `--json` gives machine output on most
+list too, grouped; `mem <command> --help` describes one. Global flags (`--root`,
+`--json`, `-t`) may go before or after the command. `--json` gives machine output on most
 commands. There is one dependency, `pyyaml`, for frontmatter, and it is never on the hook
 path.
 
@@ -29,6 +30,7 @@ Exit codes: 0 clean, 1 findings at error level, 2 tool error.
     mem verified <slug> -m WHAT-WAS-CHECKED   # a claim checked on use held: stamp today, log it
     mem find <words> [--territory T] [--all] [--superseded]   # prefix words, every word first; PAST WINDOW flagged
     mem show <slug> [--meta | --section H | --full] [--at REV]   # PAST WINDOW flagged; prints the path to Edit
+    mem show <territory>       # print a territory's MEMORY.md: the ROUTER's "PULL WHEN"
     mem history <slug>         # version chain both ways + the file's git log
     mem supersede <old> <new>  # `mem new` <new> first; writes `supersedes:`, relinks every live [[old]], drops <old> from its index; <old> is never touched
     mem index [--rebuild]      # refresh the derived cache (find/show do this themselves)
@@ -49,7 +51,7 @@ The store is its own git repo with no remote. Every git operation on it goes thr
     mem mv SLUG... TERRITORY [--write]
     mem mv-territory OLD NEW [--write]
     mem archive TERRITORY|SLUG... --why TEXT [--as GROUP] [--write]
-    mem link --territory <path> --write   # point a restored repo back at its territory
+    mem link --territory <path> --write   # point a repo at its territory, and add it to members:
     mem status                 # migration state per silo
 
 `/memory-restructure` composes these for merges and splits.

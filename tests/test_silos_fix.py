@@ -110,7 +110,7 @@ def test_link_refuses_an_occupied_silo(fx: Fixture, tmp_path: Path):
 
 def test_link_writes_and_is_idempotent(fx: Fixture):
     f = do_link(fx.store, fx.projects, "home/lab", fx.elsewhere, write=True)
-    assert [x.code for x in f] == ["link-done"]
+    assert [x.code for x in f] == ["link-done", "link-members"]
     again = do_link(fx.store, fx.projects, "home/lab", fx.elsewhere, write=True)
     assert [x.code for x in again] == ["link-already"]
 
@@ -144,5 +144,29 @@ def test_link_repoints_a_silo_whose_territory_is_gone(fx: Fixture):
     silo.mkdir(parents=True, exist_ok=True)
     (silo / "memory").symlink_to(fx.store / "territories" / "home" / "gone")
     f = do_link(fx.store, fx.projects, "home/lab", fx.elsewhere, write=True)
-    assert [x.code for x in f] == ["link-done"]
+    assert [x.code for x in f] == ["link-done", "link-members"]
     assert (silo / "memory" / "MEMORY.md").is_file()
+
+
+def test_link_records_the_repo_in_members_and_keeps_the_rest(fx: Fixture, tmp_path: Path):
+    # Synthetic. `link --write` was the one writer of the repo-territory relationship and
+    # never recorded it, so `members:` drifted from the silos (eval 2026-11-04).
+    from claude_hybrid_memory.silos import has_member, with_member
+    idx = fx.store / "territories/home/lab/MEMORY.md"
+    before = idx.read_text()
+    assert do_link(fx.store, fx.projects, "home/lab", fx.elsewhere, write=False)[0].message \
+        .endswith(f"and add `{fx.elsewhere.name}` to its members: (rerun with --write)")
+    assert idx.read_text() == before                     # a dry run writes nothing
+    do_link(fx.store, fx.projects, "home/lab", fx.elsewhere, write=True)
+    after = idx.read_text()
+    assert has_member(after, fx.elsewhere.name)
+    assert f"  {fx.elsewhere.name}: {{owner: self, mode: active}}\n" in after
+    assert after.replace(f"members:\n  {fx.elsewhere.name}: {{owner: self, mode: active}}\n",
+                         "") == before                  # nothing else in the file moved
+    # an existing block keeps its entries, flow style and comments
+    text = ("---\nterritory: x\nmembers:\n  a: {owner: self, mode: dead}  # parked\n"
+            "consumes: none\n---\n# x\n")
+    out = with_member(text, "b")
+    assert out == ("---\nterritory: x\nmembers:\n  a: {owner: self, mode: dead}  # parked\n"
+                   "  b: {owner: self, mode: active}\nconsumes: none\n---\n# x\n")
+    assert has_member(out, "a") and has_member(out, "b") and not has_member(out, "c")

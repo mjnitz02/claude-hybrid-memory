@@ -280,7 +280,18 @@ procedure: see `migration.md`.
 
 ## 5. Point repos at the territory
 
-Preferred, because it leaves no footprint inside a repo you do not own:
+Preferred, because it leaves no footprint inside a repo you do not own. From the repo:
+
+    mem link --territory utility/dep-policy           # dry run: says what it would do
+    mem link --territory utility/dep-policy --write
+
+It works out the harness's silo name, moves an empty `memory/` aside to
+`memory.premigration`, symlinks the territory in its place, and adds the repo to the
+territory's `members:` (as `{owner: self, mode: active}`; correct it if that is wrong). It
+refuses a silo that still holds memory files, since that is a migration, not a link. When a
+directory maps to no territory, the SessionStart hook names its best guess and this command.
+
+By hand, the same thing is:
 
     SILO=~/.claude/projects/-Users-alice-workspaces-dep-policy
     mv "$SILO/memory" "$SILO/memory.premigration"

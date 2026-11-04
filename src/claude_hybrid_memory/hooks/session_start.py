@@ -167,6 +167,44 @@ def territory_for(cwd: Path, store: Path) -> tuple[str | None, list[str]]:
     return None, all_t
 
 
+def repo_root(cwd: Path) -> Path:
+    """The git root above `cwd`, else `cwd`."""
+    probe = cwd
+    for _ in range(40):
+        if (probe / ".git").exists():
+            return probe
+        if probe.parent == probe:
+            break
+        probe = probe.parent
+    return cwd
+
+
+def guess_territory(store: Path, repo: Path, all_t: list[str]) -> tuple[str, str] | None:
+    """(territory, why) for an unmapped repo, or None. A cheap text scan, never the cache:
+    the hook runs on every session start. A territory whose `members:` names the repo wins
+    outright (a parked repo cloned back); otherwise the one whose MEMORY.md mentions the
+    repo's name, then its longest name part, most often. Advisory: the hook prints it as a
+    command for the session to run, never runs it."""
+    name = repo.name.lower()
+    parts = sorted((w for w in re.split(r"[-_.\s]+", name) if len(w) >= 4), key=len,
+                   reverse=True)
+    member = re.compile(rf"^\s+{re.escape(repo.name)}\s*:", re.M | re.I)
+    best: tuple[int, str, str] | None = None
+    for t in all_t:
+        text = read(store / "territories" / t / "MEMORY.md")
+        head = text.split("\n---", 1)[0] if text.startswith("---") else ""
+        if member.search(head):
+            return t, f"its `members:` lists {repo.name}"
+        low = text.lower()
+        for word in [name, *parts[:1]]:
+            n = low.count(word)
+            if n and (best is None or n > best[0]):
+                best = (n, t, f"its MEMORY.md mentions `{word}` {n}x")
+            if n:
+                break
+    return (best[1], best[2]) if best else None
+
+
 def retro_overdue(router: str) -> int | None:
     m = re.search(r"^last_retrospective:\s*(\d{4}-\d{2}-\d{2})", router, re.M)
     if not m:
@@ -363,10 +401,18 @@ def output(store: Path, cwd: Path, claude_md: Path = CLAUDE_MD, write: bool = Tr
         notes.append(f"Territory for this directory: **{terr}**. Its MEMORY.md is "
                      "auto-loaded; read its internals on demand.")
     elif all_t:
+        repo = repo_root(cwd)
+        guess = guess_territory(store, repo, all_t)
+        if guess:
+            pick = (f"Best guess: **{guess[0]}** ({guess[1]}). If that is right, run "
+                    f"`mem link --territory {guess[0]} --write` from {repo}")
+        else:
+            pick = ("Pick its territory from ROUTER.md and run "
+                    f"`mem link --territory <territory> --write` from {repo}")
         notes.append(f"**This directory maps to NO territory.** ({cwd}) Memory written "
                      "here will land in an unrouted per-directory silo, which is the "
-                     "problem the store exists to fix. Consider pointing it at one of: "
-                     + ", ".join(all_t) + " (see docs/setup.md step 5).")
+                     f"problem the store exists to fix. {pick}; confirm with the user first if "
+                     "unsure. Territories: " + ", ".join(all_t) + ".")
     overdue = retro_overdue(read(store / "ROUTER.md"))
     if overdue is not None:
         notes.append(f"Memory retrospective is **{overdue} days** old "
