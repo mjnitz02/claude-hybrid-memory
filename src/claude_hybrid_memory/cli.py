@@ -436,7 +436,7 @@ def _migrate(argv: list[str]) -> int:
     ap.add_argument("--rebuild", action="store_true",
                     help="map: redraft the plan; the old one is kept as plan.prev.yaml")
     ap.add_argument("--approve", action="store_true", help="map: approve the plan as it is")
-    ap.add_argument("--territory", help="volatility: only this territory (or below it)")
+    ap.add_argument("--territory", "-t", help="volatility: only this territory (or below it)")
     ap.add_argument("--write", action="store_true",
                     help="volatility: land the cached verdicts in the store")
     ap.add_argument("--sample", type=int, default=15,
@@ -912,7 +912,7 @@ def _cache(argv: list[str]) -> int:
         ap.add_argument("terms", nargs="*",
                         help="words, matched as prefixes anywhere in a memory; memories with "
                              "every word first, else those with the most, labelled partial")
-        ap.add_argument("--territory", help="only this territory and those under it")
+        ap.add_argument("--territory", "-t", help="only this territory and those under it")
         ap.add_argument("--all", action="store_true", help="include archive/")
         ap.add_argument("--superseded", action="store_true",
                         help="include memories a newer one supersedes")
@@ -921,7 +921,9 @@ def _cache(argv: list[str]) -> int:
         ap.description = ("Mark <new> as replacing <old>. Write <new> first with `mem new`: "
                           "nothing is carried over from <old>, on purpose. Writes at once: "
                           "`supersedes:` into <new>, every live [[old]] link rewritten to "
-                          "[[new]] (each printed), and <old> dropped from its index. <old> "
+                          "[[new]] (each printed) except in always-loaded gate text (GATES.md, "
+                          "MACHINE.md, ROUTER.md, standing/, a MEMORY.md GATES section), which "
+                          "is listed for you to Edit; and <old> dropped from its index. <old> "
                           "itself is never edited. Undo with `mem restore`.")
         ap.add_argument("old", help="the memory being replaced")
         ap.add_argument("new", help="the memory replacing it; gets the `supersedes:` line")
@@ -1288,10 +1290,17 @@ def _supersede(conn, root, old_spec: str, new_spec: str) -> int:
         print(f"note: {o.key} is also superseded by {', '.join(others)}")
     from claude_hybrid_memory import relink
     changes = relink.relink(root, list(g.nodes.values()), o, n)
-    for c in changes:
+    done = [c for c in changes if not c.protected]
+    held = [c for c in changes if c.protected]
+    for c in done:
         print(f"relinked {c.path}:{c.line}\n  - {c.before.strip()}\n  + {c.after.strip()}")
-    if changes:
-        _log(root, "write", n.path, "mem supersede", relinked=sorted({c.path for c in changes}))
+    if done:
+        _log(root, "write", n.path, "mem supersede", relinked=sorted({c.path for c in done}))
+    if held:
+        print(f"\nNOT rewritten: {len(held)} link(s) in always-loaded gate text, which needs the "
+              "user's named go-ahead to edit. Ask, then Edit each line:")
+        for c in held:
+            print(f"  {root / c.path}:{c.line}\n  - {c.before.strip()}\n  + {c.after.strip()}")
     r = root / "territories" / o.container / "MEMORY.md"
     if o.area == "territory" and r.is_file():
         from claude_hybrid_memory import render
@@ -1411,7 +1420,7 @@ def _refine(argv: list[str]) -> int:
     ap.add_argument("action", choices=["queue"])
     ap.add_argument("--root", type=Path, default=STORE, help=f"store root (default {STORE})")
     ap.add_argument("--legacy", type=Path, default=LEGACY, help="legacy projects dir")
-    ap.add_argument("--territory", help="only items in this territory (or below it)")
+    ap.add_argument("--territory", "-t", help="only items in this territory (or below it)")
     ap.add_argument("--limit", type=int, default=20, help="items to print (default 20)")
     ap.add_argument("--json", action="store_true", help="print the whole queue as JSON")
     a = ap.parse_args(argv)

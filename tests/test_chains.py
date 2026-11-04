@@ -129,9 +129,11 @@ def test_supersede_writes_the_newer_file_only_and_logs_it(fx: Fixture):
     assert rc == 2 and "loop" in err
 
 
-def test_supersede_relinks_every_live_backlink_including_gate_prose(fx: Fixture):
+def test_supersede_relinks_bodies_and_lists_gate_prose(fx: Fixture):
     # Synthetic fixture. The eval case: a territory's GATE still pointed at the superseded
-    # memory after `supersede`, and so did another memory's body.
+    # memory after `supersede`, and so did another memory's body. The body is rewritten; the
+    # GATE line is always-loaded gate text, so it is listed for an Edit with the user's
+    # named go-ahead, never rewritten by a subprocess (decided 2026-11-04).
     new = fx.store / "territories/home/lab/lab-ssh-policy.md"
     new.write_text("---\nname: lab-ssh-policy\nkind: territory\nrole: gate\n"
                    "description: SSH to the lab box is read-only; hand Matt the change.\n"
@@ -139,12 +141,15 @@ def test_supersede_relinks_every_live_backlink_including_gate_prose(fx: Fixture)
                    "Replaces [[lab-ssh-read-only]].\n")
     rc, out, _ = mem(fx, "supersede", "lab-ssh-read-only", "lab-ssh-policy")
     assert rc == 0
-    gate = (fx.store / "territories/home/lab/MEMORY.md").read_text()
-    assert "→ [[lab-ssh-policy]]" in gate and "[[lab-ssh-read-only]]" not in gate
+    idx = fx.store / "territories/home/lab/MEMORY.md"
+    gate = idx.read_text()
+    assert "→ [[lab-ssh-read-only]]" in gate and "[[lab-ssh-policy]]" not in gate
+    assert "NOT rewritten: 1 link(s) in always-loaded gate text" in out
+    assert f"{idx}:" in out and "+ **Read-only box.** → [[lab-ssh-policy]]" in out
     design = (fx.store / DESIGN).read_text()
     assert "Uses [[lab-ssh-policy]] and [[kit-missing-note]]." in design
     assert "[[ var ]]" in design and "[[override]]" in design      # not links, untouched
-    assert "relinked territories/home/lab/MEMORY.md:" in out and f"relinked {DESIGN}:" in out
+    assert "relinked territories/home/lab/MEMORY.md:" not in out and f"relinked {DESIGN}:" in out
     # the new memory naming what it replaced is deliberate, and the old one is never edited
     assert "Replaces [[lab-ssh-read-only]]." in new.read_text()
     old = (fx.store / "territories/home/lab/lab-ssh-read-only.md").read_text()
@@ -166,7 +171,7 @@ def test_relink_leaves_a_same_slug_in_another_territory_alone(fx: Fixture):
     new = g.nodes["territories/home/lab/lab-backup-plan.md"]
     changed = {c.path for c in relink.relink(fx.store, list(g.nodes.values()), old, new,
                                              write=False)}
-    assert "territories/home/lab/MEMORY.md" in changed
+    assert "territories/home/lab/MEMORY.md" in changed     # found, though protected
     assert DESIGN not in changed        # its bare link resolves to the console/kit twin
 
 
@@ -214,3 +219,17 @@ def test_editing_an_accreted_file_suggests_a_split_once_per_session(fx: Fixture)
     assert rc == 0 and "tier: record" in json.loads(out)["hookSpecificOutput"]["additionalContext"]
     assert post(fx, "Edit", p, session="s1") == (0, "")
     assert post(fx, "Edit", p, session="s2")[1]
+
+
+
+def test_relink_protects_always_loaded_files_and_gates_sections(fx: Fixture):
+    # Synthetic. Which lines count as always-loaded gate text.
+    from pathlib import Path
+
+    from claude_hybrid_memory.relink import protected_lines
+    lines = ["# t", "", "## GATES", "a [[x]]", "### sub", "b [[x]]", "## MEMORIES", "c [[x]]"]
+    assert protected_lines(Path("territories/home/lab/MEMORY.md"), lines) == {2, 3, 4, 5}
+    for top in ("GATES.md", "MACHINE.md", "ROUTER.md", "standing/rule.md"):
+        assert protected_lines(Path(top), ["a", "b"]) == {0, 1}
+    assert protected_lines(Path("territories/home/lab/note.md"), lines) == set()
+    assert protected_lines(Path("territories/home/lab/GATES.md"), ["a"]) == set()

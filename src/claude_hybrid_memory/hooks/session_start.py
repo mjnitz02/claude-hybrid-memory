@@ -186,30 +186,35 @@ def repo_root(cwd: Path) -> Path:
     return cwd
 
 
-def guess_territory(store: Path, repo: Path, all_t: list[str]) -> tuple[str, str] | None:
-    """(territory, why) for an unmapped repo, or None. A cheap text scan, never the cache:
-    the hook runs on every session start. A territory whose `members:` names the repo wins
-    outright (a parked repo cloned back); otherwise the one whose MEMORY.md mentions the
-    repo's name, then its longest name part, most often. Advisory: the hook prints it as a
-    command for the session to run, never runs it."""
+def guess_territory(store: Path, repo: Path,
+                    all_t: list[str]) -> tuple[str, str, bool] | None:
+    """(territory, why, firm) for an unmapped repo, or None. A cheap text scan, never the
+    cache: the hook runs on every session start. Firm when a territory's `members:` names
+    the repo (a parked repo cloned back) or its MEMORY.md has the repo's full name; a match
+    on one part of the name is only "possibly", since one passing word is weak evidence and
+    a bold wrong guess invites a wrong link (`random-notes` -> cards/archive on "random",
+    independent review 2026-11-04). Advisory: printed as a command, never run."""
     name = repo.name.lower()
-    parts = sorted((w for w in re.split(r"[-_.\s]+", name) if len(w) >= 4), key=len,
-                   reverse=True)
+    parts = sorted((w for w in re.split(r"[-_.\s]+", name) if len(w) >= 4 and w != name),
+                   key=len, reverse=True)
     member = re.compile(rf"^\s+{re.escape(repo.name)}\s*:", re.M | re.I)
-    best: tuple[int, str, str] | None = None
-    for t in all_t:
-        text = read(store / "territories" / t / "MEMORY.md")
+    texts = {t: read(store / "territories" / t / "MEMORY.md") for t in all_t}
+    for t, text in texts.items():
         head = text.split("\n---", 1)[0] if text.startswith("---") else ""
         if member.search(head):
-            return t, f"its `members:` lists {repo.name}"
-        low = text.lower()
-        for word in [name, *parts[:1]]:
-            n = low.count(word)
-            if n and (best is None or n > best[0]):
-                best = (n, t, f"its MEMORY.md mentions `{word}` {n}x")
-            if n:
-                break
-    return (best[1], best[2]) if best else None
+            return t, f"its `members:` lists {repo.name}", True
+
+    def most(word: str) -> tuple[int, str] | None:
+        counts = [(text.lower().count(word), t) for t, text in texts.items()]
+        counts = [c for c in counts if c[0]]
+        return max(counts) if counts else None
+
+    if hit := most(name):
+        return hit[1], f"its MEMORY.md mentions `{name}` {hit[0]}x", True
+    for word in parts[:1]:
+        if hit := most(word):
+            return hit[1], f"its MEMORY.md mentions `{word}` {hit[0]}x, part of the name", False
+    return None
 
 
 def retro_overdue(router: str) -> int | None:
@@ -410,9 +415,13 @@ def output(store: Path, cwd: Path, claude_md: Path = CLAUDE_MD, write: bool = Tr
     elif all_t:
         repo = repo_root(cwd)
         guess = guess_territory(store, repo, all_t)
-        if guess:
+        if guess and guess[2]:
             pick = (f"Best guess: **{guess[0]}** ({guess[1]}). If that is right, run "
                     f"`mem link --territory {guess[0]} --write` from {repo}")
+        elif guess:
+            pick = (f"Possibly {guess[0]} ({guess[1]}), which is weak evidence: check "
+                    "ROUTER.md, then `mem link --territory <territory> --write` from "
+                    f"{repo}")
         else:
             pick = ("Pick its territory from ROUTER.md and run "
                     f"`mem link --territory <territory> --write` from {repo}")

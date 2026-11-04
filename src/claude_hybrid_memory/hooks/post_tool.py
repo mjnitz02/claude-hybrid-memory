@@ -169,8 +169,10 @@ def _after_write(store: Path, rel: str, session: str) -> str:
     lines = [f"`{rel}` is new and closely resembles existing memory:"]
     for n in near:
         lines.append(f"- `{n.slug}` ({n.container}, similarity {n.ratio:.2f}): {n.description}")
-    lines.append("If it replaces one of these, add `supersedes: <slug>` to its frontmatter; "
-                 "if it overlaps, consider merging instead. Advisory only.")
+    new = rel.rsplit("/", 1)[-1].removesuffix(".md")
+    lines.append(f"If it replaces one of these, `mem supersede <old> {new}` (it relinks every "
+                 "[[old]] and drops the old index line; a hand-written `supersedes:` does "
+                 "neither); if it overlaps, consider merging instead. Advisory only.")
     return "\n".join(lines)
 
 

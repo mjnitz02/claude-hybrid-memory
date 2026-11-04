@@ -187,3 +187,22 @@ def test_find_flags_a_memory_past_its_window(fx: Fixture):
     conn, _ = index(fx)
     due = {h.slug: h.due for h in cache.find(conn, ["claim"], today=dt.date(2026, 11, 4)).hits}
     assert due == {"lab-old-claim": "PAST WINDOW 54d > 14d live", "lab-fresh-claim": ""}
+
+
+def test_find_puts_a_standing_directive_first_when_its_headline_matches(fx: Fixture):
+    # Synthetic, in the real failure's shape: a dozen territory memories say "delete" in
+    # their description and repeat it in the body; the standing rule says it once. BM25
+    # alone ranked the real rule 13th (independent review, 2026-11-04).
+    for i in range(12):
+        _mem(fx, "console/kit", f"kit-delete-{i}", "DELETES the old file on install.",
+             "Delete. Deleted. Deletion. " * 5, volatility="slow", last_verified="2026-11-01")
+    (fx.store / "standing/hands-off-deletions.md").write_text(
+        "---\nname: hands-off-deletions\nkind: standing\ndescription: For deletions, hand "
+        "over a list.\nvolatility: stable\nlast_verified: 2026-11-01\n---\n\nReview first.\n")
+    (fx.store / "standing/mentions-in-passing.md").write_text(
+        "---\nname: mentions-in-passing\nkind: standing\ndescription: Something else.\n"
+        "volatility: stable\nlast_verified: 2026-11-01\n---\n\nOnce deleted a thing.\n")
+    conn, _ = index(fx)
+    slugs = [h.slug for h in cache.find(conn, ["delet"], limit=5).hits]
+    assert slugs[0] == "hands-off-deletions"
+    assert "mentions-in-passing" not in slugs           # a body mention earns no lift

@@ -90,11 +90,24 @@ def test_guess_territory_prefers_members_then_mentions(tmp_path: Path):
                "Nothing about it here.")
     _territory(store, "solo/other", "", "Unrelated.")
     all_t = ["console/tools", "home/lab", "solo/other"]
-    t, why = guess_territory(store, tmp_path / "retrotink-flasher", all_t)
-    assert t == "home/lab" and "members" in why                  # a parked repo, cloned back
-    t, why = guess_territory(store, tmp_path / "retrotink-mk2", all_t[::2])
-    assert t == "console/tools" and "`retrotink` 2x" in why      # longest name part
+    t, why, firm = guess_territory(store, tmp_path / "retrotink-flasher", all_t)
+    assert t == "home/lab" and "members" in why and firm         # a parked repo, cloned back
+    t, why, firm = guess_territory(store, tmp_path / "retrotink", all_t[::2])
+    assert t == "console/tools" and "`retrotink` 2x" in why and firm   # the full name
+    t, why, firm = guess_territory(store, tmp_path / "retrotink-mk2", all_t[::2])
+    assert t == "console/tools" and "part of the name" in why and not firm
     assert guess_territory(store, tmp_path / "zzz", all_t) is None
+
+
+def test_a_part_name_guess_is_only_possibly(fx: Fixture, tmp_path: Path):
+    # The review's case: `random-notes` got a bold "Best guess" on one passing "random".
+    (fx.store / "territories/home/lab/MEMORY.md").write_text(
+        (fx.store / "territories/home/lab/MEMORY.md").read_text() + "\nA random aside.\n")
+    repo = tmp_path / "random-notes"
+    (repo / ".git").mkdir(parents=True)
+    rc, out, _ = run(mem_cmd("hook", "session-start"), fx.env(cwd=repo))
+    ctx = json.loads(out)["hookSpecificOutput"]["additionalContext"]
+    assert "Best guess" not in ctx and "Possibly home/lab" in ctx and "weak evidence" in ctx
 
 
 def test_the_no_territory_note_names_the_link_command(fx: Fixture, tmp_path: Path):

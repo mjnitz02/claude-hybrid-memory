@@ -3,8 +3,9 @@
 `mem` is the `claude_hybrid_memory` package in `src/`. The `hybrid-memory` plugin runs it
 through `bin/mem`, which is on the PATH inside Claude Code sessions (setup.md, "The
 plugin"); for a terminal `mem`, `uv tool install -e .` in a clone. `mem --help` prints this
-list too, grouped; `mem <command> --help` describes one. Global flags (`--root`,
-`--json`, `-t`) may go before or after the command. `--json` gives machine output on most
+list too, grouped; `mem <command> --help` describes one. Flags (`--root`,
+`--json`, and `-t` on every command that takes a territory) may go before or after the
+command. `--json` gives machine output on most
 commands. There is one dependency, `pyyaml`, for frontmatter, and it is never on the hook
 path.
 
@@ -35,7 +36,7 @@ Exit codes: 0 clean, 1 findings at error level, 2 tool error.
     mem show <slug> [--meta | --section H | --full] [--at REV]   # PAST WINDOW flagged; prints the path to Edit; --meta lists what links here
     mem show <territory>       # print a territory's MEMORY.md: the ROUTER's "PULL WHEN"
     mem history <slug>         # version chain both ways + the file's git log
-    mem supersede <old> <new>  # `mem new` <new> first; writes `supersedes:`, relinks every live [[old]], drops <old> from its index; <old> is never touched
+    mem supersede <old> <new>  # `mem new` <new> first; writes `supersedes:`, relinks every live [[old]] (gate text is listed, not rewritten), drops <old> from its index; <old> is never touched
     mem index [--rebuild]      # refresh the derived cache (find/show do this themselves)
     mem events stats           # usage: reads/writes/searches by tool, hook cost, most-read
 

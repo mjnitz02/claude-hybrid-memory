@@ -288,6 +288,7 @@ class Hit:
     sections: list = field(default_factory=list)    # [(heading, line)], best first
     superseded_by: list = field(default_factory=list)
     matched: int = 0                                 # how many of the query's words it has
+    headline: int = 0                                # how many of them are in slug/description
     due: str = ""                                    # PAST WINDOW marker, else ""
 
 
@@ -383,6 +384,7 @@ def _search(conn, words: list[str]) -> list[Hit]:
     secs: dict[int, dict[tuple, float]] = {}
     for w in words:
         best: dict[int, float] = {}
+        in_head: set[int] = set()
         for fid, heading, line, score in conn.execute(
                 f"SELECT s.file_id, s.heading, s.line, bm25(sections_fts, {weights})"
                 " FROM sections_fts JOIN sections s ON s.id = sections_fts.rowid"
@@ -394,14 +396,16 @@ def _search(conn, words: list[str]) -> list[Hit]:
                 d[k] = min(d.get(k, 0.0), score)
         # A word in the slug or description is what the memory is ABOUT; body sections that
         # merely repeat it ("delete" 12 times in a procedure) otherwise outrank the one
-        # memory whose conclusion it is (eval 2026-11-04: `find delet` put the standing
-        # deletions rule 21st).
+        # memory whose conclusion it is. On its own it took `find delet`'s standing
+        # deletions rule only from 21st to 13th, since a dozen descriptions say "delete";
+        # the standing tier in the sort below is what puts it first.
         for (fid,) in conn.execute(
                 "SELECT DISTINCT s.file_id FROM sections_fts JOIN sections s"
                 " ON s.id = sections_fts.rowid WHERE sections_fts MATCH ?",
                 ("{slug description} : " + _word_query(w),)):
             if fid in best:
                 best[fid] *= HEADLINE
+                in_head.add(fid)
         for fid, score in best.items():
             hit = by_file.get(fid)
             if hit is None:
@@ -410,10 +414,20 @@ def _search(conn, words: list[str]) -> list[Hit]:
                     " last_verified FROM files WHERE id=?", (fid,)).fetchone()
                 hit = by_file[fid] = Hit(*row, score=0.0)
             hit.matched += 1
+            hit.headline += fid in in_head
             hit.score += score
     for fid, hit in by_file.items():
         hit.sections = [k for k, _ in sorted(secs.get(fid, {}).items(), key=lambda x: x[1])]
-    return sorted(by_file.values(), key=lambda h: (-h.matched, _is_history(h), h.score, h.path))
+    # Tiers before score, among files with as many words: a standing directive whose slug or
+    # description holds every matched word (it binds every session, and `find delet` buried
+    # the deletions rule at 13th on BM25 alone; one merely mentioning a word in its body
+    # gets no lift), then current territory state, then history.
+    return sorted(by_file.values(), key=lambda h: (-h.matched, _is_history(h),
+                                                   not _is_directive(h), h.score, h.path))
+
+
+def _is_directive(h: Hit) -> bool:
+    return h.area == "standing" and h.headline == h.matched
 
 
 def _is_history(h: Hit) -> bool:

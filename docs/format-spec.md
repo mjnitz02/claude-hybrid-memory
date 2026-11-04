@@ -108,6 +108,9 @@ back, so one field has one writer. A memory is superseded when any memory outsid
 chain both ways alongside the file's git log. `mem supersede <old> <new>` writes the line,
 rewrites every live `[[old]]` wikilink to name `<new>` (archive/, ALWAYS.md and the logs are
 left alone), and drops `<old>` from a hand-written index; a rendered one drops it itself.
+Always-loaded gate text (GATES.md, MACHINE.md, ROUTER.md, standing/, a MEMORY.md `## GATES`
+section) is listed with its replacement line, never rewritten: a gate edit needs the user's
+named go-ahead, so the session makes it with Edit.
 
 A bare slug that exists in two containers resolves to the one beside the newer memory;
 otherwise write `container/slug`. A ref that resolves to nothing (a memory merged away
