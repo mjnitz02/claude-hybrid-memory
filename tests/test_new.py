@@ -113,3 +113,17 @@ def test_new_requires_volatility_or_status_unless_a_record(fx: Fixture):
     assert rc == 0, err
     meta = parse_frontmatter((fx.store / KIT / "kit-a-run.md").read_text())[0]
     assert meta["tier"] == "record" and "volatility" not in meta
+
+
+def test_the_help_example_runs_as_typed(fx: Fixture):
+    # The example broke twice: once missing the then-new -v, once naming a group no store
+    # has after -g became strict. Run it straight out of --help, in a rendered territory.
+    import shlex
+    rc, _, err = run(mem_cmd("render", "console/kit", "--adopt", "--write"), fx.env())
+    assert rc == 0, err
+    p = subprocess.run(mem_cmd("new", "--help"), capture_output=True, text=True, env=fx.env())
+    line = next(ln for ln in p.stdout.splitlines() if ln.startswith("example: mem new "))
+    argv = shlex.split(line.removeprefix("example: mem new ").split("<<")[0])
+    rc, out, err = new(fx, *argv)
+    assert rc == 0, err
+    assert "indexed it" in out

@@ -164,9 +164,14 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(
         prog="mem new",
         description="Write a new territory memory (body on stdin) and index it.",
+        # No --group in the example: a group must already exist in the territory, and no
+        # literal one exists in every store, so an example naming one fails as typed (it did:
+        # `--group Hardware`, independent review 2026-11-04). Omitting it always works.
         epilog="example: mem new card-reader-panics -v stable --description 'The built-in SD "
-               "reader panics under sustained I/O; use the USB one' --group Hardware "
-               "<<'EOF' ... EOF\n\nTo replace a memory: `mem new` the replacement first, then "
+               "reader panics under sustained I/O; use the USB one' <<'EOF' ... EOF\n\n"
+               "-g files it under one of the territory's existing groups (`mem show "
+               "<territory>` lists them; omit -g to file it under Other).\n\n"
+               "To replace a memory: `mem new` the replacement first, then "
                "`mem supersede <old> <new>`.",
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("slug", help="kebab-case; becomes <slug>.md")
