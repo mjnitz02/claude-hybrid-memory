@@ -62,10 +62,11 @@ This normalizes slugs to kebab-case, inserts missing `name:` fields, renames und
 files, and rewrites inbound `[[links]]` and router references. On the audited corpus it
 took 104 errors to 1.
 
-It deliberately does **not** stamp `last_verified`. File mtime is not evidence that a
-claim was checked, and a copy or a checkout resets it. A wrong date is worse than a
-missing one, because it produces a freshness signal that gets trusted. Use
-`--stamp-today` only when the claims were genuinely just verified.
+It deliberately does **not** stamp `last_verified` with today. A memory is dated with the
+day it was last written (the harness's `metadata.modified:`, else the silo file's mtime),
+which is when its claims were last seen true; `mem migrate apply` does this on landing,
+and a hand migration sets it per file. Use `--stamp-today` only when the claims were
+genuinely just checked. (format-spec, *Verification happens on use*.)
 
 ### 3. Create the territory
 
@@ -82,7 +83,7 @@ This is the judgment step and it does not get automated.
 
 | Verdict | Action |
 |---|---|
-| **keep** | move into the territory; add `kind`, `volatility` or `status`, and a `verify:` recipe if it is live |
+| **keep** | move into the territory; add `kind`, `volatility` or `status`, and `last_verified` (the day it was last written) |
 | **merge** | fold into an existing memory, re-date it, and delete the loser |
 | **promote** | it is a standing directive: move to `standing/`, or make it an export |
 | **archive** | move to `archive/<silo>/`; a completed state |
@@ -127,7 +128,7 @@ Required before calling the territory done:
 - zero `silo-mixed-state`
 - zero `router-ghost` and zero `dangling-link` in the new territory
 - the territory `MEMORY.md` is under 200 lines and 25 KB, the harness auto-load limit
-- every `live` memory has a `verify:` recipe, or is explicitly `unrunnable` with a prose check
+- every memory kept has `last_verified` and a `volatility` (or a `status` that implies one)
 
 ### 9. Log it
 

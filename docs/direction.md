@@ -130,7 +130,9 @@ one section. Claude only reads whole files when it chooses to.
 
 **Confirm.** When a session relies on a memory and finds it still true, `memory_confirm`
 appends a `confirm` event. This is the strong reinforcement signal, and it is also the cheap
-replacement for most hand-stamped `last_verified` dates.
+replacement for most hand-stamped `last_verified` dates. *Built 2026-11-03 as
+`mem verified <slug> -m NOTE`* (a `verified` event, plus `last_verified:` today), the
+write-back half of verify-on-use (§16.9).
 
 ## 6. Format changes
 
@@ -743,6 +745,34 @@ Settled 2026-10-21 unless marked open.
      package and paths keep the long name.
    - **`agents/` became `prompts/`**, since a plugin loads `agents/` as subagents.
    - **CI checks the plugin files with pytest** (`tests/test_plugin.py`), not the Claude CLI.
+
+9. **Verify-on-use replaces verifying in advance** (2026-11-03, Matt; grilled to a shared
+   tree the same day). The refine queue had reached 185 items, 180 of them `unverified`: a
+   field-presence check (no `status`, `last_verified` or `verify`) that only an expensive
+   per-item truth check could clear. Ten-plus sessions on this machine and more on the work
+   Mac never cleared it, the retro deferred it to refine, and every real catch in RETRO.md
+   came from checking a state claim when relying on it. **Why:** the stock memory model
+   never re-checks anything; checking at the point of use replaces "never" with "when it
+   matters", at none of the backlog's cost. What was settled:
+   - `last_verified` means "last seen true": stamped by `mem new` (today), at landing (the
+     day the file was last written, never the landing day), by `mem backfill-verified` for
+     the existing store (landing commits; explicit `--baseline-date` per territory for
+     files older than the store's history, refusing to guess), and by `mem verified`.
+   - Windows: live 14d, slow 30d (was 90), stable 365d, one threshold each. Volatility comes
+     from the writer (`mem new` requires `-v` or `-s`, or `--record`), or from
+     `mem migrate volatility`, a Sonnet pass after landing that skips `status`-implied
+     memories and records and lands as-is after a spot check.
+   - A session checks only the claim it is about to act on, only past the window, then
+     `mem verified` (held), a fix plus `mem verified` (drifted) or `mem supersede`
+     (flipped). The rule is the `verify-on-use` standing directive.
+   - The `unverified`, `verify` and `stale-live` queue items are gone; `verify:` recipes
+     stay optional and still run under `--run`.
+   - The retro measures the mechanism (`verified` events, `stale-live` count, "did a
+     session act on a stale claim?") and may not defer to work that cannot finish. Zero
+     `verified` events across two retros is a finding about the directive. Reads are not
+     tracked.
+   *Built 2026-11-03.* Backfill stamped 202 memories, the volatility pass classified 207
+   ($2.01), and this machine's queue went from 185 to 5.
 
 ## 17. Risks, and when to stop
 

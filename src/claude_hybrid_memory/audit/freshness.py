@@ -46,7 +46,7 @@ def check_freshness(mems: list[Memory], today: dt.date, run: bool,
         if m.path in superseded:
             continue
         vol = m.volatility or "slow"
-        limit = STALE_AFTER.get(vol, 90)
+        limit = STALE_AFTER.get(vol, STALE_AFTER["slow"])
         age = m.age_days(today)
         recipe = str(m.meta.get("verify") or "").strip()
         due = age is None or age > limit
@@ -82,8 +82,11 @@ def check_freshness(mems: list[Memory], today: dt.date, run: bool,
                 out.append(Finding(WARN, "verify-unrunnable", str(m.path),
                                    f"{argv[0]} not on PATH"))
         elif due and vol == "live":
+            # Not a work item (nothing queues it): a count the retrospective reports. The
+            # check happens when a session is about to act on the claim (verify-on-use).
             out.append(Finding(WARN, "stale-live", str(m.path),
-                               f"live, {age_phrase(age)}, and carries no verify: recipe"))
+                               f"live, {age_phrase(age)} (window {limit}d): check its claim "
+                               "before acting on it, then `mem verified`"))
         elif due:
             out.append(Finding(INFO, "stale", str(m.path),
                                f"{vol}; {age_phrase(age)} (limit {limit}d)"))

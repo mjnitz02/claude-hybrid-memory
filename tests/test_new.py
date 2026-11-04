@@ -15,6 +15,10 @@ KIT = "territories/console/kit"
 
 
 def new(fx: Fixture, *args: str, body: str = "The body.\n", cwd: Path | None = None):
+    """`mem new`, passing `-v live` unless the test names its own volatility, status or
+    record flag: the requirement has a test of its own."""
+    if not {"-v", "--volatility", "-s", "--status", "--record"} & set(args):
+        args = (*args, "-v", "live")
     p = subprocess.run(mem_cmd("new", *args), input=body, capture_output=True, text=True,
                        env=fx.env(), cwd=cwd or fx.repo, timeout=60)
     return p.returncode, p.stdout, p.stderr
@@ -85,3 +89,23 @@ def test_new_never_relists_a_superseded_memory(fx: Fixture):
     rc, _, err = new(fx, "kit-probe", "-d", "The probe works.")
     assert rc == 0, err
     assert "kit-sync-v1" not in idx.read_text()
+
+
+def test_new_requires_volatility_or_status_unless_a_record(fx: Fixture):
+    """The writing session knows whether it is recording state or a fact, and that sets how
+    long a later session can act on the claim before checking it."""
+    before = sorted(p.name for p in (fx.store / KIT).iterdir())
+    p = subprocess.run(mem_cmd("new", "kit-no-vol", "-d", "x"), input="Body.\n",
+                       capture_output=True, text=True, env=fx.env(), cwd=fx.repo, timeout=60)
+    assert p.returncode == 2 and "--volatility" in p.stderr
+    assert sorted(p.name for p in (fx.store / KIT).iterdir()) == before
+
+    rc, _, err = new(fx, "kit-shipped", "-d", "x", "-s", "SHIPPED")
+    assert rc == 0, err
+    meta = parse_frontmatter((fx.store / KIT / "kit-shipped.md").read_text())[0]
+    assert meta["status"] == "SHIPPED" and "volatility" not in meta     # the status implies it
+
+    rc, _, err = new(fx, "kit-a-run", "-d", "x", "--record")
+    assert rc == 0, err
+    meta = parse_frontmatter((fx.store / KIT / "kit-a-run.md").read_text())[0]
+    assert meta["tier"] == "record" and "volatility" not in meta

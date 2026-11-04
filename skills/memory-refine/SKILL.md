@@ -1,6 +1,6 @@
 ---
 name: memory-refine
-description: Work the memory store's refine queue (fast adoption stage 5) - better descriptions, splits, verify recipes, promotions and relocations, one queue item at a time. Use when Matt says "refine", "work the queue", or /memory-refine [N], or when the retrospective reports a long queue.
+description: Work the memory store's refine queue (fast adoption stage 5) - better descriptions, splits, promotions and relocations, one queue item at a time. Use when Matt says "refine", "work the queue", or /memory-refine [N], or when the retrospective reports a long queue.
 ---
 
 # memory-refine
@@ -18,8 +18,9 @@ The queue is `~/.claude/memory/.cache/migrate/queue.json`, already in work order
 **derived**: an item drops when its cause is gone, so there is no done-list to update. To
 see whether an item is finished, rebuild the queue. Never edit queue.json.
 
-Read `docs/format-spec.md` before writing any field, and its **Verification recipes**
-section before writing a `verify:`.
+Read `docs/format-spec.md` before writing any field. Nothing in this queue asks you to
+verify a memory: claims are checked when a session acts on them (format-spec, *Verification
+happens on use*).
 
 ## Per item
 
@@ -36,9 +37,6 @@ section before writing a `verify:`.
 | type | what dropping it takes | subagent directive |
 |---|---|---|
 | `standing-candidate`, `gate-candidate` | promote it, or link it to the directive that already covers it and supersede it; else Matt declines | "Is this rule true outside its one project? Quote the line that says so, or say it is project-specific. Name any of these standing directives it duplicates: <list standing/>" |
-| `verify` | a `verify:` recipe, or `tier: record` if it is history | "Draft a read-only shell check for this claim from this identifier: `<identifier>`. Output the command and what output means true. Say 'none' if no command can settle it." |
-| `stale-live` | a `verify:` recipe, or a fresh `last_verified` after you actually checked | same as `verify` |
-| `unverified` | check the claim against the world, then a `status:` and `last_verified:`, or a `verify:` recipe, or `tier: record` if it is history | same as `verify`, plus: "Say which status fits: SHIPPED, STILL LIVE, RESOLVED, HISTORICAL, or that the claim no longer holds." |
 | `description` | a description that states the conclusion | "Judge this description against this body. If it names a subject rather than stating the conclusion, write one line that does." |
 | `split-candidate`, `shape` | split into a short state memory plus records (format-spec, *state vs records*), or a rewrite that drops the diary | "Propose a split: one state memory (what is true now) and dated records. List each file's slug, description and which lines go where. Drop nothing." |
 | `possible-duplicate` | merge and supersede, or Matt declines | "Do these two say the same thing? If so, which is newer and more complete?" |

@@ -39,21 +39,26 @@ ISOLATION = ["--tools", "", "--no-session-persistence", "--setting-sources", "",
              "--settings", '{"disableAllHooks": true}', "--output-format", "json"]
 
 
+# kind -> (directive, schema). `volatility` is its own pass after summarizing
+# (migrate/volatility.py): one judgment per process, the same isolation and cache.
+KINDS = {"file": ("memory-summarizer.md", "memory-summary.schema.json"),
+         "silo": ("memory-silo-summarizer.md", "memory-silo-summary.schema.json"),
+         "volatility": ("memory-volatility.md", "memory-volatility.schema.json")}
+
+
 @dataclass
 class Job:
     id: str
-    kind: str          # "file" | "silo"
+    kind: str          # a key of KINDS
     input: str
 
     @property
     def directive(self) -> Path:
-        return PROMPTS / ("memory-summarizer.md" if self.kind == "file"
-                         else "memory-silo-summarizer.md")
+        return PROMPTS / KINDS[self.kind][0]
 
     @property
     def schema(self) -> Path:
-        return PROMPTS / ("memory-summary.schema.json" if self.kind == "file"
-                         else "memory-silo-summary.schema.json")
+        return PROMPTS / KINDS[self.kind][1]
 
     def key(self, model: str) -> str:
         h = hashlib.sha256()
@@ -180,8 +185,8 @@ def run_job(job: Job, model: str, cache: Path, force: bool = False) -> dict:
 
 
 def run(root: Path, jobs: list[Job], model: str = MODEL, parallel: int = JOBS,
-        force: bool = False, progress=None) -> list[dict]:
-    cache = workdir(root) / "summaries"
+        force: bool = False, progress=None, subdir: str = "summaries") -> list[dict]:
+    cache = workdir(root) / subdir
     results = []
     with ThreadPoolExecutor(max_workers=max(1, parallel)) as pool:
         futs = {pool.submit(run_job, j, model, cache, force): j for j in jobs}
@@ -194,9 +199,10 @@ def run(root: Path, jobs: list[Job], model: str = MODEL, parallel: int = JOBS,
     return sorted(results, key=lambda r: order[r["id"]])
 
 
-def cached(root: Path, jobs: list[Job], model: str = MODEL) -> dict[str, dict]:
+def cached(root: Path, jobs: list[Job], model: str = MODEL,
+           subdir: str = "summaries") -> dict[str, dict]:
     """The summaries already on disk for `jobs`, by id; nothing is run."""
-    cache = workdir(root) / "summaries"
+    cache = workdir(root) / subdir
     out = {}
     for j in jobs:
         f = cache / f"{j.key(model)}.json"

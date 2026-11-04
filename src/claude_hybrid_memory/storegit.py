@@ -173,6 +173,26 @@ def untracked(root: Path, paths: list[str]) -> list[str]:
     return r.stdout.splitlines()
 
 
+def root_commit(root: Path) -> str | None:
+    """The full sha of the history's first commit: the baseline `mem` started from."""
+    r = _git(root, "rev-list", "--max-parents=0", "HEAD")
+    shas = r.stdout.split() if r.returncode == 0 else []
+    return shas[-1] if shas else None
+
+
+def first_added(root: Path, path: str) -> tuple[str, str] | None:
+    """(full sha, YYYY-MM-DD) of the commit that first added `path`, across renames; None
+    when the file has no history yet."""
+    r = _git(root, "log", "--follow", "--diff-filter=A", "--date=short", "--format=%H %ad",
+             "--", path)
+    lines = r.stdout.split("\n") if r.returncode == 0 else []
+    lines = [ln for ln in lines if ln.strip()]
+    if not lines:
+        return None
+    sha, date = lines[-1].split()
+    return sha, date
+
+
 def resolve(root: Path, rev: str) -> str | None:
     """The full sha `rev` names in the store's history, or None."""
     r = _git(root, "rev-parse", "--verify", "--quiet", f"{rev}^{{commit}}")

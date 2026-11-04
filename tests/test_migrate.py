@@ -28,6 +28,8 @@ if "FAIL-ONCE" in data and not os.path.exists(once):
     open(once, "w").close(); print("not json"); sys.exit(1)
 if "SCHEMA-BREAK" in data:
     out = {"conclusion": 3}
+elif "volatility" in schema["properties"]:
+    out = {"volatility": "live" if "LIVE-MARK" in data else "stable", "why": "fixture"}
 elif "subject" in schema["properties"]:
     # beta claims an existing territory, and mislabels it "new", as the real run did once
     beta = "project: beta-repo" in data
@@ -458,25 +460,20 @@ def test_refine_queue_derives_and_drops(landed: Fixture, fake: Path):
     alpha = "territories/fixture/alpha"
     q = items()
     dn, hr = f"{alpha}/deploy-notes.md", f"{alpha}/house-rule.md"
-    assert q[f"verify:{dn}"]["source"] == "summary+heuristic"      # abc1234 in the body too
-    assert "abc1234" in q[f"verify:{dn}"]["detail"]
+    assert not any(k.startswith("verify:") for k in q)              # claims are checked on use
     assert {f"shape:{dn}", f"standing-candidate:{hr}", f"description:{hr}",
             f"low-confidence:{hr}"} <= q.keys()
-    assert not any(k.endswith("launch-record.md") and k.startswith("verify") for k in q)
     ranks = [i["rank"] for i in queue.build(fx.store, fx.projects)["items"]]
     assert ranks == sorted(ranks)
     assert next(iter(q)) == f"standing-candidate:{hr}"             # promotions lead
 
     # working an item is what drops it
     f = fx.store / dn
-    f.write_text(f.read_text().replace("---\n\n", "---\n\nRewritten. ", 1)
-                 .replace("name: deploy-notes", "name: deploy-notes\nverify: true", 1))
+    f.write_text(f.read_text().replace("---\n\n", "---\n\nRewritten. ", 1))
     h = fx.store / hr
     h.write_text(h.read_text().replace("description: d", "description: A house rule"))
     q = items()
-    assert f"shape:{dn}" not in q and f"verify:{dn}" not in q
-    f.write_text(f.read_text().replace("verify: true", "unrunnable: true", 1))
-    assert f"verify:{dn}" not in items()                           # declared unrunnable
+    assert f"shape:{dn}" not in q
     assert f"description:{hr}" not in q and f"standing-candidate:{hr}" in q
     (fx.store / "standing").mkdir(exist_ok=True)
     h.replace(fx.store / "standing" / "house-rule.md")             # promoted
@@ -503,28 +500,18 @@ def test_refine_queue_cli(landed: Fixture, fake: Path):
     assert rc == 0 and q["items"] and all(i["territory"] == "home/lab" for i in q["items"])
 
 
-def test_refine_queue_finds_undated_memories_in_active_territories(fx: Fixture):
-    """No status, never verified, no recipe: the audit calls that `slow` and only `stale`,
-    and with no summary nothing else queues it, so a territory carried over from an early
-    store looked clean while most of it was undated."""
+def test_refine_queue_never_queues_a_memory_for_verification(fx: Fixture):
+    """Undated memories in an active territory, and a live one past its window, are not
+    work items: claims are checked when a session acts on them. Queueing every undated
+    memory for a check in advance built a backlog no number of sessions cleared."""
     from claude_hybrid_memory.migrate import queue
 
     index = fx.store / "territories/console/kit/MEMORY.md"
     head = "---\nterritory: console/kit\n"
     index.write_text(index.read_text().replace(
         head, head + "members:\n  kit-repo: {owner: self, mode: active}\n", 1))
-
-    def undated() -> set[str]:
-        return {i["path"].rsplit("/", 1)[-1] for i in queue.build(fx.store, fx.projects)["items"]
-                if i["type"] == "unverified"}
-
-    # kit-sync-v1 is undated too, but superseded; home/lab has no active member
-    assert undated() == {"kit_raw_notes.md", "kit-unlisted-orphan.md"}
-    orphan = fx.store / "territories/console/kit/kit-unlisted-orphan.md"
-    orphan.write_text(orphan.read_text().replace("volatility: live", "last_verified: 2026-10-01"))
-    assert undated() == {"kit_raw_notes.md"}
-    index.write_text(index.read_text().replace("mode: active", "mode: parked"))
-    assert undated() == set()
+    types = {i["type"] for i in queue.build(fx.store, fx.projects)["items"]}
+    assert not types & {"unverified", "verify", "stale-live"}
 
 
 @pytest.mark.parametrize("entry", ["- home/kiln : The kiln. PULL WHEN: any of it.",
@@ -543,3 +530,88 @@ def test_router_line_does_not_mistake_a_longer_name(tmp_path: Path):
     (tmp_path / "territories/home/kiln").mkdir(parents=True)
     assert apply.router_line(tmp_path, "home/kiln", "subject") == "ROUTER.md: added home/kiln"
     assert "- home/kiln (0) : subject." in (tmp_path / "ROUTER.md").read_text()
+
+
+def _git_store(root: Path) -> None:
+    import subprocess
+
+    def g(*a):
+        subprocess.run(["git", "-C", str(root), *a], check=True, capture_output=True)
+    g("init", "-q")
+    g("config", "user.email", "fixture@example.invalid")
+    g("config", "user.name", "Fixture")
+    (root / ".gitignore").write_text(".cache/\nALWAYS.md\nevents/\n", encoding="utf-8")
+    g("add", "-A")
+    g("commit", "-q", "-m", "Baseline")
+
+
+def test_volatility_pass_classifies_only_what_nothing_dates(fx: Fixture, fake: Path):
+    """Not a memory that states its volatility, one whose status implies it, a record, or a
+    superseded one. A plain run writes nothing; --write lands exactly the cached verdicts."""
+    from claude_hybrid_memory.migrate import volatility as V
+    from claude_hybrid_memory.store import parse_frontmatter
+
+    kit = fx.store / "territories/console/kit"
+    for name, extra, body in [("kit-v-plain", "", "A fact."),
+                              ("kit-v-state", "", "LIVE-MARK the PR is open."),
+                              ("kit-v-status", "status: SHIPPED\n", "Done."),
+                              ("kit-v-record", "tier: record\n", "A run."),
+                              ("kit-v-stated", "volatility: slow\n", "Stated.")]:
+        (kit / f"{name}.md").write_text(f"---\nname: {name}\ndescription: d\nkind: territory\n"
+                                        f"{extra}---\n\n{body}\n")
+    _git_store(fx.store)
+    picked = {t.mem.slug for t in V.targets(fx.store)}
+    assert {"kit-v-plain", "kit-v-state"} <= picked
+    assert not picked & {"kit-v-status", "kit-v-record", "kit-v-stated", "kit-sync-v1"}
+
+    env = fx.env()
+    base = ["volatility", "--root", str(fx.store), "--territory", "console/kit"]
+    rc, out, err = run(mem_cmd("migrate", *base, "--dry-run"), env)
+    assert rc == 0 and "to run" in out and not calls(fake), out + err
+    rc, _, err = run(mem_cmd("migrate", *base, "--write"), env)       # nothing cached yet
+    assert rc == 2 and "run without --write first" in err
+
+    rc, out, err = run(mem_cmd("migrate", *base), env)
+    assert rc == 0 and "Nothing written" in out and "spot-check" in out, out + err
+    assert "volatility" not in parse_frontmatter((kit / "kit-v-plain.md").read_text())[0]
+    n = len(calls(fake))
+    rc, out, err = run(mem_cmd("migrate", *base, "--write"), env)
+    assert rc == 0 and "committed" in out, out + err
+    assert len(calls(fake)) == n                                      # --write runs nothing
+    vol = lambda f: parse_frontmatter((kit / f).read_text())[0].get("volatility")  # noqa: E731
+    assert vol("kit-v-plain.md") == "stable" and vol("kit-v-state.md") == "live"
+    assert vol("kit-v-status.md") is None and vol("kit-v-stated.md") == "slow"
+    rc, out, _ = run(mem_cmd("migrate", *base, "--dry-run"), env)
+    assert "nothing to classify" in out
+
+
+def test_apply_dates_each_file_from_when_it_was_written(landed: Fixture, fake: Path):
+    """Verify-on-use needs every memory dated, and the honest date is when a session last
+    wrote the file: its mtime here. The landing day would make it look fresher than it is."""
+    import datetime as dt
+    import os
+
+    from claude_hybrid_memory.store import parse_frontmatter
+
+    fx = landed
+    src = fx.projects / ALPHA / "memory" / "deploy-notes.md"
+    when = dt.datetime(2026, 8, 3, 12, 0).timestamp()
+    os.utime(src, (when, when))
+    rc, out, err = apply_cli(fx, fake, "apply")
+    assert rc == 0, out + err
+    assert "mem migrate volatility" in out                          # the next step is named
+    meta = parse_frontmatter((fx.store / "territories/fixture/alpha/deploy-notes.md")
+                             .read_text())[0]
+    assert str(meta["last_verified"]) == "2026-08-03"
+
+
+def test_written_date_prefers_the_harness_stamp(tmp_path: Path):
+    import datetime as dt
+
+    from claude_hybrid_memory.verified import written_date
+
+    f = tmp_path / "m.md"
+    f.write_text("x")
+    nested = "---\nname: a\nmetadata:\n  modified: 2026-10-16T15:46:35.090Z\n---\nB\n"
+    assert written_date(nested, f) == dt.date(2026, 10, 16)
+    assert written_date("---\nname: a\n---\nB\n", f) == dt.date.today()   # mtime: just now

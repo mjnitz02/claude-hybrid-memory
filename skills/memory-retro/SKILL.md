@@ -30,9 +30,21 @@ territory index still lists a memory a newer one replaced: drop that line.
 memory never read across months of events is a candidate for archive, with the same
 caveat as parked repos: absence of use is not proof of uselessness.
 
-`--run` executes `verify:` recipes under hard constraints (allowlisted commands, no shell
-interpretation, mutating subcommands denied, 20s timeout). Report contradictions as
-findings, do not silently fix a memory to match the world without saying so.
+`--run` executes the `verify:` recipes that exist, under hard constraints (allowlisted
+commands, no shell interpretation, mutating subcommands denied, 20s timeout). Report
+contradictions as findings, do not silently fix a memory to match the world without saying
+so. Recipes are optional; never write new ones as retro work.
+
+**Do not verify memories in bulk.** Claims are checked when a session acts on them
+(verify-on-use, format-spec). The retro measures whether that is happening, per
+`docs/self-verification.md`, *Verify-on-use: what the retro measures*:
+
+    mem events stats --since <last_retrospective>   # ends with the `mem verified` checks and notes
+    mem audit --scan store | grep -c stale-live
+
+Report the `verified` count with a few of their notes, the `stale-live` count, and an
+evidence-based answer to "did a session act on a stale claim?". Zero `verified` events
+across two retros goes to Matt as a finding about the directive.
 
 **The third command is not optional, and it is the one a retrospective skips.** Run the hook
 and look at what it actually emits — length, and whether the `MEMORY STATUS` block reports a
@@ -46,12 +58,14 @@ the habit is the real safeguard, because the next such defect will be a differen
 
 **Read the Declined sections of previous `RETRO.md` runs before reporting anything.** A
 finding already declined with a reason does not get re-raised unless the reason no longer
-holds. This is what stops the retrospective re-litigating settled decisions every month,
+holds. **When you decline, the reason must hold on its own or name a condition that will
+arrive.** "Until X is done" is allowed only if X has an end; the 2026-11-03 run declined
+253 findings "until the refine queue has been worked", and that queue could not be. This is what stops the retrospective re-litigating settled decisions every month,
 which is what makes it survive past its second run.
 
 ## The judgment pass, in order
 
-1. **Still true?** Only for what `verify:` could not settle. Check the world, not the memory.
+1. **Is verify-on-use happening?** The three numbers above. Not a truth-check of the store.
 2. **Still useful?** True is not the same as worth loading.
 3. **Was the router predictive?** For memories used since the last retro: would the
    `description` have caused a session to open it at the right moment? If not, rewrite the
@@ -88,7 +102,8 @@ Claude's hypothesis, not a fact.
 ## A good run is not zero findings
 
 A store with zero findings is either brand new or not being used. A good run resolves or
-explicitly declines every error, re-dates every contradicted claim, rewrites at least one
+explicitly declines every error, re-dates every claim a recipe contradicted, reports the
+verify-on-use numbers, rewrites at least one
 description to carry a conclusion, and answers question 7 honestly. If nothing lands under
 **Acted**, either the store is genuinely healthy or the run was not honest, and the second
 is more likely.

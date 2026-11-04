@@ -17,6 +17,8 @@ Enforces docs/format-spec.md.
     mem show <slug> [--meta | --section H | --full] [--at REV]
     mem history <slug>
     mem supersede <old> <new>
+    mem verified <slug> -m WHAT-WAS-CHECKED
+    mem backfill-verified [--baseline-date TERRITORY=DATE ...] [--write]
     mem commit [-m SUBJECT]
     mem log [PATH...] [-n N]
     mem diff [PATH...] [--stat]
@@ -32,6 +34,7 @@ Enforces docs/format-spec.md.
     mem migrate map [--rebuild] [--approve]
     mem migrate apply [--silo S ...] [--dry-run]
     mem migrate undo --silo S
+    mem migrate volatility [--territory T] [--dry-run] [--write] [--sample N]
     mem refine queue [--territory T] [--limit N] [--json]
     mem mv-territory OLD NEW [--write]
     mem mv SLUG... TERRITORY [--write]
@@ -156,7 +159,7 @@ def _run(argv: list[str]) -> int:
     return report(f, a.json)
 
 
-CACHE_COMMANDS = ("index", "find", "show", "history", "supersede")
+CACHE_COMMANDS = ("index", "find", "show", "history", "supersede", "verified")
 GIT_COMMANDS = ("commit", "log", "diff", "restore", "revert")
 
 
@@ -326,7 +329,7 @@ def _migrate(argv: list[str]) -> int:
 
     ap = argparse.ArgumentParser(prog="mem migrate")
     ap.add_argument("stage", choices=["inventory", "summarize", "summaries", "map", "apply",
-                                      "undo"])
+                                      "undo", "volatility"])
     ap.add_argument("--root", type=Path, default=STORE, help=f"store root (default {STORE})")
     ap.add_argument("--legacy", type=Path, default=LEGACY, help="legacy projects dir")
     ap.add_argument("--source", type=Path, action="append",
@@ -339,9 +342,16 @@ def _migrate(argv: list[str]) -> int:
     ap.add_argument("--rebuild", action="store_true",
                     help="map: redraft the plan; the old one is kept as plan.prev.yaml")
     ap.add_argument("--approve", action="store_true", help="map: approve the plan as it is")
+    ap.add_argument("--territory", help="volatility: only this territory (or below it)")
+    ap.add_argument("--write", action="store_true",
+                    help="volatility: land the cached verdicts in the store")
+    ap.add_argument("--sample", type=int, default=15,
+                    help="volatility: random verdicts to show for a spot check")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
 
+    if a.stage == "volatility":
+        return _volatility(a)
     if a.stage == "undo":
         return _undo(a)
     if a.stage == "apply":
@@ -400,6 +410,91 @@ def _migrate(argv: list[str]) -> int:
           f"{len(failed)} failed; ${sum(r.get('cost_usd', 0) for r in ran):.2f}, "
           f"{sum(r.get('tokens_in', 0) for r in ran):,} tokens in, "
           f"{sum(r.get('tokens_out', 0) for r in ran):,} out")
+    return 1 if failed else 0
+
+
+def _volatility(a) -> int:
+    """`mem migrate volatility`: classify every memory with no volatility, then land it.
+
+    Without --write it runs the classifier (cached) and shows the result; nothing in the
+    store changes. --write lands the cached verdicts and runs nothing new, so what lands is
+    exactly what was shown."""
+    import collections
+    import json
+    import random
+
+    from claude_hybrid_memory import storegit
+    from claude_hybrid_memory.migrate import summarize
+    from claude_hybrid_memory.migrate import volatility as V
+
+    ts = V.targets(a.root, a.territory)
+    jobs = [V.job(t) for t in ts]
+    by = {t.rel: t for t in ts}
+    if not jobs:
+        print("nothing to classify: every memory has a volatility, a status that implies one, "
+              "or is a record")
+        return 0
+    have = summarize.cached(a.root, jobs, a.model, V.SUBDIR)
+    todo = [j for j in jobs if a.force or have.get(j.id, {}).get("status") != "ok"]
+    if a.dry_run:
+        print(f"{len(jobs)} to classify: {len(todo)} to run, {len(jobs) - len(todo)} cached, "
+              f"model {a.model}, about ${0.015 * len(todo):.2f}")
+        for terr, n in sorted(collections.Counter(t.territory for t in ts).items()):
+            print(f"  {terr}: {n}")
+        return 0
+    if a.write:
+        if todo:
+            print(f"{len(todo)} have no cached verdict; run without --write first, look at the "
+                  "result, then land it", file=sys.stderr)
+            return 2
+        if storegit.pending(a.root):
+            print("the store has uncommitted changes; `mem commit` them first so this lands "
+                  "as its own commit", file=sys.stderr)
+            return 2
+        verdicts = {j.id: have[j.id]["summary"]["volatility"] for j in jobs}
+        skipped, c = V.apply(a.root, verdicts)
+        for f in skipped:
+            print(f"  left untouched, frontmatter would not read back: {f}")
+        if c:
+            print(f"{c.status}: {c.detail}" + (f" ({c.sha})" if c.sha else ""))
+            return 0 if c.status == "committed" else 2
+        return 0
+
+    def progress(n, total, r):
+        how = ("cached" if r["cached"]
+               else f"{r.get('ms', 0) / 1000:.1f}s ${r.get('cost_usd', 0):.3f}")
+        got = r["summary"]["volatility"] if r["status"] == "ok" else r.get("error", "")[:100]
+        print(f"[{n}/{total}] {r['status']:6} {got:6} {r['id'][-70:]}  {how}", file=sys.stderr)
+
+    res = summarize.run(a.root, jobs, a.model, a.jobs, a.force, progress, V.SUBDIR)
+    ran = [r for r in res if not r["cached"]]
+    ok = [r for r in res if r["status"] == "ok"]
+    failed = [r for r in res if r["status"] != "ok"]
+    if a.json:
+        print(json.dumps([{"path": r["id"], **r["summary"]} for r in ok], indent=1,
+                         ensure_ascii=False))
+        return 1 if failed else 0
+    print(f"{len(res)} classified: {len(ran)} run, {len(res) - len(ran)} cached, "
+          f"{len(failed)} failed; ${sum(r.get('cost_usd', 0) for r in ran):.2f}")
+    dist = collections.Counter(r["summary"]["volatility"] for r in ok)
+    print("  " + ", ".join(f"{k} {dist[k]}" for k in ("stable", "slow", "live")))
+    per = collections.defaultdict(collections.Counter)
+    for r in ok:
+        per[by[r["id"]].territory][r["summary"]["volatility"]] += 1
+    for terr, c in sorted(per.items()):
+        print(f"  {terr}: " + ", ".join(f"{k} {c[k]}" for k in ("stable", "slow", "live")
+                                         if c[k]))
+    pick = random.sample(ok, min(a.sample, len(ok)))
+    if pick:
+        print(f"\n{len(pick)} at random, to spot-check:")
+        for r in sorted(pick, key=lambda r: r["id"]):
+            t = by[r["id"]]
+            desc = str(t.mem.meta.get("description") or "")[:100]
+            print(f"  {r['summary']['volatility']:6} {t.territory}/{t.mem.slug}\n"
+                  f"         {desc}\n         why: {r['summary']['why']}")
+    for r in failed:
+        print(f"  FAILED {r['id']}: {r.get('error', '')[:160]}")
+    print("\nNothing written. `mem migrate volatility --write` lands these verdicts as-is.")
     return 1 if failed else 0
 
 
@@ -471,6 +566,9 @@ def _apply(a) -> int:
         print(f"STOP  {e}", file=sys.stderr)
     if not errs and not a.dry_run:
         print(f"\n{len(out)} silo(s) landed; mem status should show them migrated")
+        if out:
+            print("next: `mem migrate volatility` classifies what they landed; look at the "
+                  "sample, then `--write`")
     return 1 if errs else 0
 
 
@@ -628,9 +726,12 @@ def _events(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="mem events")
     ap.add_argument("action", choices=["stats"])
     ap.add_argument("--root", type=Path, default=STORE)
+    ap.add_argument("--since", metavar="YYYY-MM-DD",
+                    help="only events from this day on (the last retrospective, say)")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
-    evs = list(events.read_all(a.root))
+    evs = [e for e in events.read_all(a.root)
+           if not a.since or str(e.get("ts", "")) >= a.since]
     kinds = Counter(e.get("event") for e in evs)
     tools = Counter(e.get("tool") for e in evs)
     ms = sorted(e["ms"] for e in evs if isinstance(e.get("ms"), (int, float)))
@@ -641,7 +742,10 @@ def _events(argv: list[str]) -> int:
            "sessions": len({e.get("session") for e in evs}),
            "ms_p50": statistics.median(ms) if ms else None,
            "ms_p95": ms[min(len(ms) - 1, int(len(ms) * 0.95))] if ms else None,
-           "top_read": events.read_counts(a.root).most_common(10)}
+           "top_read": Counter(e.get("path") for e in evs
+                               if e.get("event") == "read").most_common(10),
+           "verified": [{"ts": e.get("ts"), "path": e.get("path"), "note": e.get("note")}
+                        for e in evs if e.get("event") == "verified"]}
     if a.json:
         print(json.dumps(out, indent=2))
         return 0
@@ -658,6 +762,9 @@ def _events(argv: list[str]) -> int:
               "(plus ~10 ms interpreter start, not visible from inside)")
     for path, n in out["top_read"]:
         print(f"  {n:4d}  {path}")
+    print(f"checks on use (`mem verified`): {len(out['verified'])}")
+    for v in out["verified"]:
+        print(f"  {str(v['ts'])[:10]}  {v['path']}: {v['note']}")
     return 0
 
 
@@ -688,6 +795,10 @@ def _cache(argv: list[str]) -> int:
         ap.add_argument("new", help="the memory replacing it; gets the `supersedes:` line")
     elif cmd == "history":
         ap.add_argument("spec", help="slug, territory/slug, or a store-relative path")
+    elif cmd == "verified":
+        ap.add_argument("spec", help="slug, territory/slug, or a store-relative path")
+        ap.add_argument("-m", "--note", required=True,
+                        help="what was checked against the world, e.g. 'HEAD is 4211e13'")
     else:
         ap.add_argument("spec", help="slug, territory/slug, or a store-relative path")
         part = ap.add_mutually_exclusive_group()
@@ -758,6 +869,8 @@ def _cache(argv: list[str]) -> int:
     path, container, slug = one
     if cmd == "history":
         return _history(conn, a.root, path, a.json)
+    if cmd == "verified":
+        return _verified(conn, a.root, path, a.note)
     p = a.root / path
     if cmd == "show":
         _log(a.root, "read", path, "mem show")
@@ -995,6 +1108,54 @@ def _supersede(conn, root, old_spec: str, new_spec: str) -> int:
     return 0
 
 
+def _verified(conn, root, path: str, note: str) -> int:
+    """`mem verified <slug> -m NOTE`: a session checked this memory's claim against the world
+    before acting on it, and it held. Stamps `last_verified:` with today and logs a
+    `verified` event carrying the note, which the retrospective counts. Like `mem new` it
+    never commits: the session-end hook commits the file and the event together.
+
+    A claim that did not hold is not this command's: edit the drift in place and then run
+    it, or `mem supersede` when the conclusion flipped."""
+    import datetime as dt
+
+    from claude_hybrid_memory import cache, verified
+    from claude_hybrid_memory.store import parse_frontmatter
+
+    note = " ".join(note.split())
+    if not note:
+        print("-m is empty; say what was checked", file=sys.stderr)
+        return 2
+    g = cache.graph(conn)
+    node = g.nodes[path]
+    if node.area == "archive":
+        print(f"{node.key} is in archive/; nothing acts on a retired memory", file=sys.stderr)
+        return 2
+    newer = [s.key for s in g.successors(path)]
+    if newer:
+        print(f"{node.key} is superseded by {', '.join(newer)}; verify that one",
+              file=sys.stderr)
+        return 2
+    p = root / path
+    text = p.read_text(encoding="utf-8")
+    meta = parse_frontmatter(text)[0]
+    if str(meta.get("tier") or "") == "record":
+        print(f"{node.key} is a record: dated history, never re-checked. If it is wrong, "
+              "write the correction and `mem supersede` it", file=sys.stderr)
+        return 2
+    today = dt.date.today()
+    new = verified.stamp(text, today)
+    if new is None:
+        print(f"{p}: frontmatter would not read back with the new date; fix it by hand",
+              file=sys.stderr)
+        return 2
+    was = meta.get("last_verified")
+    p.write_text(new, encoding="utf-8")
+    _log(root, "verified", path, "mem verified", note=note)
+    cache.refresh(conn, root)
+    print(f"{node.key}: last_verified {today}" + (f" (was {was})" if was else ""))
+    return 0
+
+
 def _run_at(a, argv: list[str]) -> int:
     """`mem audit --at REV`: the same command over the store's tree at REV, exported to a
     temporary directory outside the store. Paths in the report name the live store, so a
@@ -1179,6 +1340,9 @@ def main(argv: list[str] | None = None) -> int:
         if args[:1] == ["new"]:
             from claude_hybrid_memory import new
             return new.main(args[1:])
+        if args[:1] == ["backfill-verified"]:
+            from claude_hybrid_memory import verified
+            return verified.backfill_main(args[1:])
         if args[:1] == ["install"]:
             return _install(args[1:])
         if args[:1] == ["migrate"]:

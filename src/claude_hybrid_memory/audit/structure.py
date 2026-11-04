@@ -9,6 +9,7 @@ from claude_hybrid_memory.spec import (
     OWNERS,
     ROLES,
     SLUG_RE,
+    STALE_AFTER,
     STATUSES,
     TIERS,
     VOLATILITIES,
@@ -44,12 +45,12 @@ def check_structure(mems: list[Memory]) -> list[Finding]:
             out.append(Finding(INFO, "field-invalid", rel,
                                f"kind {kind!r} not in {sorted(KINDS)}"))
         if m.volatility is None:
-            # Not a defect: freshness defaults this to `slow` (90d), which is a safe
+            # Not a defect: freshness defaults this to `slow`, which is a safe
             # middle. Left as INFO so 140 migrated legacy files do not drown the report
             # and train everyone to ignore the warn level.
             out.append(Finding(INFO, "no-volatility", rel,
                                "no `volatility:` and no `status:` to derive it from; "
-                               "defaulting to slow (90d). Classify during a retrospective."))
+                               f"defaulting to slow ({STALE_AFTER['slow']}d)."))
         # A field with a value outside its vocabulary is a refine item, never an error: it is
         # what a session writing a memory gets wrong, and stopping that session to look up an
         # enum costs more than the field is worth. Errors are for broken structure.

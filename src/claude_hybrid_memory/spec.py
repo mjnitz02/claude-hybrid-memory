@@ -17,7 +17,7 @@ STATUS_VOLATILITY = {
     "PARKED": "slow",
     "STILL LIVE": "live", "BLOCKED": "live", "IN FLIGHT": "live",
 }
-STALE_AFTER = {"stable": 365, "slow": 90, "live": 14}
+STALE_AFTER = {"stable": 365, "slow": 30, "live": 14}
 
 SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
