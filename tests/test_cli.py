@@ -183,3 +183,40 @@ def test_cwd_territory_resolves_inside_a_scratch_root(fx: Fixture, tmp_path: Pat
     assert p.returncode == 0, p.stderr
     assert (scratch / "territories/console/kit/kit-probe.md").is_file()
     assert not (fx.store / "territories/console/kit/kit-probe.md").exists()
+
+
+def test_dup_finds_a_near_duplicate_in_the_same_territory_but_not_a_record(fx: Fixture):
+    # Synthetic, in the eval's shape: the twin sits beside the original in one territory,
+    # where the cross-territory description check never looks.
+    body = "SillyTavern runs headless on the lab box behind a privoxy VPN container; only " \
+           "server-bounced calls obey requestProxy, a browser fetch leaks the real IP."
+    lab = fx.store / "territories/home/lab"
+    for slug, extra in (("lab-st-headless", ""), ("lab-st-headless-twin", ""),
+                        ("lab-st-headless-2026-08", "tier: record\n")):
+        (lab / f"{slug}.md").write_text(
+            f"---\nname: {slug}\nkind: territory\ndescription: {body}\n{extra}"
+            "volatility: slow\nlast_verified: 2026-11-01\n---\n\n" + body + "\n")
+    rc, out, _ = run(mem_cmd("dup", "--scan", "store", "--json"), fx.env())
+    near = [f for f in json.loads(out) if f["code"] == "near-duplicate"]
+    pairs = {frozenset((f["path"].rsplit("/", 1)[1],
+                        f["message"].split(" with ")[1].split(":")[0].rsplit("/", 1)[1]))
+             for f in near}
+    assert frozenset(("lab-st-headless.md", "lab-st-headless-twin.md")) in pairs
+    assert not [p for p in pairs if "2026-08" in "".join(p)]       # a record is never a dup
+
+
+def test_audit_changed_reports_only_uncommitted_files(fx: Fixture):
+    import subprocess
+    rc, _, err = run(mem_cmd("audit", "--changed"), fx.env())
+    assert rc == 2 and "not a git repository" in err
+    subprocess.run(["git", "init", "-q", str(fx.store)], check=True)
+    subprocess.run(["git", "-C", str(fx.store), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(fx.store), "-c", "user.name=t", "-c", "user.email=t@t",
+                    "commit", "-qm", "baseline"], check=True)
+    rc, out, _ = run(mem_cmd("audit", "--changed", "--json"), fx.env())
+    assert json.loads(out) == []
+    p = fx.store / "territories/home/lab/lab-backup-plan.md"
+    p.write_text(p.read_text().replace("last_verified: 2026-10-02\n", ""))
+    rc, out, _ = run(mem_cmd("audit", "--changed", "--json"), fx.env())
+    paths = {f["path"] for f in json.loads(out)}
+    assert paths == {str(p)}

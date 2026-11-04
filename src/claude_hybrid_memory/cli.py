@@ -106,8 +106,11 @@ def _run(argv: list[str]) -> int:
         ap.add_argument("--scan", choices=["store", "legacy", "both"], default="both")
         if cmd != "fix":
             ap.add_argument("--territory", "-t",
-                            help="only findings in this territory (and those under it), so "
-                                 "a session can check what it just changed")
+                            help="only findings in this territory (and those under it)")
+            ap.add_argument("--changed", action="store_true",
+                            help="only findings on files changed since the store's last "
+                                 "commit, which is this session's writes: the store commits "
+                                 "at session end")
     if cmd == "fix":
         ap.add_argument("--write", action="store_true",
                         help="apply the fixes (default: a dry run that lists them)")
@@ -122,7 +125,7 @@ def _run(argv: list[str]) -> int:
                     help="check the store as it was at this commit (read-only commands only)")
     a = ap.parse_args(argv[1:])
     a.command = cmd
-    for k, v in (("scan", "both"), ("write", False), ("stamp_today", False),
+    for k, v in (("scan", "both"), ("write", False), ("stamp_today", False), ("changed", False),
                  ("refine", False), ("at", None), ("territory", None), ("dir", None)):
         if not hasattr(a, k):
             setattr(a, k, v)
@@ -184,7 +187,8 @@ def _run(argv: list[str]) -> int:
         f = (audit.check_router_drift(mems, routers, audit.superseded_paths(a.root))
              + audit.check_exports(a.root, routers))
     elif c == "dup":
-        f = audit.check_dup(mems)
+        from claude_hybrid_memory.audit.dup import check_near
+        f = audit.check_dup(mems) + (check_near(a.root) if a.scan != "legacy" else [])
     elif c == "status":
         f = audit.check_silos(a.legacy, a.root)
     else:  # audit
@@ -194,13 +198,36 @@ def _run(argv: list[str]) -> int:
             f = [x for x in f if x.code not in REFINE_CODES]
         if a.territory:
             f = _in_territory(f, a.root, a.territory)
+        if a.changed:
+            f = _in_changed(f, a.root)
+            if f is None:
+                return 2
         hdr = (f"scanned {len(mems)} memory files, {len(routers)} routers "
                f"({sum(1 for m in mems if m.scope=='store')} store, "
                f"{sum(1 for m in mems if m.scope=='legacy')} legacy)")
         print(hdr, file=sys.stderr if a.json else sys.stdout)
     if a.territory and c != "audit":
         f = _in_territory(f, a.root, a.territory)
+    if a.changed and c != "audit":
+        f = _in_changed(f, a.root)
+        if f is None:
+            return 2
     return report(f, a.json)
+
+
+def _in_changed(findings, root):
+    """The findings on files the store's next commit would take; None, said on stderr,
+    when the store has no history to compare with."""
+    import os
+
+    from claude_hybrid_memory import storegit
+    real = os.path.realpath(root)
+    if not storegit.is_repo(type(root)(real)):
+        print(f"--changed needs the store's history; {real} is not a git repository",
+              file=sys.stderr)
+        return None
+    pend = {os.path.join(real, p.strip('"')) for p in storegit.pending(type(root)(real))}
+    return [x for x in findings if os.path.realpath(str(x.path)) in pend]
 
 
 def _in_territory(findings, root, territory: str):
@@ -220,7 +247,8 @@ AUDIT_COMMANDS = {
     "fresh": "Memories past their check-on-use window (volatility vs last_verified).",
     "budget": "The always-loaded layer's size against its token budget.",
     "drift": "Routers and EXPORTS against what the territories actually hold.",
-    "dup": "Conservative duplicate and standing-candidate hints; hints, never verdicts.",
+    "dup": ("Duplicate hints, never verdicts: description overlap across territories, plus "
+            "the BM25 near-duplicate pass over every live memory (about 2.5 s)."),
     "status": "Migration state of legacy silos, plus silos whose working directory is gone.",
     "link": "Point this repo's silo at a territory, so its MEMORY.md auto-loads here.",
 }

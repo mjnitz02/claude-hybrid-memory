@@ -16,6 +16,8 @@ Exit codes: 0 clean, 1 findings at error level, 2 tool error.
     mem audit --refine         # plus the refine-only findings (index size, field vocabulary)
     mem audit --at REV         # any read-only check against the store as a past commit had it
     mem audit -t TERRITORY     # only that territory's findings (also links, fresh, drift, ...)
+    mem audit --changed        # only files changed since the store's last commit: this session's writes
+    mem dup                    # duplicate hints, incl. the BM25 near-duplicate pass (~2.5 s)
     mem fix --write            # autofix slugs, names, links, router refs; flatten harness `metadata:` blocks
     mem fresh                  # memories past their check-on-use window
     mem budget                 # the always-loaded layer, as the hook actually renders it
