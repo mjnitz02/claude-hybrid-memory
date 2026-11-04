@@ -86,7 +86,11 @@ def _rel(root: Path, p: str | Path) -> str:
 
 
 def _territory(rel: str) -> str:
+    """The territory a store-relative path belongs to. A store-wide finding (budget-high
+    is reported against the store root, rel ".") belongs to none: ""."""
     parts = Path(rel).parts
+    if not parts:
+        return ""
     return "/".join(parts[1:-1]) if parts[:1] == ("territories",) else parts[0]
 
 

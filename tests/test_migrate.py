@@ -615,3 +615,10 @@ def test_written_date_prefers_the_harness_stamp(tmp_path: Path):
     nested = "---\nname: a\nmetadata:\n  modified: 2026-10-16T15:46:35.090Z\n---\nB\n"
     assert written_date(nested, f) == dt.date(2026, 10, 16)
     assert written_date("---\nname: a\n---\nB\n", f) == dt.date.today()   # mtime: just now
+
+
+def test_refine_queue_territory_of_a_store_wide_finding():
+    from claude_hybrid_memory.migrate.queue import _territory
+    assert _territory(".") == ""
+    assert _territory("territories/home/lab/x.md") == "home/lab"
+    assert _territory("GATES.md") == "GATES.md"
