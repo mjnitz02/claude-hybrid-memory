@@ -233,9 +233,8 @@ def test_audit_at_checks_a_past_store_and_names_live_paths(fx: Fixture):
 
 
 def test_only_storegit_runs_git():
-    """direction §16.1: storegit.py is the one place `mem` runs git. freshness.py runs verify:
-    recipes, which name git against other repos, never the store."""
+    """direction §16.1: storegit.py is the one place `mem` runs git."""
     src = Path(__file__).resolve().parents[1] / "src" / "claude_hybrid_memory"
     offenders = [str(f.relative_to(src)) for f in src.rglob("*.py")
-                 if '"git"' in f.read_text() and f.name not in ("storegit.py", "freshness.py")]
+                 if '"git"' in f.read_text() and f.name != "storegit.py"]
     assert offenders == []

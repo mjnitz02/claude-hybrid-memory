@@ -3,11 +3,9 @@ from __future__ import annotations
 import datetime as dt
 from pathlib import Path
 
-import pytest
 from conftest import Fixture
 
 from claude_hybrid_memory import audit
-from claude_hybrid_memory.audit.freshness import validate_recipe
 from claude_hybrid_memory.store import scan_legacy, scan_store
 
 TODAY = dt.date(2026, 10, 21)
@@ -71,25 +69,30 @@ def test_a_superseded_file_is_not_at_fault_but_its_index_line_is(fx: Fixture):
 
 def test_freshness(fx: Fixture):
     mems, _ = scanned(fx)
-    f = audit.check_freshness(mems, TODAY, run=False)
-    assert "verify-refused" in codes(f, "error")
-    assert "verify-due" in codes(f)
+    f = audit.check_freshness(mems, TODAY)
     assert "stale-live" in codes(f, "warn")
+    assert not codes(f) & {"verify-refused", "verify-due"}   # recipes are no longer run
 
 
-@pytest.mark.parametrize("cmd,ok", [
-    ("gh pr view 1 --json state -q .state", True),
-    ("test -d /tmp", True),
-    ("git log | head", False),
-    ("curl https://example.com", False),
-    ("git push origin main", False),
-    ("gh pr merge 4", False),
-    ("git log $(whoami)", False),
-    ("", False),
-])
-def test_validate_recipe(cmd: str, ok: bool):
-    argv, err = validate_recipe(cmd)
-    assert (argv is not None) is ok and (err is None) is ok
+def test_a_record_is_never_stale_and_needs_no_volatility(fx: Fixture):
+    """format-spec: a `tier: record` is dated history with no "last seen true". The
+    2026-11-04 retro found all 52 of a real store's records reported twice, as `stale` and as
+    `no-volatility`: 104 findings with nothing to do about any of them."""
+    rec = fx.store / "territories/console/kit/kit-bench-run-2025-01.md"
+    rec.write_text("---\nname: kit-bench-run-2025-01\nkind: territory\ntier: record\n"
+                   "description: The January 2025 bench run.\n---\n\nNumbers.\n")
+    mems, _ = scanned(fx)
+    hit = lambda f: [x.code for x in f if x.path == str(rec)]  # noqa: E731
+    assert hit(audit.check_freshness(mems, TODAY)) == []
+    assert "no-volatility" not in hit(audit.check_structure(mems))
+
+
+def test_retired_recipe_fields_are_flagged(fx: Fixture):
+    mems, _ = scanned(fx)
+    old = {f.path.rsplit("/", 1)[-1]: f for f in audit.check_structure(mems)
+           if f.code == "obsolete-field"}
+    assert set(old) >= {"kit-fodder-corpus.md", "kit-bad-recipe.md"}
+    assert old["kit-bad-recipe.md"].level == "info"
 
 
 def test_budget_cliff(fx: Fixture, fx_oversized: Fixture):
@@ -190,5 +193,5 @@ def test_a_superseded_memory_is_never_stale(fx: Fixture):
     v1.write_text(v1.read_text().replace("status: SHIPPED\n", "volatility: live\n"))
     mems, _ = scanned(fx)
     hit = lambda f: [x for x in f if x.path == str(v1)]  # noqa: E731 - the store copy only
-    assert hit(audit.check_freshness(mems, TODAY, run=False))
-    assert not hit(audit.check_freshness(mems, TODAY, False, audit.superseded_paths(fx.store)))
+    assert hit(audit.check_freshness(mems, TODAY))
+    assert not hit(audit.check_freshness(mems, TODAY, audit.superseded_paths(fx.store)))

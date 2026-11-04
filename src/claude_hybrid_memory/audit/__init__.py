@@ -44,7 +44,7 @@ def run_all(mems: list[Memory], routers: dict, root: Path, legacy: Path,
     return (check_structure(mems) + check_links(mems, routers, sup)
             + check_router_drift(mems, routers, sup) + check_exports(root, routers)
             + check_relations(mems) + check_chains(root, routers)
-            + check_freshness(mems, today, False, sup) + check_budget(root, mems)
+            + check_freshness(mems, today, sup) + check_budget(root, mems)
             + check_silos(legacy, root) + check_dup(mems)
             + check_secrets(root, [m for m in mems if m.scope == "legacy"])
             + check_split(mems, read_counts(root), root) + render.check(root))

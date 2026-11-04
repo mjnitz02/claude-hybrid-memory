@@ -6,7 +6,6 @@ those findings, so a decision is made once rather than re-litigated monthly.
 ## <YYYY-MM-DD>
 
 Scanned: <n> files, <n> territories.
-Ran <n> verify recipes: <n> confirmed, <n> contradicted, <n> unrunnable.
 
 ### Acted
 

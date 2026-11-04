@@ -15,7 +15,7 @@ Exit codes: 0 clean, 1 findings at error level, 2 tool error.
     mem audit --refine         # plus the refine-only findings (index size, field vocabulary)
     mem audit --at REV         # any read-only check against the store as a past commit had it
     mem fix --write            # autofix slugs, names, links, router refs
-    mem fresh --run            # execute verify: recipes under hard constraints
+    mem fresh                  # memories past their check-on-use window
     mem budget                 # the always-loaded layer, as the hook actually renders it
     mem render --check         # stale or degraded rendered indexes, and any MEMORY.md near the cap
     mem render [TERRITORY]     # re-render territory indexes

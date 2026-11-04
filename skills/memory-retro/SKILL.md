@@ -15,7 +15,6 @@ Read `docs/self-verification.md` first; it defines the split between what the to
 decides and what you decide. Then:
 
     mem audit
-    mem fresh --run
     mem hook session-start | jq -r .hookSpecificOutput.additionalContext | head -40
     mem events stats
 
@@ -30,10 +29,8 @@ territory index still lists a memory a newer one replaced: drop that line.
 memory never read across months of events is a candidate for archive, with the same
 caveat as parked repos: absence of use is not proof of uselessness.
 
-`--run` executes the `verify:` recipes that exist, under hard constraints (allowlisted
-commands, no shell interpretation, mutating subcommands denied, 20s timeout). Report
-contradictions as findings, do not silently fix a memory to match the world without saying
-so. Recipes are optional; never write new ones as retro work.
+`obsolete-field` findings are retired `verify:`/`expect:` recipe fields. They are not
+claims to check: hand Matt the count and the `mem fix --write` that strips them.
 
 **Do not verify memories in bulk.** Claims are checked when a session acts on them
 (verify-on-use, format-spec). The retro measures whether that is happening, per
@@ -102,8 +99,7 @@ Claude's hypothesis, not a fact.
 ## A good run is not zero findings
 
 A store with zero findings is either brand new or not being used. A good run resolves or
-explicitly declines every error, re-dates every claim a recipe contradicted, reports the
-verify-on-use numbers, rewrites at least one
+explicitly declines every error, reports the verify-on-use numbers, rewrites at least one
 description to carry a conclusion, and answers question 7 honestly. If nothing lands under
 **Acted**, either the store is genuinely healthy or the run was not honest, and the second
 is more likely.

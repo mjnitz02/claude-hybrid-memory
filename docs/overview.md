@@ -51,9 +51,9 @@ computable freshness.
 - **A budget that degrades in a declared order.** Gates are never cut. Standing directives
   collapse to their descriptions first, and the map goes last. Every degradation announces
   itself.
-- **Freshness you can compute.** `status` implies a volatility window, and a memory can carry
-  a `verify:` recipe that `mem fresh --run` executes under hard constraints: allowlisted
-  commands, no shell, no mutating subcommands, timeouts.
+- **Freshness you can compute.** `status` implies a volatility window, and `last_verified`
+  says when the claim was last seen true. A session checks a claim past its window right
+  before acting on it, then stamps it with `mem verified`.
 - **Replace, never edit.** A newer memory declares `supersedes:`. The old one stays
   byte-identical, and git holds the history.
 

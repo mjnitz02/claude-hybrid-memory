@@ -187,7 +187,7 @@ same property the skills symlink has today. Hooks, maintenance and humans use it
 | `mem supersede <old> <new>` | sets `supersedes:` on `<new>`, validates the chain | mechanical help only; writing the new memory is still Claude's job |
 | `mem audit` | today's checks plus: 200-line/25 KB cap per `MEMORY.md`, rendered-section drift, secret scan, broken chains, accretion markers, **split candidates** | split candidates rank oversized files by size × read frequency × accretion markers, so the retro asks *why* a file is 39 KB |
 | `mem fix --write` | today's autofixes, plus the provenance backfill | |
-| `mem fresh [--run]` | verify recipes, unchanged | |
+| `mem fresh` | memories past their window (`--run` and recipe execution removed 2026-11-04, §16.9) | |
 | `mem stale` | ranked staleness: weak reinforcement, cited paths that no longer exist, member-repo commits since last confirmation (parked repos skipped) | replaces most of the judgment pass's legwork |
 | `mem status`, `mem link`, `mem budget` | unchanged | |
 | `mem migrate <silo>` | the mechanical half of `/memory-migrate`, including a duplicate check against the store | |
@@ -765,8 +765,12 @@ Settled 2026-10-21 unless marked open.
    - A session checks only the claim it is about to act on, only past the window, then
      `mem verified` (held), a fix plus `mem verified` (drifted) or `mem supersede`
      (flipped). The rule is the `verify-on-use` standing directive.
-   - The `unverified`, `verify` and `stale-live` queue items are gone; `verify:` recipes
-     stay optional and still run under `--run`.
+   - The `unverified`, `verify` and `stale-live` queue items are gone. `verify:` recipes
+     stayed optional and ran under `--run` until **2026-11-04 (Matt), when execution was
+     removed**: the day's retro found all 7 of its errors were prose `expect:` lines that
+     could never match, the rewrites that silenced them left 4 checks unable to fail, and
+     52 `tier: record` memories were double-reported as `stale` and `no-volatility`. The
+     fields are now `obsolete-field`, stripped by `mem fix --write`.
    - The retro measures the mechanism (`verified` events, `stale-live` count, "did a
      session act on a stale claim?") and may not defer to work that cannot finish. Zero
      `verified` events across two retros is a finding about the directive. Reads are not

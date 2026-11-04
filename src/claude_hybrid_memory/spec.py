@@ -18,6 +18,10 @@ STATUS_VOLATILITY = {
     "STILL LIVE": "live", "BLOCKED": "live", "IN FLIGHT": "live",
 }
 STALE_AFTER = {"stable": 365, "slow": 30, "live": 14}
+# Frontmatter the spec no longer has. `verify:` recipes and their `expect:` were executed by
+# `mem fresh --run` until 2026-11-04, when verify-on-use made them dead weight; `mem fix`
+# strips them.
+OBSOLETE_FIELDS = ("verify", "expect", "unrunnable")
 
 SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")

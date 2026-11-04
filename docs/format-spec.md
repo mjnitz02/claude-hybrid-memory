@@ -65,8 +65,6 @@ Territory paths are `chain/*`, `utility/*`, `infra/*`, `mine/*`, `solo/*`, `refe
     status          SHIPPED | PARKED | STILL LIVE | BLOCKED | IN FLIGHT | RESOLVED | HISTORICAL
     last_verified   YYYY-MM-DD: when its claims were last seen true. stamped when written or
                     landed, and by `mem verified` after a check on use.
-    verify          optional: a literal check that settles this. constrained, see below.
-    expect          what the check should show.
     role            gate | reference
     exhaustive      false = absence from a list here is NOT evidence of a negative
     source_of_facts false = anti-source. never cite as truth.
@@ -150,14 +148,13 @@ Parked is distinct from the neighbours it is easy to confuse it with: `dead-upst
 abandoned by someone else, `reference` was never yours to change, and `scratch` is
 expected to have drifted. Parked is *healthy, deliberate, and temporary*.
 
-**It has a runnable check**, which is the point of putting it in the format rather than in
+**One command settles it**, which is the point of putting it in the format rather than in
 prose:
 
-    verify: gh repo view <owner>/<repo> --json pushedAt -q .pushedAt
-    expect: a date at or after the local memory's last_verified
+    gh repo view <owner>/<repo> --json pushedAt -q .pushedAt
 
 A parked repo answers; a deleted one 404s. That turns "is this dead or resting" from a
-judgment call into a command, which is the same move `verify:` makes everywhere else.
+judgment call into a command.
 
 `mem.py status` reports a silo whose directory does not resolve as `silo-not-checked-out`,
 not as an archive candidate, and `mem.py link --territory <path>` re-points a restored
@@ -280,44 +277,18 @@ claim right before relying on it. The date is only false if it is read as "re-ch
 read as "last seen true", with its age deciding when to check, it is honest. The
 retrospective measures whether the checks are happening (`docs/self-verification.md`).
 
-## Verification recipes (optional)
+## Verification recipes: retired 2026-11-04
 
-A memory may still carry the check itself, and `mem audit --run` runs it when the memory is
-past its window:
+Memories used to carry a `verify:` command and an `expect:` string, which `mem fresh --run`
+executed under an allowlist. Verify-on-use made them dead weight, and they were removed. In
+their last retrospective all 7 errors they raised were false alarms (`expect:` written as a
+sentence, matched as a substring of the output's first line), and the rewrites that
+silenced them made 4 of the checks unable to fail. A session checking a claim on use runs
+whatever command it judges right; it does not need the memory to pre-commit one.
 
-    verify: gh pr view acme/core-lib#123 --json state -q .state
-    expect: MERGED
-
-Nothing asks for recipes any more, and no queue item is raised for a missing one: writing
-and maintaining them was where most of the cost was (prose `expect:` lines, a false
-all-clear, refused `grep` recipes). Keep the ones that exist; write a new one only when a
-claim is checked often and one command settles it.
-
-**This is a code-execution surface, so it is constrained. The tool enforces all of it:**
-
-- **Allowlisted leading command only**: `git`, `gh`, `uv`, `task`, `ls`, `test`.
-- **Never shell-interpreted.** Argv is exec'd directly. No `shell=True`. A recipe
-  containing any of `| & ; > < $ ` ( ) { }` or a newline is **refused**, not sanitized.
-- **Mutating subcommands denied**, by explicit pattern: `push`, `merge`, `reset`,
-  `checkout`, `rebase`, `commit`, `rm`, `clean`, `delete`, `close`, `create`, `edit`.
-- **Timeout-bounded**, 20 seconds per recipe.
-- **Off by default.** `mem audit` reports what is due and validates recipes without
-  running anything. Execution requires `--run`.
-
-A check that cannot fit those limits is not a recipe; leave the field off, or declare
-`unrunnable: true` with the manual check in prose.
-
-### Two rules learned by getting these wrong
-
-- **Write `expect:` so it names which result means TROUBLE, not only which means fine.** A
-  recipe whose failure mode is a false all-clear is worse than no recipe. A real one checked
-  git history for a filename *guessed from prose that never named the file*; it returned
-  empty, and the `expect:` line read empty as "already cleaned up" when three files were
-  still there under other names. **Build the recipe from an identifier you have confirmed
-  exists.**
-- **A refused recipe is not a lint nit — the memory is advertising a check it does not
-  have.** `grep` is not on the allowlist and `&&` is a metacharacter, so such recipes are
-  rejected outright. Treat `verify-refused` as a correctness error.
+`verify`, `expect` and `unrunnable` are now `obsolete-field` findings, and `mem fix --write`
+strips them. If a memory's check is worth keeping, say it in the body in prose, built from
+an identifier you have confirmed exists.
 
 ## Gates are inlined, not linked
 
@@ -614,15 +585,13 @@ directory may itself be a symlink, and the harness auto-loads only `MEMORY.md`.
     **How to apply:** make the change in the `template-*` repo and re-render. Same trap class
     as [[dep-policy-render-wiring-missing-format]].
 
-### A live memory with a runnable check
+### A live memory
 
     ---
     name: gateway-adoption
     kind: territory
     status: BLOCKED
     description: BLOCKED 2026-09-04 on acme/gateway#123; dep-policy side merged at 0.0.55, nothing technical blocking.
-    verify: gh pr view acme/gateway#123 --json state -q .state
-    expect: MERGED
     last_verified: 2026-09-04
     ---
 

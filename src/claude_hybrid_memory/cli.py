@@ -6,7 +6,7 @@ Enforces docs/format-spec.md.
     mem audit --scan legacy
     mem audit --refine
     mem fix --write
-    mem fresh --run
+    mem fresh
     mem hook session-start
     mem hook post-tool
     mem hook session-end
@@ -86,7 +86,6 @@ def _run(argv: list[str]) -> int:
     ap.add_argument("--root", type=Path, default=STORE, help=f"store root (default {STORE})")
     ap.add_argument("--legacy", type=Path, default=LEGACY, help="legacy projects dir")
     ap.add_argument("--scan", choices=["store", "legacy", "both"], default="both")
-    ap.add_argument("--run", action="store_true", help="fresh: actually execute verify recipes")
     ap.add_argument("--write", action="store_true", help="fix: apply changes")
     ap.add_argument("--stamp-today", action="store_true",
                     help="fix: set last_verified to today where absent. Only when the claims "
@@ -137,7 +136,7 @@ def _run(argv: list[str]) -> int:
     elif c == "links":
         f = audit.check_links(mems, routers, audit.superseded_paths(a.root))
     elif c == "fresh":
-        f = audit.check_freshness(mems, today, a.run, audit.superseded_paths(a.root))
+        f = audit.check_freshness(mems, today, audit.superseded_paths(a.root))
     elif c == "budget":
         f = audit.check_budget(a.root, mems)
     elif c == "drift":

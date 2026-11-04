@@ -218,8 +218,6 @@ Optional, or filled in by `mem.py fix`:
 
     status         # SHIPPED | PARKED | STILL LIVE | BLOCKED | IN FLIGHT | RESOLVED | HISTORICAL
     last_verified  # YYYY-MM-DD. defaults to file creation date.
-    verify         # the literal check that settles this. see constraints below.
-    expect         # what the check should show.
     role           # gate. its text gets inlined into the territory MEMORY.md.
     exhaustive     # false = absence from lists here is not evidence of a negative.
     source_of_facts # false = anti-source. never cite as truth.
@@ -261,7 +259,8 @@ State `volatility` explicitly only when that default is wrong.
 > led to a queue asking for every undated memory to be verified in advance; it never
 > cleared. Now `last_verified` means "last seen true", a session checks a claim only when
 > it is about to act on it and the memory is past its window, and recipes are optional.
-> The constraints on running a recipe still hold.
+> **Execution removed 2026-11-04** (format-spec, *Verification recipes: retired*): the
+> recipes were dead weight once checks happen on use. What follows is history.
 
 `volatility` plus `last_verified` on its own is a trap. Stamping a date is cheap.
 Re-verifying is expensive: it means checking git, open PRs, CI. If verification is
@@ -321,7 +320,7 @@ package in `src/`, run as `mem <cmd>` (`docs/setup.md` step 3). Its one dependen
 | `audit` | everything below, as one report |
 | `fix` | **autofix**: stamp `last_verified`, normalize slugs, rename `_` files, insert `name:` |
 | `links` | dangling `[[slug]]`, ambiguous slugs, orphans nothing links to |
-| `fresh` | report memories past their window; `--run` executes the optional recipes |
+| `fresh` | report memories past their window |
 | `budget` | always-loaded layer in tokens **as injected**, and `standing/` against its file-count cap |
 | `drift` | routers listing missing files, files no router lists, mixed-state silos |
 | `dup` | same fact in two territories; `standing` candidates hiding in territory files |

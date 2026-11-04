@@ -62,7 +62,7 @@ better description, not a shorter one.
 - **Archiving or deleting.** Per the standing deletion rule, hand him the list with reasons.
 - **A split of anything over ~10 KB.** Show the proposed files first.
 
-Everything else (descriptions, recipes, YAML quoting, `tier: record`), just do it and
+Everything else (descriptions, YAML quoting, `tier: record`), just do it and
 report it.
 
 ## Declining
