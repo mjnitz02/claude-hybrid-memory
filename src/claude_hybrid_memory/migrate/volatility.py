@@ -54,12 +54,12 @@ def job(t: Target) -> Job:
 def apply(root: Path, verdicts: dict[str, str]) -> tuple[list[str], storegit.Result | None]:
     """Write each verdict into its file's frontmatter, then one store commit. Returns the
     files left untouched because the field would not read back, and the commit result."""
-    from claude_hybrid_memory.verified import set_field
+    from claude_hybrid_memory.verified import set_checked
 
     skipped = []
     for rel, vol in sorted(verdicts.items()):
         f = root / rel
-        new = set_field(f.read_text(encoding="utf-8"), "volatility", vol)
+        new = set_checked(f.read_text(encoding="utf-8"), "volatility", vol)
         if new is None:
             skipped.append(rel)
             continue

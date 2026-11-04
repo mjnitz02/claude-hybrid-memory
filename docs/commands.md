@@ -62,7 +62,9 @@ The store is its own git repo with no remote. Every git operation on it goes thr
     mem migrate map [--rebuild] [--approve]
     mem migrate apply [--silo S ...] [--dry-run]
     mem migrate undo --silo S
+    mem migrate volatility [--territory T] [--dry-run] [--write] [--sample N]
     mem refine queue [--territory T] [--limit N] [--json]
+    mem backfill-verified [--baseline-date TERRITORY=DATE ...] [--write] [-v]
 
 The process is in [`fast-adoption.md`](fast-adoption.md).
 

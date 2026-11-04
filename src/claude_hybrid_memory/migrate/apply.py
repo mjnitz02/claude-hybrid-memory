@@ -43,6 +43,7 @@ from claude_hybrid_memory.render import (
 )
 from claude_hybrid_memory.spec import LINK_ENTRY_RE, index_entry, index_names
 from claude_hybrid_memory.store import parse_frontmatter, scan_store
+from claude_hybrid_memory.verified import written_date
 
 MODES = ("active", "parked")
 
@@ -141,15 +142,21 @@ def _rewrite_links(text: str, links: dict[str, str]) -> str:
     return text
 
 
-def normalize(text: str, slug: str, links: dict[str, str]) -> str:
-    """The file as it was, with only what `mem fix` would change anyway."""
+def normalize(text: str, slug: str, links: dict[str, str],
+              written: dt.date | None = None) -> str:
+    """The file as it was, with only what `mem fix` would change anyway, plus
+    `last_verified:` from `written` (when a session last wrote it) if it has none: verify-on-
+    use needs every memory dated, and the day it was written is when its claims were last
+    seen true. Never the landing day."""
     if not text.startswith("---"):
         text = f"---\nname: {slug}\nkind: territory\n---\n" + text
     else:
         text = set_field(text, "name", slug)
-        meta, _, _ = parse_frontmatter(text)
-        if not str(meta.get("kind") or "").strip():
-            text = set_field(text, "kind", "territory")
+    meta, _, _ = parse_frontmatter(text)
+    if not str(meta.get("kind") or "").strip():
+        text = set_field(text, "kind", "territory")
+    if written and not meta.get("last_verified"):
+        text = set_field(text, "last_verified", written.isoformat())
     return _rewrite_links(text, links)
 
 
@@ -284,8 +291,9 @@ def land(root: Path, la: Landing, plan: dict, inv: dict, legacy_dir: Path | None
             dest = tdir / f"{it.slug}.md"
             if dest.exists():
                 raise RuntimeError(f"{dest} exists")
-            dest.write_text(normalize(it.src.read_text(encoding="utf-8", errors="replace"),
-                                      it.slug, la.links), encoding="utf-8")
+            raw = it.src.read_text(encoding="utf-8", errors="replace")
+            dest.write_text(normalize(raw, it.slug, la.links, written_date(raw, it.src)),
+                            encoding="utf-8")
             created.append(dest)
         reindex(root, la.territory)
     except Exception:

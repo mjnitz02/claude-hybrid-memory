@@ -583,3 +583,35 @@ def test_volatility_pass_classifies_only_what_nothing_dates(fx: Fixture, fake: P
     assert vol("kit-v-status.md") is None and vol("kit-v-stated.md") == "slow"
     rc, out, _ = run(mem_cmd("migrate", *base, "--dry-run"), env)
     assert "nothing to classify" in out
+
+
+def test_apply_dates_each_file_from_when_it_was_written(landed: Fixture, fake: Path):
+    """Verify-on-use needs every memory dated, and the honest date is when a session last
+    wrote the file: its mtime here. The landing day would make it look fresher than it is."""
+    import datetime as dt
+    import os
+
+    from claude_hybrid_memory.store import parse_frontmatter
+
+    fx = landed
+    src = fx.projects / ALPHA / "memory" / "deploy-notes.md"
+    when = dt.datetime(2026, 8, 3, 12, 0).timestamp()
+    os.utime(src, (when, when))
+    rc, out, err = apply_cli(fx, fake, "apply")
+    assert rc == 0, out + err
+    assert "mem migrate volatility" in out                          # the next step is named
+    meta = parse_frontmatter((fx.store / "territories/fixture/alpha/deploy-notes.md")
+                             .read_text())[0]
+    assert str(meta["last_verified"]) == "2026-08-03"
+
+
+def test_written_date_prefers_the_harness_stamp(tmp_path: Path):
+    import datetime as dt
+
+    from claude_hybrid_memory.verified import written_date
+
+    f = tmp_path / "m.md"
+    f.write_text("x")
+    nested = "---\nname: a\nmetadata:\n  modified: 2026-10-16T15:46:35.090Z\n---\nB\n"
+    assert written_date(nested, f) == dt.date(2026, 10, 16)
+    assert written_date("---\nname: a\n---\nB\n", f) == dt.date.today()   # mtime: just now

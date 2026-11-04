@@ -18,8 +18,9 @@ The queue is `~/.claude/memory/.cache/migrate/queue.json`, already in work order
 **derived**: an item drops when its cause is gone, so there is no done-list to update. To
 see whether an item is finished, rebuild the queue. Never edit queue.json.
 
-Read `docs/format-spec.md` before writing any field, and its **Verification recipes**
-section before writing a `verify:`.
+Read `docs/format-spec.md` before writing any field. Nothing in this queue asks you to
+verify a memory: claims are checked when a session acts on them (format-spec, *Verification
+happens on use*).
 
 ## Per item
 

@@ -566,6 +566,9 @@ def _apply(a) -> int:
         print(f"STOP  {e}", file=sys.stderr)
     if not errs and not a.dry_run:
         print(f"\n{len(out)} silo(s) landed; mem status should show them migrated")
+        if out:
+            print("next: `mem migrate volatility` classifies what they landed; look at the "
+                  "sample, then `--write`")
     return 1 if errs else 0
 
 
@@ -723,9 +726,12 @@ def _events(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="mem events")
     ap.add_argument("action", choices=["stats"])
     ap.add_argument("--root", type=Path, default=STORE)
+    ap.add_argument("--since", metavar="YYYY-MM-DD",
+                    help="only events from this day on (the last retrospective, say)")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
-    evs = list(events.read_all(a.root))
+    evs = [e for e in events.read_all(a.root)
+           if not a.since or str(e.get("ts", "")) >= a.since]
     kinds = Counter(e.get("event") for e in evs)
     tools = Counter(e.get("tool") for e in evs)
     ms = sorted(e["ms"] for e in evs if isinstance(e.get("ms"), (int, float)))
@@ -736,7 +742,10 @@ def _events(argv: list[str]) -> int:
            "sessions": len({e.get("session") for e in evs}),
            "ms_p50": statistics.median(ms) if ms else None,
            "ms_p95": ms[min(len(ms) - 1, int(len(ms) * 0.95))] if ms else None,
-           "top_read": events.read_counts(a.root).most_common(10)}
+           "top_read": Counter(e.get("path") for e in evs
+                               if e.get("event") == "read").most_common(10),
+           "verified": [{"ts": e.get("ts"), "path": e.get("path"), "note": e.get("note")}
+                        for e in evs if e.get("event") == "verified"]}
     if a.json:
         print(json.dumps(out, indent=2))
         return 0
@@ -753,6 +762,9 @@ def _events(argv: list[str]) -> int:
               "(plus ~10 ms interpreter start, not visible from inside)")
     for path, n in out["top_read"]:
         print(f"  {n:4d}  {path}")
+    print(f"checks on use (`mem verified`): {len(out['verified'])}")
+    for v in out["verified"]:
+        print(f"  {str(v['ts'])[:10]}  {v['path']}: {v['note']}")
     return 0
 
 

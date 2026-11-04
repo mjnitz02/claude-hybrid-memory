@@ -256,6 +256,13 @@ State `volatility` explicitly only when that default is wrong.
 
 ### Verification recipes
 
+> **Superseded 2026-11-03 by verify-on-use** (format-spec, *Verification happens on use*).
+> The argument below, that a stamped date is a false signal unless something re-checks it,
+> led to a queue asking for every undated memory to be verified in advance; it never
+> cleared. Now `last_verified` means "last seen true", a session checks a claim only when
+> it is about to act on it and the memory is past its window, and recipes are optional.
+> The constraints on running a recipe still hold.
+
 `volatility` plus `last_verified` on its own is a trap. Stamping a date is cheap.
 Re-verifying is expensive: it means checking git, open PRs, CI. If verification is
 expensive it will not happen, the dates will rot, and the result is a *false* freshness
@@ -314,7 +321,7 @@ package in `src/`, run as `mem <cmd>` (`docs/setup.md` step 3). Its one dependen
 | `audit` | everything below, as one report |
 | `fix` | **autofix**: stamp `last_verified`, normalize slugs, rename `_` files, insert `name:` |
 | `links` | dangling `[[slug]]`, ambiguous slugs, orphans nothing links to |
-| `fresh` | report memories due for verification; `--run` executes constrained recipes |
+| `fresh` | report memories past their window; `--run` executes the optional recipes |
 | `budget` | always-loaded layer in tokens **as injected**, and `standing/` against its file-count cap |
 | `drift` | routers listing missing files, files no router lists, mixed-state silos |
 | `dup` | same fact in two territories; `standing` candidates hiding in territory files |
@@ -412,7 +419,9 @@ not resolve and "use uv" stays in 11 places.
 **Four memory kinds.** Rejected in favor of two kinds plus fields.
 
 **Freshness by mtime alone.** Rejected. mtime says a file was touched, not that its claim
-was checked. Hence `verify:` recipes.
+was checked. Hence `verify:` recipes. (2026-11-03: mtime is now used as one honest input,
+the day a silo file was last written, to date it at landing. Freshness itself is
+verify-on-use, not a recipe for every memory.)
 
 **A line-count cap on the always-loaded layer, enforced by a failing audit.** Rejected. A
 cap that can be raised the first time it trips is not a cap. Replaced by a fixed file count

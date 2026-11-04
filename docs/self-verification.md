@@ -25,7 +25,7 @@ feedback against manufactured insight.
 | `router-ghost`, `router-unlisted` | a router that disagrees with its directory |
 | `override-target-missing`, `supersede-self`, `supersede-cycle`, `supersede-ambiguous` | a contradiction sitting quietly |
 | `superseded-still-indexed` | a hand-written index still routing to the old word |
-| `stale`, `stale-live`, `verify-due` | claims past their volatility window |
+| `stale`, `stale-live`, `verify-due` | memories past their window: counted, not worked (see *Verify-on-use* below) |
 | `verify-contradicted` | a claim the world now disagrees with |
 | `verify-refused` | a recipe that violates the execution constraints |
 | `budget-high`, `standing-cap` | an always-loaded layer near the hook's truncation limit, or past its file-count cap |
@@ -36,8 +36,8 @@ feedback against manufactured insight.
 
 **Claude, reading the report:**
 
-1. **Is it still true?** Only for what `verify:` could not settle. Check against the
-   world, not against the memory.
+1. **Is verify-on-use happening?** See the section below. The retro does not check every
+   memory's truth itself; sessions check a claim when they act on it.
 2. **Is it still useful?** Some memories are true and will never be load-bearing again.
    True is not the same as worth loading.
 3. **Was the router predictive?** For each memory used since the last retro: would its
@@ -48,6 +48,26 @@ feedback against manufactured insight.
 5. **Are there standing directives hiding in territories?** The `uv` rule lived in 11
    silos because it was globally true with nowhere global to live.
 6. **What did I re-derive?** See below.
+
+## Verify-on-use: what the retro measures
+
+Since 2026-11-03 nothing verifies a memory in advance (format-spec, *Verification happens
+on use*). The retro's job is to check that the mechanism is working, not to do its work
+for it. Report three things:
+
+- **Checks since the last retro**: `verified` events (`mem verified`, each with a note on
+  what was checked) and supersedes, from `events/` and the store's history.
+- **`live` memories past their window** (`stale-live` in the audit): a count, and the few a
+  session is most likely to act on soon. Do not work the list; a memory past its window
+  costs nothing until someone relies on it.
+- **One question, answered from evidence**: did a session act on a stale claim since the
+  last retro? A correction from Matt, or a wrong turn traced to a memory, is the evidence.
+  "No evidence" is a legitimate answer.
+
+**Zero `verified` events across two retros is the signal that the directive is not being
+followed**, which is a problem with the directive or its placement, not a reason to go back
+to verifying in advance. Reads are deliberately not tracked: a hook to count them is
+infrastructure the simple version has not yet been shown to need.
 
 ## "Am I forgetting things?"
 
@@ -102,7 +122,7 @@ holds rather than guessing.
 Not zero findings. A store with zero findings is either brand new or not being used.
 
 A good run means: every error resolved or explicitly declined, every contradicted claim
-re-dated, at least one description rewritten to carry a conclusion, and an honest answer
+a recipe surfaced re-dated, at least one description rewritten to carry a conclusion, and an honest answer
 to *"what did I re-derive?"* (the skill numbers it; do not cite a number here, because the
 list has grown once already and a stale cross-reference is the exact failure this store is
 about). If a run produces nothing under **Acted**, either the store is genuinely
@@ -131,6 +151,12 @@ healthy or the run was not honest, and the second is more likely.
 - **Task state colonises an always-loaded file.** Directives acquire punch lists; the punch
   list outgrows the directive. It is paid in every session and is invisible in the audit,
   which only counts files and tokens. The retro's judgment pass asks about it directly.
+- **A deferral to work that can never finish.** The 2026-11-03 retro declined 253 `stale`
+  findings "until the refine queue has been worked", and the queue it pointed at could not
+  be worked down: the retro handed the problem to refine, refine could not clear it, and
+  the retro had been told not to look. **Decline a finding only with a reason that holds on
+  its own, or a condition that will actually arrive** (a date, a named event). "Until X is
+  done" is allowed only when X has an end.
 - **A check that is mostly false positives.** Delete it. The wikilink extractor originally
   reported 11 dangling links of which 10 were Copier template delimiters, and a
   word-frequency "standing candidate" detector returned words like "how" and "2026". Both

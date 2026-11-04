@@ -36,8 +36,9 @@ Memories stay plain markdown.
   still auto-loads it with no custom loader.
 - **An always-loaded layer.** A machine profile, up to five hard rules, standing
   directives and a one-line-per-territory router reach every session, inside a fixed budget.
-- **Freshness you can check.** A memory can carry a `verify:` recipe that `mem` runs to
-  confirm it is still true.
+- **Checked when it matters.** Every memory is dated and says how fast it goes stale. A
+  session about to act on one past its window checks that claim first, and `mem verified`
+  records the check. Nothing has to be verified in advance.
 - **History, not edits.** The store is its own local git repo, committed at the end of
   every session. It never has a remote.
 

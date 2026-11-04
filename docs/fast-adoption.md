@@ -2,7 +2,8 @@
 
 Status: ACCEPTED, 2026-10-23, on Matt's direction. Stages 1 to 4 built and run on the
 first machine: every pending silo there is landed (§12). Stage 5's queue and skill are built
-(§8); its exit, one session working ten items, is not yet met. Replaces the per-territory
+(§8) and its exit is met: a 2026-11-03 session worked 32 items. Stage 4b (volatility) was
+added the same day, when verifying in advance was dropped for verify-on-use. Replaces the per-territory
 procedure in `migration.md` for bulk adoption, and is what Phase 6 (the remaining silos)
 and Phase 7 (the second machine) of `direction.md` run on.
 
@@ -22,8 +23,9 @@ does it most cheaply:
 | 1. Inventory | `mem migrate inventory` (code) | the silos | one JSON record per file, no model |
 | 2. Summarize | a **Sonnet** summarizer, **one fresh process per file** | one file plus its directive | one small JSON summary per file, and one per silo index |
 | 3. Map | the main session, with Matt | only the stage 1 and 2 output | `plan.yaml`: every silo and file to a territory. **The one checkpoint.** |
-| 4. Land | `mem migrate apply` (code) | the plan | files moved as they are, silos linked, indexes rendered, one store commit per silo |
-| 5. Refine | `mem audit` and the summaries, as a queue; `/memory-refine` works it | one queue item at a time | better descriptions, splits, compactions, `verify:` recipes, relocations |
+| 4. Land | `mem migrate apply` (code) | the plan | files moved as they are, dated with the day each was last written, silos linked, indexes rendered, one store commit per silo |
+| 4b. Volatility | a **Sonnet** classifier, one fresh process per landed memory (`mem migrate volatility`) | one memory plus its directive | `volatility:` on every memory with no `status:` to imply one; Matt spot-checks a sample, then `--write` lands it in one commit |
+| 5. Refine | `mem audit` and the summaries, as a queue; `/memory-refine` works it | one queue item at a time | better descriptions, splits, compactions, relocations |
 
 Stages 1 to 4 get everything into the store fast and roughly right. Stage 5 makes it good,
 in small pieces, for as long as that takes. The store's git history sits between the two:
@@ -69,6 +71,11 @@ Matt, 2026-10-23.
    claims that look live, a heuristic flags the same patterns mechanically, and each flag
    becomes a stage 5 item. A recipe is written then, from an identifier the refining
    session has checked exists (migration.md's first trap still applies).
+   **Reversed again, 2026-11-03: nothing is queued for verification.** The verify and
+   unverified items grew a backlog no number of refine sessions cleared, while every real
+   catch came from checking a claim right before relying on it. Landing dates each memory
+   and stage 4b gives it a volatility; a session checks a claim when it acts on it and the
+   memory is past its window (format-spec, *Verification happens on use*).
 3. **"One territory per invocation."** The care that rule bought now comes from the map
    checkpoint and from landing each silo in its own commit. Once Matt approves the map, all
    silos land in one run.
@@ -163,7 +170,7 @@ Defined by `prompts/memory-summary.schema.json`; roughly:
 `index-only` is Matt's addition: the file says nothing its one-line conclusion does not, so
 the refine pass may fold it into the index and archive the file. `verify` is the model's
 half of the recipe decision; it names the claim and the identifier, and never writes a
-recipe itself.
+recipe itself. (Since 2026-11-03 nothing consumes it: no queue item comes from it.)
 
 The directive is short and asks for nothing outside this schema. It gets the format spec's
 vocabulary for `kind` and the meaning of each `shape`, and nothing else from this repo.
@@ -225,7 +232,9 @@ Code only, one silo at a time, each silo atomic:
 1. Create the territory if new, from `templates/territory-MEMORY.md`, already adopted by
    `mem render`, so its MEMORIES section is generated from day one.
 2. Copy each `land` file in **unchanged**, except for what `mem fix` would normalize anyway
-   (slug, `name:`), and the silo's index line merged into `description:` where the file
+   (slug, `name:`), `last_verified:` where it has none (the day the file was last written:
+   the harness's `metadata.modified:`, else its mtime; never the landing day, added
+   2026-11-03), and the silo's index line merged into `description:` where the file
    has none, which is the merge direction.md §16 settled. A slug already taken in the territory is a
    stop for that silo, shown in the dry run: never an overwrite.
 3. **Commit: "migrate: land <silo> as-is"**. This commit is the rollback point.
@@ -263,6 +272,19 @@ first.
 - **The router line.** A `[legacy]` line gets its count. A territory with no line gets one,
   under its area's section. Prose that mentions a territory is left for Matt.
 
+### Then: volatility (stage 4b, added 2026-11-03)
+
+    mem migrate volatility --dry-run     # scope and cost
+    mem migrate volatility               # classify (cached); prints the distribution and a sample
+    mem migrate volatility --write       # land the cached verdicts in one store commit
+
+A separate pass after landing, so each process makes one judgment and the same prompt
+(`prompts/memory-volatility.md`) classifies memories that never went through adoption. It
+skips a memory that states its volatility, one whose `status:` implies it, a record and a
+superseded one. Without `--write` nothing in the store changes; `--write` runs nothing new,
+so what lands is exactly what was shown. `apply` names it as the next step. First run,
+2026-11-03: 207 memories, 0 failures, $2.01 (about $0.01 each); stable 90, slow 94, live 23.
+
 ## 8. Stage 5: refine
 
     mem refine queue [--territory T]   # build or refresh the queue
@@ -271,15 +293,13 @@ first.
 The queue is the union of:
 
 - audit findings that need judgment: `split-candidate`, `possible-duplicate`,
-  `frontmatter-not-yaml`, `stale-live`, `superseded-still-indexed`, budget warnings
+  `frontmatter-not-yaml`, `superseded-still-indexed`, budget warnings
 - every summary flag: `description_verdict` other than `good` where the original was kept,
   `build-diary`, `dated-snapshot`, `accreted`, `index-only`, `standing-candidate`,
   `gate-candidate`, `territory_hint` that disagrees with where it landed
-- `verify:` candidates, which come from two places and are ranked higher when both agree:
-  - **the summarizer's `verify` list**: claims it judged live, each with its identifier
-  - **the heuristic**: commit SHAs, PR and issue numbers, "uncommitted", "as of <date>",
-    "phase N" with a status word, branch names, "currently" or "now" next to a version, on
-    any memory that is not `tier: record`
+- ~~`verify:` candidates~~ and ~~`unverified`~~ memories, and `stale-live` above: **removed
+  2026-11-03** (§3, rule 2). The queue holds judgment calls only; nothing in it asks for a
+  memory to be verified.
 
 Each item is small and self-contained, so `/memory-refine` works one at a time. Where an item
 needs a file re-read, it hands that file to a focused Sonnet subagent with a directive
@@ -317,6 +337,9 @@ because the map replaced every non-`good` description at landing.
 
 Stage 5 has no end date. The retrospective (`/memory-retro`) starts reporting queue length
 as its health number, in place of reading through territories.
+
+2026-11-03: of 185 items, 180 were `unverified`. With the verify types removed and every
+memory dated and classified, the queue on this machine is 5 judgment calls.
 
 ## 9. The repo additions
 
@@ -430,7 +453,7 @@ events, and its isolation (§5) keeps it out of Phase 2's measurements.
 4. **The remaining silos here**, through the one checkpoint. *Exit:* `mem status` shows no
    pending silos (direction.md Phase 6's exit).
 5. **Queue and `/memory-refine`.** *Exit:* one session works ten items and the queue shrinks
-   by derivation.
+   by derivation. *Met 2026-11-03* (32 items in one session).
 6. **The second machine** (direction.md Phase 7): the same run against its own store. Its silo summaries
    also get the chain topology (layers, `consumes:`), so the map can propose `consumes:`
    edges for new territories.

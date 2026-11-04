@@ -57,13 +57,15 @@ Territory paths are `chain/*`, `utility/*`, `infra/*`, `mine/*`, `solo/*`, `refe
     name          kebab-slug. THE link target. MUST equal the filename minus .md.
     kind          standing | territory
     description   one line. becomes the router hook. carries the CONCLUSION, not the subject.
-    volatility    stable | slow | live. omit if `status` implies it (see below).
+    volatility    stable | slow | live. omit if `status` implies it (see below). sets the
+                  check-on-use window: 365 / 30 / 14 days.
 
 ### Optional
 
     status          SHIPPED | PARKED | STILL LIVE | BLOCKED | IN FLIGHT | RESOLVED | HISTORICAL
-    last_verified   YYYY-MM-DD. `mem.py fix` stamps it if absent.
-    verify          the literal check that settles this. constrained, see below.
+    last_verified   YYYY-MM-DD: when its claims were last seen true. stamped when written or
+                    landed, and by `mem verified` after a check on use.
+    verify          optional: a literal check that settles this. constrained, see below.
     expect          what the check should show.
     role            gate | reference
     exhaustive      false = absence from a list here is NOT evidence of a negative
@@ -226,28 +228,70 @@ Everything else. Loaded on demand through a router.
 
 ## Volatility, derived not predicted
 
-At write time it is often genuinely unknown whether a fact is stable or live, and the
-honest fallback is `live`, which floods the freshness report until it gets ignored. So
-derive it from `status` when one is present:
+Volatility sets how long a session may act on a memory's claims before checking them. Derive
+it from `status` when one is present:
 
-| status | implied volatility | re-verify after |
+| status | implied volatility | check on use after |
 |---|---|---|
 | SHIPPED, RESOLVED, HISTORICAL | stable | 365 days |
-| PARKED | slow | 90 days |
+| PARKED | slow | 30 days |
 | STILL LIVE, BLOCKED, IN FLIGHT | live | 14 days |
 
-State `volatility` explicitly only when that default is wrong.
+State `volatility` explicitly only when that default is wrong. With no status, the writer
+states it: `mem new` refuses a memory with neither (`-v` or `-s`), unless it is a
+`--record`. Judge by the conclusion, the claim a reader would act on:
 
-## Verification recipes
+- **stable**: true until someone deliberately changes it. A rule, a root cause, a design
+  decision and its reasons, how a format or device behaves, a lesson from an incident.
+- **slow**: drifts over weeks without anyone announcing it. A project's layout or
+  configuration, which hosts and services are in use, a plan's direction, an installed
+  version, the size of a growing collection.
+- **live**: changes in days. What is next or in progress; open, merged or uncommitted work;
+  HEAD or a branch; a running job; a pending decision.
 
-`volatility` plus `last_verified` alone is a trap: stamping a date is cheap, re-verifying
-is not. Expensive verification does not happen, dates rot, and the result is a *false*
-freshness signal, which is worse than none because it gets trusted.
+Memories that predate this rule were classified in one pass (`mem migrate volatility`,
+2026-11-03), landed as-is. A wrong one is a one-line edit.
 
-So carry the check itself:
+## Verification happens on use
+
+Nothing checks a memory in advance. **A session about to act on or recommend a memory's
+claim checks that claim against the world if the memory is past its window**, and only
+that claim: the branch, the PR, the path it is about to rely on. Reading a memory for
+background is not acting on it. Then:
+
+- it held: `mem verified <slug> -m "<what was checked>"` stamps `last_verified:` today and
+  logs a `verified` event carrying the note;
+- it drifted (a SHA, a path, a count): fix the line, then `mem verified`;
+- the conclusion flipped (blocked to shipped, works to broken): write the new memory and
+  `mem supersede` the old one.
+
+**`last_verified` means "last seen true"**, which is why it can be stamped without a
+check: a memory is written from what a session just saw. `mem new` stamps today; landing a
+silo file stamps the day it was last written (the harness's `modified:`, else mtime), never
+the landing day; `mem backfill-verified` dated the store's existing memories from their
+landing commits, with explicit per-territory dates for files that predate the store's
+history. A `tier: record` is history and has no such date.
+
+**Why not verify in advance.** An earlier version of this spec argued that a stamped date
+is a false freshness signal unless something re-checks it, and queued every undated memory
+for a check. Ten-plus refine sessions never cleared that queue (180 items on this machine,
+more on the other), and every real catch it recorded came from a session checking a state
+claim right before relying on it. The date is only false if it is read as "re-checked";
+read as "last seen true", with its age deciding when to check, it is honest. The
+retrospective measures whether the checks are happening (`docs/self-verification.md`).
+
+## Verification recipes (optional)
+
+A memory may still carry the check itself, and `mem audit --run` runs it when the memory is
+past its window:
 
     verify: gh pr view acme/core-lib#123 --json state -q .state
     expect: MERGED
+
+Nothing asks for recipes any more, and no queue item is raised for a missing one: writing
+and maintaining them was where most of the cost was (prose `expect:` lines, a false
+all-clear, refused `grep` recipes). Keep the ones that exist; write a new one only when a
+claim is checked often and one command settles it.
 
 **This is a code-execution surface, so it is constrained. The tool enforces all of it:**
 
@@ -257,15 +301,13 @@ So carry the check itself:
 - **Mutating subcommands denied**, by explicit pattern: `push`, `merge`, `reset`,
   `checkout`, `rebase`, `commit`, `rm`, `clean`, `delete`, `close`, `create`, `edit`.
 - **Timeout-bounded**, 20 seconds per recipe.
-- **Off by default.** `mem.py fresh` reports what is due and validates recipes without
+- **Off by default.** `mem audit` reports what is due and validates recipes without
   running anything. Execution requires `--run`.
 
-A check that cannot fit those limits goes in prose in the body instead, declares
-`unrunnable: true`, and is reported as such rather than silently skipped. A memory about a
-hosted page, or one needing two JSON files diffed on a single key, is honestly unrunnable —
-say so rather than leaving the field off and hoping.
+A check that cannot fit those limits is not a recipe; leave the field off, or declare
+`unrunnable: true` with the manual check in prose.
 
-### Three rules learned by getting these wrong
+### Two rules learned by getting these wrong
 
 - **Write `expect:` so it names which result means TROUBLE, not only which means fine.** A
   recipe whose failure mode is a false all-clear is worse than no recipe. A real one checked
@@ -275,14 +317,7 @@ say so rather than leaving the field off and hoping.
   exists.**
 - **A refused recipe is not a lint nit — the memory is advertising a check it does not
   have.** `grep` is not on the allowlist and `&&` is a metacharacter, so such recipes are
-  rejected outright, and `mem.py fresh` can never settle that memory while its frontmatter
-  implies it can. Treat `verify-refused` as a correctness error.
-- **Write the recipes while migrating or writing the memory, not later.** Naming what would
-  falsify a claim is most of the value, and running it checks the world instead of the file.
-  Two consecutive migrations found stale claims this way and no other way — a "still
-  uncommitted" fix that had merged weeks earlier, a status memory four PRs behind, an open
-  question already answered by a CI run nobody had read, and a pointer to a log directory
-  holding a two-week-old run.
+  rejected outright. Treat `verify-refused` as a correctness error.
 
 ## Gates are inlined, not linked
 
@@ -411,7 +446,7 @@ The token figure beside it is a secondary signal, and two things about it are de
   real content loss." A flat number could not survive the design: the
   un-migrated territories still have to add themselves to `ROUTER.md`, so the layer grows as
   the system works, and a warn that trips on correct behaviour gets ignored — the same failure
-  this spec refuses to accept from `last_verified`.
+  as the queue that once asked for every undated memory to be verified in advance.
 - **And past `MAX_CHARS` it is an ERROR, not a louder warning** (`budget-truncating`). This was
   added 2026-10-02 after the layer sat ~19% over the line for roughly three weeks while the
   report still read as a soft warn. A signal that does not change when the thing it guards

@@ -25,28 +25,42 @@ from claude_hybrid_memory import storegit
 from claude_hybrid_memory.store import parse_frontmatter, scan_store
 
 
-def set_field(text: str, key: str, value: str) -> str | None:
-    """`text` with top-level frontmatter `key: value`, replacing the line if there is one,
-    else appending it to the block; None when the result would not read back as exactly
-    that value. `value` is a plain scalar (a date, an enum word): never quoted."""
-    if not text.startswith("---\n"):
+def set_checked(text: str, key: str, value: str) -> str | None:
+    """render.set_field, refusing a result that would not read back as exactly `value`
+    (a file with no frontmatter, or one the YAML parser cannot load). `value` is a plain
+    scalar: a date or an enum word, never quoted."""
+    from claude_hybrid_memory.render import set_field
+
+    try:
+        new = set_field(text, key, value)
+    except ValueError:
         return None
-    end = text.find("\n---", 3)
-    if end < 0:
-        return None
-    block, line = text[4:end + 1], f"{key}: {value}"
-    rx = re.compile(rf"^{re.escape(key)}:[^\n]*$", re.M)
-    block = rx.sub(lambda _: line, block, count=1) if rx.search(block) else block + line + "\n"
-    new = text[:4] + block + text[end + 1:]
     meta, _, problems = parse_frontmatter(new)
     if problems or str(meta.get(key)) != value:
         return None
     return new
 
 
+def written_date(text: str, path: Path) -> dt.date:
+    """When a session last wrote this file: the harness's own `modified:` stamp if it left
+    one (top level, or nested under `metadata:`), else the file's mtime. Never today: a
+    file landing in the store was written whenever it was written, and stamping the landing
+    day would make it look fresher than it is."""
+    meta = parse_frontmatter(text)[0]
+    nested = meta.get("metadata") if isinstance(meta.get("metadata"), dict) else {}
+    for v in (meta.get("modified"), nested.get("modified")):
+        m = re.match(r"(\d{4}-\d{2}-\d{2})", str(v or ""))
+        if m:
+            try:
+                return dt.date.fromisoformat(m.group(1))
+            except ValueError:
+                pass
+    return dt.date.fromtimestamp(path.stat().st_mtime)
+
+
 def stamp(text: str, date: dt.date) -> str | None:
-    """`text` with `last_verified:` set to `date`, or None (see set_field)."""
-    return set_field(text, "last_verified", date.isoformat())
+    """`text` with `last_verified:` set to `date`, or None (see set_checked)."""
+    return set_checked(text, "last_verified", date.isoformat())
 
 
 @dataclass

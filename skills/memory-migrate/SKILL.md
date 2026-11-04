@@ -70,33 +70,25 @@ While reading every file, actively hunt four things:
   layered two or three deep — that is a diary accreting inside one file.
 
 Run `mem fix --write` before moving content. It normalizes slugs, inserts missing
-`name:` fields, and rewrites inbound links and router references. Do not pass
-`--stamp-today` unless the claims were genuinely just verified: mtime is not evidence, and
-a wrong date is worse than a missing one.
+`name:` fields, and rewrites inbound links and router references.
 
-## Write the `verify:` recipes DURING the migration, and run them
+## Date every memory, and give it a volatility
 
-This is the highest-yield step in the whole procedure and it is easy to treat as paperwork.
-Writing a check forces you to name what would falsify the memory, and running it then
-checks the world instead of the file. Two consecutive migrations found stale claims this
-way and no other way: a fix described as "uncommitted, in the working tree" had merged
-weeks earlier; a status memory claimed a HEAD four PRs behind; an open question had been
-answered by a CI run nobody had looked at; a memory sent readers to a log directory holding
-a two-week-old run.
+Verify-on-use (format-spec, *Verification happens on use*) needs two fields on every memory
+you keep, and this is the moment that knows them:
 
-Three traps, all of which actually happened:
+- **`last_verified:` is the day the file was last written**, when its claims were last seen
+  true: the harness's `metadata.modified:` if present, else the silo file's mtime. **Never
+  today**, and never `mem fix --stamp-today` unless you have just checked the claims: a
+  landing date makes a weeks-old memory look fresh. (`mem migrate apply` does this itself.)
+- **`volatility:`** (or a `status:` that implies it): stable, slow or live, judged by the
+  conclusion. Format-spec has the definitions.
 
-- **A recipe can fail in the reassuring direction.** One checked git history for a filename
-  *guessed from prose that never named the file*. It returned empty, which the `expect:`
-  line read as "already cleaned up" — when in fact three files were still there under
-  different names. **Build a recipe from an identifier you have verified exists**, and write
-  `expect:` so it says which result means trouble, not just which means fine.
-- **A refused recipe is worse than no recipe.** `grep` is not on the allowlist and `&&` is a
-  metacharacter, so those recipes are **refused outright** — the memory then advertises a
-  check it does not have. `verify-refused` in the audit is that, not a lint nit.
-- **Not every live memory can have one.** Say so explicitly with `unrunnable: true` plus a
-  prose check in the body, rather than leaving the field off and hoping. A memory about a
-  hosted page, or one needing two JSON files diffed, is honestly unrunnable.
+Do not write `verify:` recipes as migration work, and do not check every claim. A claim is
+checked when a session is about to act on it. If you happen to check one while migrating
+because it is plainly live (a "still uncommitted" fix, a HEAD), that is worth doing: update
+the memory and its date. The two traps if you do write a recipe are in format-spec,
+*Verification recipes (optional)*.
 
 ## Does this subject want its own territory?
 
