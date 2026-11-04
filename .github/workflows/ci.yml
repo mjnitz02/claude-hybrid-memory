@@ -37,11 +37,26 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         python: ["3.12", "3.13"]
-        include:
-          - os: macos-latest
-            python: "3.13"
     env:
       UV_PYTHON: ${{ matrix.python }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
+        with:
+          enable-cache: true
+      - run: make sync
+      - run: make check
+  # macOS runs only on push to main, and is not a required check. GitHub's
+  # hosted macOS arm64 pool regularly fails to hand out a runner within 15
+  # minutes, and as a required PR check that turned every shortage into a red
+  # PR. Its own job rather than a matrix entry because a job-level `if:` can't
+  # see the matrix.
+  check_macos:
+    name: macos-latest / py3.13
+    if: github.event_name != 'pull_request'
+    runs-on: macos-latest
+    env:
+      UV_PYTHON: "3.13"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2

@@ -84,11 +84,10 @@ you keep, and this is the moment that knows them:
 - **`volatility:`** (or a `status:` that implies it): stable, slow or live, judged by the
   conclusion. Format-spec has the definitions.
 
-Do not write `verify:` recipes as migration work, and do not check every claim. A claim is
-checked when a session is about to act on it. If you happen to check one while migrating
-because it is plainly live (a "still uncommitted" fix, a HEAD), that is worth doing: update
-the memory and its date. The two traps if you do write a recipe are in format-spec,
-*Verification recipes (optional)*.
+Do not check every claim. A claim is checked when a session is about to act on it. If you
+happen to check one while migrating because it is plainly live (a "still uncommitted" fix,
+a HEAD), that is worth doing: update the memory and its date. Never write a `verify:` or
+`expect:` field; recipes were retired (format-spec, *Verification recipes: retired*).
 
 ## Does this subject want its own territory?
 

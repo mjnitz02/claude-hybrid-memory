@@ -25,9 +25,8 @@ feedback against manufactured insight.
 | `router-ghost`, `router-unlisted` | a router that disagrees with its directory |
 | `override-target-missing`, `supersede-self`, `supersede-cycle`, `supersede-ambiguous` | a contradiction sitting quietly |
 | `superseded-still-indexed` | a hand-written index still routing to the old word |
-| `stale`, `stale-live`, `verify-due` | memories past their window: counted, not worked (see *Verify-on-use* below) |
-| `verify-contradicted` | a claim the world now disagrees with |
-| `verify-refused` | a recipe that violates the execution constraints |
+| `stale`, `stale-live` | memories past their window: counted, not worked (see *Verify-on-use* below). Never a `tier: record` |
+| `obsolete-field` | a retired `verify:`/`expect:`/`unrunnable:` field; `mem fix --write` strips it |
 | `budget-high`, `standing-cap` | an always-loaded layer near the hook's truncation limit, or past its file-count cap |
 | `silo-workdir-gone` | memory for a directory that no longer exists |
 | `silo-mixed-state` | a slug living in two homes |
@@ -98,10 +97,10 @@ getting run.
     ## 2026-10-04
 
     Scanned: 163 files, 10 territories.
-    Ran 14 verify recipes: 11 confirmed, 2 contradicted, 1 unrunnable.
 
     ### Acted
-    - gateway-adoption: verify said MERGED, memory said BLOCKED. Re-dated, status SHIPPED.
+    - gateway-adoption: a session acting on it found acme/gateway#123 merged; the memory
+      said BLOCKED. Superseded with a SHIPPED memory.
     - Rewrote 3 descriptions that named a subject instead of a conclusion.
 
     ### Declined, with reasons
@@ -121,8 +120,7 @@ holds rather than guessing.
 
 Not zero findings. A store with zero findings is either brand new or not being used.
 
-A good run means: every error resolved or explicitly declined, every contradicted claim
-a recipe surfaced re-dated, at least one description rewritten to carry a conclusion, and an honest answer
+A good run means: every error resolved or explicitly declined, at least one description rewritten to carry a conclusion, and an honest answer
 to *"what did I re-derive?"* (the skill numbers it; do not cite a number here, because the
 list has grown once already and a stale cross-reference is the exact failure this store is
 about). If a run produces nothing under **Acted**, either the store is genuinely

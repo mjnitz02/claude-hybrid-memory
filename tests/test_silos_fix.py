@@ -61,6 +61,34 @@ def test_fix_leaves_frontmatter_it_cannot_verify(fx: Fixture):
     assert p.read_text() == raw
 
 
+def test_fix_strips_retired_recipe_fields_and_nothing_else(fx: Fixture):
+    p = fx.store / "territories/console/kit/kit-recipe.md"
+    p.write_text("---\nname: kit-recipe\nkind: territory\ndescription: d\nvolatility: slow\n"
+                 "verify: gh pr view 1 --json state -q .state\nexpect: MERGED\n"
+                 "unrunnable: true\nlast_verified: 2026-10-01\n---\n\n"
+                 "Body keeps verify: and expect: as prose.\n")
+    mems, routers = scan_store(fx.store)
+    f = do_fix(mems, routers, write=True, stamp_today=False)
+    assert any(x.path == str(p) and "obsolete-field" in x.message for x in f)
+    assert p.read_text() == (
+        "---\nname: kit-recipe\nkind: territory\ndescription: d\nvolatility: slow\n"
+        "last_verified: 2026-10-01\n---\n\nBody keeps verify: and expect: as prose.\n")
+
+
+def test_fix_strips_retired_fields_nested_under_harness_metadata(fx: Fixture):
+    """The harness's auto-memory writes keys under `metadata:`; the loader hoists them, so
+    the audit flags them, and fix must reach them too (two real files on 2026-11-04)."""
+    p = fx.store / "territories/console/kit/kit-nested.md"
+    p.write_text("---\nname: kit-nested\ndescription: d\nmetadata:\n  kind: territory\n"
+                 '  verify: "git -C /x grep -n \\"uv run\\" -- Makefile"\n  expect: uv run\n'
+                 "  last_verified: 2026-10-27\nvolatility: slow\n---\n\nB.\n")
+    mems, routers = scan_store(fx.store)
+    do_fix(mems, routers, write=True, stamp_today=False)
+    assert p.read_text() == ("---\nname: kit-nested\ndescription: d\nmetadata:\n"
+                             "  kind: territory\n  last_verified: 2026-10-27\n"
+                             "volatility: slow\n---\n\nB.\n")
+
+
 def test_fix_dry_run_writes_nothing(fx: Fixture):
     before = {p: p.read_text() for p in fx.store.rglob("*.md")}
     mems, routers = scan_store(fx.store)

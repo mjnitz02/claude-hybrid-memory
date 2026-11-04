@@ -8,7 +8,7 @@ from pathlib import Path
 import yaml
 
 from claude_hybrid_memory.findings import ERROR, INFO, WARN, Finding
-from claude_hybrid_memory.spec import STATUSES
+from claude_hybrid_memory.spec import OBSOLETE_FIELDS, STATUSES
 from claude_hybrid_memory.store import Memory, _Loader, parse_frontmatter
 
 _FM_LINE = re.compile(r"^(\s*)([A-Za-z_][\w.-]*)(\s*:\s+)(\S.*?)\s*$")
@@ -146,6 +146,14 @@ def do_fix(mems: list[Memory], routers: dict, write: bool, stamp_today: bool) ->
         if stamp_today and not m.meta.get("last_verified") and text.startswith("---"):
             text = re.sub(r"^---\n", f"---\nlast_verified: {today}\n", text, count=1)
             actions.append(f"stamp last_verified: {today} (asserted now)")
+
+        old = [k for k in OBSOLETE_FIELDS if k in m.meta]
+        if old and text.startswith("---"):
+            end = text.find("\n---", 3)
+            # indented too: the loader hoists keys nested under a harness `metadata:` block
+            fm = re.sub(rf"^[ \t]*(?:{'|'.join(old)})\s*:.*\n", "", text[:end + 1], flags=re.M)
+            text = fm + text[end + 1:]
+            actions.append(f"removed {', '.join(old)} (obsolete-field)")
 
         linked = rewrite_links(text)
         if linked != text:

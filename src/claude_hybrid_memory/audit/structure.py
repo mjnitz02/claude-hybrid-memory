@@ -6,6 +6,7 @@ from claude_hybrid_memory.spec import (
     CONFIDENCES,
     KINDS,
     MODES,
+    OBSOLETE_FIELDS,
     OWNERS,
     ROLES,
     SLUG_RE,
@@ -32,6 +33,10 @@ def check_structure(mems: list[Memory]) -> list[Finding]:
         elif m.name != m.stem:
             out.append(Finding(ERROR, "name-filename-mismatch", rel,
                                f"name: {m.name!r} != filename stem {m.stem!r} (fixable)"))
+        old = [k for k in OBSOLETE_FIELDS if k in m.meta]
+        if old:
+            out.append(Finding(INFO, "obsolete-field", rel,
+                               f"{', '.join(old)}: retired with recipe execution (fixable)"))
         if not SLUG_RE.match(m.slug):
             out.append(Finding(ERROR, "bad-slug", rel,
                                f"slug {m.slug!r} is not kebab-case (fixable)"))
@@ -44,7 +49,7 @@ def check_structure(mems: list[Memory]) -> list[Finding]:
         elif kind not in KINDS:
             out.append(Finding(INFO, "field-invalid", rel,
                                f"kind {kind!r} not in {sorted(KINDS)}"))
-        if m.volatility is None:
+        if m.volatility is None and str(m.meta.get("tier") or "") != "record":
             # Not a defect: freshness defaults this to `slow`, which is a safe
             # middle. Left as INFO so 140 migrated legacy files do not drown the report
             # and train everyone to ignore the warn level.
