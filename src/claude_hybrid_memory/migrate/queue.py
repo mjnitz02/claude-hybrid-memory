@@ -1,7 +1,7 @@
 """Stage 5 (fast-adoption §8): the refine queue.
 
-The queue is derived, never edited: the audit findings that need judgment, the summary
-flags on every landed file, and `verify:` candidates from the summarizer and a heuristic.
+The queue is derived, never edited: the audit findings that need judgment and the summary
+flags on every landed file.
 Working an item changes the store, and the next `mem refine queue` drops it because the
 thing it was derived from is gone. No state file records what was done.
 
@@ -11,13 +11,12 @@ How each item drops:
   shape, low-confidence     the body differs from the one that landed
   standing/gate-candidate,  the file is no longer at that path (promoted, moved, archived)
   territory-hint, index-only
-  verify                    the memory carries `verify:` or `unrunnable: true`, or is
-                            `tier: record`. Only the
-                            summarizer's claims queue; the §8 heuristic ranks them
-  unverified                the memory gains `status:`, `last_verified:` or `verify:`, or is
-                            `tier: record`, or its territory has no `active` member left
 Every item also drops when its memory is superseded. One Matt declines is suppressed by
 writing its key, in backticks as `refine:<key>`, into RETRO.md with the reason.
+
+Nothing queues a memory for verification. A claim is checked when a session is about to act
+on it and it is past its volatility window (verify-on-use, docs/direction.md); queueing every
+undated memory for a check in advance produced a backlog no number of sessions cleared.
 
 "As landed" is the file once `mem migrate apply` finished with its silo: at the decisions
 commit, which rewrote links and descriptions, or the landing commit when there was nothing
@@ -38,19 +37,18 @@ from claude_hybrid_memory.migrate import plan as P
 from claude_hybrid_memory.migrate import workdir
 from claude_hybrid_memory.store import parse_frontmatter, scan_store
 
-AUDIT_CODES = ("split-candidate", "possible-duplicate", "frontmatter-not-yaml", "stale-live",
+AUDIT_CODES = ("split-candidate", "possible-duplicate", "frontmatter-not-yaml",
                "superseded-still-indexed", "budget-high", "budget-always-stale",
                # refine-only (spec.REFINE_CODES): what writing sessions are never asked to fix
                "index-over-cap", "memories-over-cap", "index-degraded", "description-long",
                "memories-over-target", "field-invalid", "missing-kind")
 SHAPES = ("build-diary", "dated-snapshot", "accreted")
 
-# Lower works first. The always-loaded layer costs every session, so promotions lead;
-# verify candidates the summarizer and the heuristic agree on come before either alone.
-RANK = {"gate-candidate": 0, "standing-candidate": 1, "verify-both": 2, "stale-live": 3,
-        "description": 4, "frontmatter-not-yaml": 5, "superseded-still-indexed": 5,
+# Lower works first. The always-loaded layer costs every session, so promotions lead.
+RANK = {"gate-candidate": 0, "standing-candidate": 1, "description": 4,
+        "frontmatter-not-yaml": 5, "superseded-still-indexed": 5,
         "budget-high": 5, "budget-always-stale": 5, "split-candidate": 6, "shape": 7,
-        "possible-duplicate": 8, "verify-summary": 9, "unverified": 9, "index-only": 10,
+        "possible-duplicate": 8, "index-only": 10,
         "low-confidence": 11, "territory-hint": 12,
         "index-over-cap": 3, "memories-over-cap": 5, "index-degraded": 5,
         "description-long": 4, "memories-over-target": 7, "field-invalid": 6,
@@ -58,19 +56,6 @@ RANK = {"gate-candidate": 0, "standing-candidate": 1, "verify-both": 2, "stale-l
 
 DECLINED_RE = re.compile(r"`refine:([^`]+)`")
 
-# Claims that go stale on their own (§8). Each is a signal to write a recipe, not a verdict.
-HEURISTIC = [
-    ("commit sha", re.compile(r"\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b")),
-    ("PR or issue", re.compile(r"\b(?:PR|pull|issue)\s*#?\d+\b|(?<![\w&/])#\d{2,5}\b", re.I)),
-    ("uncommitted", re.compile(r"\buncommitted\b", re.I)),
-    ("as of a date", re.compile(r"\bas of \d{4}-\d{2}-\d{2}\b", re.I)),
-    ("phase with a status", re.compile(
-        r"\bphase\s*\d+\b[^.\n]{0,40}?\b(?:done|built|shipped|in progress|in flight|next|"
-        r"pending|blocked|open)\b", re.I)),
-    ("branch name", re.compile(r"\bbranch(?:es)?\s+`[^`\n]+`|`[^`\s]+`\s+branch\b", re.I)),
-    ("version now", re.compile(r"\b(?:currently|now)\b[^.\n]{0,30}?\bv?\d+\.\d+(?:\.\d+)?\b",
-                               re.I)),
-]
 
 
 @dataclass
@@ -169,12 +154,11 @@ def _audit_items(root: Path, legacy: Path, today: dt.date) -> list[Item]:
     return out
 
 
-def _summary_items(root: Path, plan: dict, superseded: set[str]) -> tuple[list[Item],
-                                                                          dict[str, list]]:
-    """Summary flags still open, and the summarizer's verify claims by path."""
+def _summary_items(root: Path, plan: dict, superseded: set[str]) -> list[Item]:
+    """Summary flags still open."""
     sums = latest_summaries(root)
     have = P.territories(root)
-    items, claims = [], {}
+    items = []
     for la in landed(root, plan):
         if la.rel in superseded:
             continue
@@ -205,57 +189,7 @@ def _summary_items(root: Path, plan: dict, superseded: set[str]) -> tuple[list[I
         hint = P._norm(s.get("territory_hint"))
         if hint and hint != la.territory and hint in have:
             add("territory-hint", f"summary suggests {hint}")
-        if s["verify"]:
-            claims[la.rel] = s["verify"]
-    return items, claims
-
-
-def _verify_items(root: Path, claims: dict[str, list], superseded: set[str]) -> list[Item]:
-    """The summarizer's claims, ranked up where the heuristic agrees. Heuristic hits alone
-    are not queued: on this store 113 of 159 were provenance footnotes ("checked against
-    `25983e9`"), which is noise §14 says to cut at the source."""
-    mems = {_rel(root, m.path): m for m in scan_store(root)[0]}
-    out = []
-    for rel, said in claims.items():
-        m = mems.get(rel)
-        if (m is None or rel in superseded or m.meta.get("verify") or m.meta.get("unrunnable")
-                or str(m.meta.get("tier") or "") == "record"):
-            continue
-        hits = [f"{label} `{mt.group(0)}`" for label, rx in HEURISTIC
-                if (mt := rx.search(m.body))]
-        out.append(Item(f"verify:{rel}", "verify", rel, _territory(rel),
-                        RANK["verify-both" if hits else "verify-summary"],
-                        "; ".join([f"{c['claim']} [{c['identifier']}]" for c in said] + hits),
-                        "summary+heuristic" if hits else "summary"))
-    return out
-
-
-def _active(router) -> bool:
-    members = router.meta.get("members")
-    return isinstance(members, dict) and any(
-        isinstance(v, dict) and str(v.get("mode") or "").strip() == "active"
-        for v in members.values())
-
-
-def _unverified_items(root: Path, superseded: set[str]) -> list[Item]:
-    """Memories nothing can date: no status, never verified, no recipe. The audit calls them
-    `slow` and only `stale`, and a file that skipped fast adoption has no summary, so a
-    territory carried over from an early store looked clean while most of it was undated.
-    Only territories with an `active` member queue them; a parked or reference territory's
-    age is expected."""
-    mems, routers = scan_store(root)
-    out = []
-    for m in mems:
-        rel = _rel(root, m.path)
-        r = routers.get(m.container)
-        if (r is None or not _active(r) or rel in superseded
-                or any(m.meta.get(k) for k in ("status", "last_verified", "verify"))
-                or str(m.meta.get("tier") or "") == "record"):
-            continue
-        out.append(Item(f"unverified:{rel}", "unverified", rel, m.container,
-                        RANK["unverified"], "no status, never verified, no verify: recipe, "
-                        "in a territory with an active member", "audit"))
-    return out
+    return items
 
 
 def build(root: Path, legacy: Path, today: dt.date | None = None,
@@ -266,12 +200,8 @@ def build(root: Path, legacy: Path, today: dt.date | None = None,
     superseded = {_rel(root, p) for p in audit.superseded_paths(root)}
     items = _audit_items(root, legacy, today)
     plan = P.load(root)
-    claims: dict[str, list] = {}
     if plan:
-        more, claims = _summary_items(root, plan, superseded)
-        items += more
-    items += _verify_items(root, claims, superseded)
-    items += _unverified_items(root, superseded)
+        items += _summary_items(root, plan, superseded)
     skip = declined(root)
     open_ = [i for i in items if i.key not in skip]
     kept = [i for i in open_ if not territory or i.territory == territory

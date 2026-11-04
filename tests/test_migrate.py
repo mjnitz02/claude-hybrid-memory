@@ -458,25 +458,20 @@ def test_refine_queue_derives_and_drops(landed: Fixture, fake: Path):
     alpha = "territories/fixture/alpha"
     q = items()
     dn, hr = f"{alpha}/deploy-notes.md", f"{alpha}/house-rule.md"
-    assert q[f"verify:{dn}"]["source"] == "summary+heuristic"      # abc1234 in the body too
-    assert "abc1234" in q[f"verify:{dn}"]["detail"]
+    assert not any(k.startswith("verify:") for k in q)              # claims are checked on use
     assert {f"shape:{dn}", f"standing-candidate:{hr}", f"description:{hr}",
             f"low-confidence:{hr}"} <= q.keys()
-    assert not any(k.endswith("launch-record.md") and k.startswith("verify") for k in q)
     ranks = [i["rank"] for i in queue.build(fx.store, fx.projects)["items"]]
     assert ranks == sorted(ranks)
     assert next(iter(q)) == f"standing-candidate:{hr}"             # promotions lead
 
     # working an item is what drops it
     f = fx.store / dn
-    f.write_text(f.read_text().replace("---\n\n", "---\n\nRewritten. ", 1)
-                 .replace("name: deploy-notes", "name: deploy-notes\nverify: true", 1))
+    f.write_text(f.read_text().replace("---\n\n", "---\n\nRewritten. ", 1))
     h = fx.store / hr
     h.write_text(h.read_text().replace("description: d", "description: A house rule"))
     q = items()
-    assert f"shape:{dn}" not in q and f"verify:{dn}" not in q
-    f.write_text(f.read_text().replace("verify: true", "unrunnable: true", 1))
-    assert f"verify:{dn}" not in items()                           # declared unrunnable
+    assert f"shape:{dn}" not in q
     assert f"description:{hr}" not in q and f"standing-candidate:{hr}" in q
     (fx.store / "standing").mkdir(exist_ok=True)
     h.replace(fx.store / "standing" / "house-rule.md")             # promoted
@@ -503,28 +498,18 @@ def test_refine_queue_cli(landed: Fixture, fake: Path):
     assert rc == 0 and q["items"] and all(i["territory"] == "home/lab" for i in q["items"])
 
 
-def test_refine_queue_finds_undated_memories_in_active_territories(fx: Fixture):
-    """No status, never verified, no recipe: the audit calls that `slow` and only `stale`,
-    and with no summary nothing else queues it, so a territory carried over from an early
-    store looked clean while most of it was undated."""
+def test_refine_queue_never_queues_a_memory_for_verification(fx: Fixture):
+    """Undated memories in an active territory, and a live one past its window, are not
+    work items: claims are checked when a session acts on them. Queueing every undated
+    memory for a check in advance built a backlog no number of sessions cleared."""
     from claude_hybrid_memory.migrate import queue
 
     index = fx.store / "territories/console/kit/MEMORY.md"
     head = "---\nterritory: console/kit\n"
     index.write_text(index.read_text().replace(
         head, head + "members:\n  kit-repo: {owner: self, mode: active}\n", 1))
-
-    def undated() -> set[str]:
-        return {i["path"].rsplit("/", 1)[-1] for i in queue.build(fx.store, fx.projects)["items"]
-                if i["type"] == "unverified"}
-
-    # kit-sync-v1 is undated too, but superseded; home/lab has no active member
-    assert undated() == {"kit_raw_notes.md", "kit-unlisted-orphan.md"}
-    orphan = fx.store / "territories/console/kit/kit-unlisted-orphan.md"
-    orphan.write_text(orphan.read_text().replace("volatility: live", "last_verified: 2026-10-01"))
-    assert undated() == {"kit_raw_notes.md"}
-    index.write_text(index.read_text().replace("mode: active", "mode: parked"))
-    assert undated() == set()
+    types = {i["type"] for i in queue.build(fx.store, fx.projects)["items"]}
+    assert not types & {"unverified", "verify", "stale-live"}
 
 
 @pytest.mark.parametrize("entry", ["- home/kiln : The kiln. PULL WHEN: any of it.",

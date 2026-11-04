@@ -46,7 +46,7 @@ def check_freshness(mems: list[Memory], today: dt.date, run: bool,
         if m.path in superseded:
             continue
         vol = m.volatility or "slow"
-        limit = STALE_AFTER.get(vol, 90)
+        limit = STALE_AFTER.get(vol, STALE_AFTER["slow"])
         age = m.age_days(today)
         recipe = str(m.meta.get("verify") or "").strip()
         due = age is None or age > limit
