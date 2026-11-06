@@ -16,9 +16,9 @@ creates the store directories, copies each template that is missing, gives the s
 own history with a baseline commit, and writes the rules file. Running it is the go-ahead
 for step 1b.
 
-To work on the repo instead, `make install` from a checkout runs `mem install --dev`. That
+To work on the repo instead, `task install` from a checkout runs `mem install --dev`. That
 also symlinks the checkout to `~/.claude/skills/hybrid-memory`, which Claude Code loads as
-`hybrid-memory@skills-dir`, so edits are live (`make install-check` is the dry run).
+`hybrid-memory@skills-dir`, so edits are live (`task install-check` is the dry run).
 
 Every step looks before it changes anything, so it is also the repair: re-run it when
 anything below has drifted. What is already right is reported and left alone. It never

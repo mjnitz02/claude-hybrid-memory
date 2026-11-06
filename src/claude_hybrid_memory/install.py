@@ -14,7 +14,7 @@ both would run twice, so once the plugin is present they are removed (settings.j
 up first). Without the plugin they are left alone: removing them would leave no hooks.
 
 `--dev` loads a checkout as the plugin by symlinking it into ~/.claude/skills, which Claude
-Code loads as `hybrid-memory@skills-dir`, so edits are live. `make install` does that.
+Code loads as `hybrid-memory@skills-dir`, so edits are live. `task install` does that.
 
 It writes one file outside the store, ~/.claude/rules/claude-hybrid-memory.md. Not done
 here: editing MACHINE.md (only the user knows what is true of this box) or
@@ -186,7 +186,7 @@ def ensure_plugin(repo: Path, claude: Path, dry: bool, stamp: str,
     if not source:
         return [Finding(WARN, "install-no-plugin", str(claude),
                         f"the {PLUGIN} plugin is not installed, so no hook runs and no skill "
-                        "loads; see README (or `make install` for a dev checkout). Any "
+                        "loads; see README (or `task install` for a dev checkout). Any "
                         "pre-plugin hooks and skill links are left in place until it is")]
     out = [Finding(INFO, "install-ok", str(claude), f"plugin present ({source})")]
     names = {p.parent.name for p in (repo / "skills").glob("*/SKILL.md")}

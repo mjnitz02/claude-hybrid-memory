@@ -17,12 +17,14 @@ already rejected; [`docs/format-spec.md`](../docs/format-spec.md) is the format
 
 ## Development
 
-Everything runs through the `Makefile`; `make` alone lists the targets.
+Everything runs through [Task](https://taskfile.dev) (`Taskfile.yml`); `task` alone
+lists the targets. Task is pinned in the dev dependencies, so `uv run task <name>` always
+works; `uv tool install go-task-bin` puts a bare `task` on your PATH.
 
 ```sh
-make sync    # dev environment from uv.lock
-make hooks   # git hooks: lint + secret scan on commit, tests on push
-make check   # what CI runs
+task sync    # dev environment from uv.lock
+task hooks   # git hooks (prek): lint + secret scan on commit, tests on push
+task check   # what CI runs
 ```
 
 Tests use synthetic fixture stores only. Never put real memory content in this

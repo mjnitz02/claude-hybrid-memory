@@ -44,8 +44,9 @@ jobs:
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
         with:
           enable-cache: true
-      - run: make sync
-      - run: make check
+      - run: uv sync --locked
+      # Task is pinned in the uv dev group, so `uv run` uses the locked version.
+      - run: uv run --locked task check
   # macOS runs only on push to main, and is not a required check. GitHub's
   # hosted macOS arm64 pool regularly fails to hand out a runner within 15
   # minutes, and as a required PR check that turned every shortage into a red
@@ -62,5 +63,6 @@ jobs:
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
         with:
           enable-cache: true
-      - run: make sync
-      - run: make check
+      - run: uv sync --locked
+      # Task is pinned in the uv dev group, so `uv run` uses the locked version.
+      - run: uv run --locked task check

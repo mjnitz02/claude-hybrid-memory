@@ -92,13 +92,23 @@ To see exactly what a session is handed:
     cat ~/.claude/memory/ALWAYS.md
     mem hook session-start | jq -r .hookSpecificOutput.additionalContext
 
-## Development (`make`)
+## Development (`task`)
 
-`make` alone lists the targets.
+[Task](https://taskfile.dev) runs these; `task` alone lists them. It is pinned in the dev
+group, so `uv run task <name>` always works, and `uv tool install go-task-bin` puts a bare
+`task` on your PATH. The git hooks run under [prek](https://prek.j178.dev/), a Rust
+drop-in for pre-commit that reads the same `.pre-commit-config.yaml`.
 
-    make check        # pre-commit (ruff, whitespace, lockfile, secrets) + tests; what CI runs
-    make test         # fixture stores: synthetic content, real shapes
-    make test-live    # the installed `mem`, read-only, against this machine's real store
-    make hooks        # git hooks: lint + secret scan on commit, tests on push
-    make install         # dev install: load this checkout as the plugin, then `mem install`
-    make install-check   # what `make install` would change, writing nothing
+    task check        # every git hook (ruff, whitespace, lockfile, Taskfile schema, secrets) + tests; what CI runs
+    task test         # fixture stores: synthetic content, real shapes (args after `--` go to pytest)
+    task test-live    # the installed `mem`, read-only, against this machine's real store
+    task hooks        # git hooks: lint + secret scan on commit, tests on push
+    task install         # dev install: load this checkout as the plugin, then `mem install`
+    task install-check   # what `task install` would change, writing nothing
+
+Three more run on demand and are not yet enforced by `check`, the hooks or CI. Each joins
+them with the PR that fixes what it currently reports:
+
+    task lint-format  # ruff format
+    task lint-typing  # ty, pinned exactly in pyproject.toml
+    task lint-dupes   # jscpd copy-paste detection, settings in .jscpd.json

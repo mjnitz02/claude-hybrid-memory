@@ -1,8 +1,16 @@
-# `make hooks` installs these; `make pre-commit` runs them over everything.
-# ruff and pytest are local hooks through uv, so they use the versions in uv.lock.
+# Run by prek (https://prek.j178.dev/), a Rust drop-in for pre-commit that reads
+# this file unchanged. `task hooks` installs them; `task pre-commit` runs them over
+# everything. ruff and pytest are local hooks through uv, so they use the versions
+# in uv.lock.
+#
+# ruff format, ty and jscpd are tasks (`task lint-format`, `lint-typing`,
+# `lint-dupes`) but not hooks yet: they join here, and in CI, with the PR that
+# fixes what they currently find.
 default_install_hook_types: [pre-commit, pre-push]
 
 repos:
+  # prek runs these with its own built-in Rust implementations rather than
+  # cloning the repo and building a Python environment for them.
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
@@ -22,6 +30,13 @@ repos:
     rev: v8.30.1
     hooks:
       - id: gitleaks
+
+  # Validate Taskfile.yml against Task's own JSON schema, so a misspelled key or
+  # a wrong type fails here rather than at run time.
+  - repo: https://github.com/python-jsonschema/check-jsonschema
+    rev: 0.39.0
+    hooks:
+      - id: check-taskfile
 
   - repo: local
     hooks:

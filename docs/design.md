@@ -336,7 +336,7 @@ Living in this repo under `skills/`, shipped by the `hybrid-memory` plugin, so t
 invoked as `/hybrid-memory:<name>`. Until 2026-11-03 they were symlinked into
 `~/.claude/skills/` instead, because a plugin "only buys marketplace distribution", which
 was not wanted until the repo went public (direction.md §16 item 8). Live editing survives
-the change: `make install` loads a checkout as the plugin through `~/.claude/skills`.
+the change: `task install` loads a checkout as the plugin through `~/.claude/skills`.
 
 | Skill | Job |
 |---|---|

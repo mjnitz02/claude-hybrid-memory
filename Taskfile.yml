@@ -1,0 +1,103 @@
+---
+# Day-to-day commands for this repo (https://taskfile.dev). `task` alone lists them.
+#
+# Task is pinned in the dev dependency group (go-task-bin), so `uv run task <name>`
+# always runs the locked version; `uv tool install go-task-bin` puts a bare `task`
+# on your PATH. Every tool runs through uv, so its version comes from uv.lock, and
+# the git hooks, CI and this file all run the same ruff, ty, jscpd and pytest.
+#
+# Tasks that run pytest forward anything after `--` to it:
+#   task test -- -k render -x
+version: '3'
+
+set: [errexit, nounset, pipefail]
+
+vars:
+  MEM: '{{.ROOT_DIR}}/bin/mem'
+
+tasks:
+  default:
+    desc: List every task
+    silent: true
+    cmds:
+      - '{{.TASK_EXE}} --list --sort none'
+
+  # ---- Setup ----
+
+  sync:
+    desc: Install the dev environment from uv.lock
+    cmds:
+      - uv sync --locked
+
+  # prek reads .pre-commit-config.yaml as-is. --force replaces a hook script left
+  # by the old pre-commit, which prek would otherwise keep chaining to.
+  hooks:
+    desc: 'Install the git hooks (prek): lint + secret scan on commit, tests on push'
+    cmds:
+      - uv run prek install --force
+
+  install:
+    desc: 'Dev install: load this checkout as the plugin, then set up or repair the store'
+    cmds:
+      - '{{.MEM}} install --dev --repo {{.ROOT_DIR}}'
+
+  install-check:
+    desc: What `task install` would change, writing nothing
+    cmds:
+      - '{{.MEM}} install --dev --dry-run --repo {{.ROOT_DIR}}'
+
+  # ---- Linting ----
+
+  lint:
+    desc: ruff check, no changes
+    cmds:
+      - uv run ruff check .
+
+  fix:
+    desc: ruff check, applying safe fixes
+    cmds:
+      - uv run ruff check --fix .
+
+  # Not yet part of `check`, the hooks or CI: the tree has never been run through
+  # ruff format, and adopting it is its own PR.
+  lint-format:
+    desc: Format code with ruff (not yet enforced)
+    cmds:
+      - uv run ruff format .
+
+  # Not yet part of `check`, the hooks or CI until the existing findings are fixed.
+  # The version is pinned in uv.lock; ty reads the Python version from requires-python.
+  lint-typing:
+    desc: Static type checking with ty (not yet enforced)
+    cmds:
+      - uv run ty check
+
+  # Not yet part of `check`, the hooks or CI until the existing clones are fixed.
+  lint-dupes:
+    desc: Check for copy-pasted code with jscpd (not yet enforced)
+    cmds:
+      - uv run jscpd --no-tips --config .jscpd.json
+
+  # ---- Testing ----
+
+  test:
+    desc: Unit tests (synthetic fixture stores only)
+    cmds:
+      - uv run pytest {{.CLI_ARGS}}
+
+  test-live:
+    desc: Read-only tests against this machine's real store and installed `mem`
+    cmds:
+      - uv run pytest -m live {{.CLI_ARGS}}
+
+  pre-commit:
+    desc: Every git hook over every file
+    cmds:
+      - uv run prek run --all-files
+
+  # Sequential, so a hook failure stops the run before the tests start.
+  check:
+    desc: What CI runs
+    cmds:
+      - task: pre-commit
+      - task: test
