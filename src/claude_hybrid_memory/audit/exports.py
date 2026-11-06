@@ -1,4 +1,5 @@
 """Exports: a territory's EXPORTS.md against the copies inlined into its consumers."""
+
 from __future__ import annotations
 
 import re
@@ -12,7 +13,7 @@ def _bullets(text: str) -> list[str]:
     if text.startswith("---"):
         end = text.find("\n---", 3)
         if end != -1:
-            text = text[end + 4:]
+            text = text[end + 4 :]
     out = []
     for line in text.splitlines():
         line = line.strip()
@@ -45,29 +46,55 @@ def check_exports(root: Path, routers: dict) -> list[Finding]:
         terr = str(exp.parent.relative_to(tdir))
         facts = _bullets(exp.read_text(encoding="utf-8", errors="replace"))
         if not facts:
-            out.append(Finding(WARN, "exports-empty", f"{terr}/EXPORTS.md",
-                               "declares no exports; either fill it in or delete it"))
+            out.append(
+                Finding(
+                    WARN,
+                    "exports-empty",
+                    f"{terr}/EXPORTS.md",
+                    "declares no exports; either fill it in or delete it",
+                )
+            )
             continue
         if len(facts) > 6:
-            out.append(Finding(WARN, "exports-too-many", f"{terr}/EXPORTS.md",
-                               f"{len(facts)} exports; more than ~6 usually means the "
-                               "territory boundary is in the wrong place"))
+            out.append(
+                Finding(
+                    WARN,
+                    "exports-too-many",
+                    f"{terr}/EXPORTS.md",
+                    f"{len(facts)} exports; more than ~6 usually means the "
+                    "territory boundary is in the wrong place",
+                )
+            )
         # where should these appear?
         if terr.startswith("utility/"):
             targets = [("ROUTER.md", global_router)]
         else:
-            consumers = [c for c, r in routers.items()
-                         if _norm(str(r.meta.get("consumes") or "")) == _norm(terr)]
+            consumers = [
+                c
+                for c, r in routers.items()
+                if _norm(str(r.meta.get("consumes") or "")) == _norm(terr)
+            ]
             if not consumers:
-                out.append(Finding(INFO, "exports-no-consumer", f"{terr}/EXPORTS.md",
-                                   "no territory declares `consumes: " + terr + "`; "
-                                   "nothing inlines these"))
+                out.append(
+                    Finding(
+                        INFO,
+                        "exports-no-consumer",
+                        f"{terr}/EXPORTS.md",
+                        "no territory declares `consumes: " + terr + "`; nothing inlines these",
+                    )
+                )
                 continue
             targets = [(f"{c}/MEMORY.md", routers[c].raw) for c in consumers]
         for tname, ttext in targets:
             tnorm = _norm(ttext)
             for fact in facts:
                 if _norm(fact)[:60] not in tnorm:
-                    out.append(Finding(ERROR, "export-not-inlined", tname,
-                                       f"missing export from {terr}: {fact[:90]!r}"))
+                    out.append(
+                        Finding(
+                            ERROR,
+                            "export-not-inlined",
+                            tname,
+                            f"missing export from {terr}: {fact[:90]!r}",
+                        )
+                    )
     return out

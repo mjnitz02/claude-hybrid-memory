@@ -1,4 +1,5 @@
 """`mem install`: the scripted setup.md steps 1 to 3c, run against a throwaway home."""
+
 from __future__ import annotations
 
 import json
@@ -31,8 +32,9 @@ def shim(tmp_path: Path, body: str | None = None) -> str:
     """A `mem` binary: this checkout's, or a broken one that runs `body` instead."""
     f = tmp_path / "bin" / "mem"
     f.parent.mkdir(parents=True, exist_ok=True)
-    f.write_text("#!/bin/sh\n"
-                 + (body or f'exec "{sys.executable}" -m claude_hybrid_memory "$@"\n'))
+    f.write_text(
+        "#!/bin/sh\n" + (body or f'exec "{sys.executable}" -m claude_hybrid_memory "$@"\n')
+    )
     f.chmod(0o755)
     return str(f)
 
@@ -45,8 +47,9 @@ def plugin(home: Path) -> Path:
     """Mark the plugin installed from a marketplace, as Claude Code records it."""
     f = home / ".claude" / "plugins" / "installed_plugins.json"
     f.parent.mkdir(parents=True, exist_ok=True)
-    f.write_text(json.dumps({"version": 2, "plugins": {
-        "hybrid-memory@hybrid-memory": [{"scope": "user"}]}}))
+    f.write_text(
+        json.dumps({"version": 2, "plugins": {"hybrid-memory@hybrid-memory": [{"scope": "user"}]}})
+    )
     return f
 
 
@@ -57,25 +60,56 @@ def legacy(home: Path, other: dict) -> Path:
     for s in ("memory-setup", "memory-retro"):
         (claude / "skills" / s).symlink_to(REPO / "skills" / s)
     path = claude / "settings.json"
-    path.write_text(json.dumps({
-        "model": "opus",
-        "hooks": {
-            "PostToolUse": [
-                # someone else's hook sharing a group with ours: theirs stays, with its matcher
-                {"matcher": "Edit", "hooks": [other, {"type": "command",
-                                                       "command": "/old/path/mem hook post-tool"}]},
-            ],
-            "SessionStart": [
-                {"hooks": [{"type": "command",
-                            "command": "/usr/bin/python3 tools/session_start.py"}]},
-                {"hooks": [{"type": "command", "command": "/home/x/.local/bin/mem",
-                            "args": ["hook", "session-start"]}]},
-            ],
-            "SessionEnd": [{"hooks": [{"type": "command", "command": "mem",
-                                       "args": ["hook", "session-end"]}]}],
-            "Stop": [{"hooks": [other]}],
-        },
-    }))
+    path.write_text(
+        json.dumps(
+            {
+                "model": "opus",
+                "hooks": {
+                    "PostToolUse": [
+                        # someone else's hook sharing a group with ours: theirs stays, with its matcher
+                        {
+                            "matcher": "Edit",
+                            "hooks": [
+                                other,
+                                {"type": "command", "command": "/old/path/mem hook post-tool"},
+                            ],
+                        },
+                    ],
+                    "SessionStart": [
+                        {
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": "/usr/bin/python3 tools/session_start.py",
+                                }
+                            ]
+                        },
+                        {
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": "/home/x/.local/bin/mem",
+                                    "args": ["hook", "session-start"],
+                                }
+                            ]
+                        },
+                    ],
+                    "SessionEnd": [
+                        {
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": "mem",
+                                    "args": ["hook", "session-end"],
+                                }
+                            ]
+                        }
+                    ],
+                    "Stop": [{"hooks": [other]}],
+                },
+            }
+        )
+    )
     return path
 
 
@@ -86,8 +120,9 @@ def test_fresh_machine_gets_store_history_and_no_settings(home: Path):
     assert all((store / d).is_dir() for d in install.DIRS)
     assert all((store / t).is_file() for t in install.TEMPLATES)
     assert "install-edit-machine" in codes(f)
-    log = subprocess.run(["git", "-C", str(store), "log", "--format=%s"], capture_output=True,
-                         text=True).stdout
+    log = subprocess.run(
+        ["git", "-C", str(store), "log", "--format=%s"], capture_output=True, text=True
+    ).stdout
     assert log.startswith("Baseline: store as of")
     assert ".bm25-index.json" in (store / ".gitignore").read_text()
     # the plugin carries hooks and skills: nothing is written for them
@@ -128,9 +163,13 @@ def test_with_the_plugin_the_old_wiring_is_removed(home: Path):
     assert (home / ".claude" / "skills" / "memory-retro").is_symlink()
     f = do(home)
     s = json.loads(path.read_text())
-    assert s == {"model": "opus", "hooks": {"PostToolUse": [{"matcher": "Edit",
-                                                             "hooks": [other]}],
-                                            "Stop": [{"hooks": [other]}]}}
+    assert s == {
+        "model": "opus",
+        "hooks": {
+            "PostToolUse": [{"matcher": "Edit", "hooks": [other]}],
+            "Stop": [{"hooks": [other]}],
+        },
+    }
     assert sum(x.code == "install-legacy-hook" and "removed" in x.message for x in f) == 3
     assert len(list(path.parent.glob("settings.json.bak-*"))) == 1
     assert not (home / ".claude" / "skills" / "memory-retro").exists()
@@ -178,8 +217,7 @@ def test_dev_links_the_checkout_as_the_plugin(home: Path):
 def test_dev_never_replaces_a_real_directory(home: Path):
     real = home / ".claude" / "skills" / "hybrid-memory"
     real.mkdir(parents=True)
-    f = install.run(home / ".claude" / "memory", REPO, home / ".claude", Path(MEM), False,
-                    dev=True)
+    f = install.run(home / ".claude" / "memory", REPO, home / ".claude", Path(MEM), False, dev=True)
     assert any(x.code == "install-dev-link" and x.level == "error" for x in f)
     assert real.is_dir() and not real.is_symlink()
 
@@ -189,14 +227,28 @@ def test_existing_gitignore_gets_missing_patterns(home: Path):
     ignore = home / ".claude" / "memory" / ".gitignore"
     ignore.write_text(".cache/\n")
     do(home)
-    assert ignore.read_text().splitlines() == [".cache/", ".DS_Store", ".bm25-index.json",
-                                               "ALWAYS.md"]
+    assert ignore.read_text().splitlines() == [
+        ".cache/",
+        ".DS_Store",
+        ".bm25-index.json",
+        "ALWAYS.md",
+    ]
 
 
 def test_cli(home: Path, tmp_path: Path):
-    rc, out, err = run(mem_cmd("install", "--dry-run", "--root", str(home / "store"),
-                               "--claude-dir", str(home / ".claude"), "--mem", MEM),
-                       {"PATH": "/usr/bin:/bin"})
+    rc, out, err = run(
+        mem_cmd(
+            "install",
+            "--dry-run",
+            "--root",
+            str(home / "store"),
+            "--claude-dir",
+            str(home / ".claude"),
+            "--mem",
+            MEM,
+        ),
+        {"PATH": "/usr/bin:/bin"},
+    )
     assert rc == 0, err
     assert "would" in out and not home.exists()
     rc, _, err = run(mem_cmd("install", "--repo", str(tmp_path)), {"PATH": "/usr/bin:/bin"})
@@ -206,20 +258,30 @@ def test_cli(home: Path, tmp_path: Path):
 def test_hooks_are_run_against_a_copy_of_the_store(home: Path, tmp_path: Path):
     f = do(home, mem=shim(tmp_path))
     ok = {x.code for x in f if x.level == "info"}
-    assert {"install-check-session-start", "install-check-post-tool",
-            "install-check-session-end"} <= ok, f
+    assert {
+        "install-check-session-start",
+        "install-check-post-tool",
+        "install-check-session-end",
+    } <= ok, f
     store = home / ".claude" / "memory"
-    assert not (store / "events").exists()      # the read was logged in the copy only
-    assert subprocess.run(["git", "-C", str(store), "rev-list", "--count", "HEAD"],
-                          capture_output=True, text=True).stdout.strip() == "1"
+    assert not (store / "events").exists()  # the read was logged in the copy only
+    assert (
+        subprocess.run(
+            ["git", "-C", str(store), "rev-list", "--count", "HEAD"], capture_output=True, text=True
+        ).stdout.strip()
+        == "1"
+    )
 
 
 def test_a_hook_that_fails_open_is_still_caught(home: Path, tmp_path: Path):
     # what a missing dependency looks like: every hook exits 0 and does nothing
     f = do(home, mem=shim(tmp_path, "exit 0\n"))
     bad = {x.code for x in f if x.level == "error"}
-    assert bad == {"install-check-session-start", "install-check-post-tool",
-                   "install-check-session-end"}
+    assert bad == {
+        "install-check-session-start",
+        "install-check-post-tool",
+        "install-check-session-end",
+    }
 
 
 def test_rules_file_imports_the_layer_and_is_owned(home: Path):

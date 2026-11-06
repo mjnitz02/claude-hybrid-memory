@@ -58,6 +58,7 @@ Adoption (`--adopt`) is the one-off migration of a hand-written index. The dry r
 every hand-written line whose words the description lacks. That is for information:
 the description carries the meaning, and a detail it drops is a read of the memory away.
 """
+
 from __future__ import annotations
 
 import fnmatch
@@ -72,20 +73,22 @@ from claude_hybrid_memory.store import load_file, parse_frontmatter
 
 BEGIN = "<!-- mem:render begin"
 END = "<!-- mem:render end -->"
-BEGIN_LINE = (f"{BEGIN}: generated from each memory's description and group; "
-              "edit those, then `mem render` -->")
-LINE_CAP = 200          # the harness loads only the first 200 lines
-BYTE_CAP = 25_000       # and at most 25 KB (format-spec.md)
-BYTE_WARN = 24_000      # a kilobyte short of it: room for a few more lines, not many
-BYTE_TARGET = 24_000    # what every render fits the whole file under
+BEGIN_LINE = (
+    f"{BEGIN}: generated from each memory's description and group; "
+    "edit those, then `mem render` -->"
+)
+LINE_CAP = 200  # the harness loads only the first 200 lines
+BYTE_CAP = 25_000  # and at most 25 KB (format-spec.md)
+BYTE_WARN = 24_000  # a kilobyte short of it: room for a few more lines, not many
+BYTE_TARGET = 24_000  # what every render fits the whole file under
 LINE_TARGET = 190
-LINE_DESC = 160         # bytes of description per index line; longer is cut at a word, with …
+LINE_DESC = 160  # bytes of description per index line; longer is cut at a word, with …
 DESC_STEPS = (LINE_DESC, 120, 80)
-MEM_WARN = 100          # lines of the MEMORIES section itself: the ideal ceiling
-MEM_CAP = 150           # and the hard one; the hand-written head above it is not counted
+MEM_WARN = 100  # lines of the MEMORIES section itself: the ideal ceiling
+MEM_CAP = 150  # and the hard one; the hand-written head above it is not counted
 OTHER = "Other"
-RECORDS = "Records"     # a records line: the names of a group's `tier: record` memories
-NAMES = "Names"         # a collapsed group: every name, no descriptions
+RECORDS = "Records"  # a records line: the names of a group's `tier: record` memories
+NAMES = "Names"  # a collapsed group: every name, no descriptions
 HEADER = "Each name below is `<name>.md` beside this file."
 
 SECTION_RE = re.compile(r"^## MEMORIES\b.*$", re.M)
@@ -98,7 +101,7 @@ class Entry:
     file: str
     description: str
     group: str | None
-    compact: bool        # a record or HISTORICAL: one shared line per group
+    compact: bool  # a record or HISTORICAL: one shared line per group
 
 
 @dataclass
@@ -106,7 +109,7 @@ class Territory:
     name: str
     index: Path
     entries: list[Entry]
-    groups: list[str]                     # the order from MEMORY.md frontmatter
+    groups: list[str]  # the order from MEMORY.md frontmatter
     superseded: list[str] = field(default_factory=list)
 
 
@@ -133,11 +136,16 @@ def load(root: Path, name: str, superseded: set[str] | None = None) -> Territory
             continue
         tier = one_line(m.meta.get("tier")).lower()
         status = one_line(m.meta.get("status")).upper()
-        entries.append(Entry(m.slug, f.name, one_line(m.meta.get("description")),
-                             one_line(m.meta.get("group")) or None,
-                             tier == "record" or status == "HISTORICAL"))
-    meta, _, _ = parse_frontmatter((d / "MEMORY.md").read_text(encoding="utf-8",
-                                                              errors="replace"))
+        entries.append(
+            Entry(
+                m.slug,
+                f.name,
+                one_line(m.meta.get("description")),
+                one_line(m.meta.get("group")) or None,
+                tier == "record" or status == "HISTORICAL",
+            )
+        )
+    meta, _, _ = parse_frontmatter((d / "MEMORY.md").read_text(encoding="utf-8", errors="replace"))
     groups = meta.get("groups") or []
     groups = [one_line(g) for g in groups] if isinstance(groups, list) else []
     return Territory(name, d / "MEMORY.md", entries, groups, gone)
@@ -159,9 +167,10 @@ def clip(s: str, limit: int = LINE_DESC) -> str:
 @dataclass(frozen=True)
 class Degrade:
     """How far a render stepped down to fit (module docstring, Budget)."""
+
     desc: int = LINE_DESC
-    records: str = "group"                       # group | one (line) | none (a pointer)
-    names_only: tuple[str | None, ...] = ()      # groups collapsed, None being Other
+    records: str = "group"  # group | one (line) | none (a pointer)
+    names_only: tuple[str | None, ...] = ()  # groups collapsed, None being Other
 
     @property
     def none(self) -> bool:
@@ -176,8 +185,10 @@ class Degrade:
         elif self.records == "none":
             bits.append("records not listed")
         if self.names_only:
-            bits.append(f"{len(self.names_only)} group(s) names only: "
-                        + ", ".join(g or OTHER for g in self.names_only))
+            bits.append(
+                f"{len(self.names_only)} group(s) names only: "
+                + ", ".join(g or OTHER for g in self.names_only)
+            )
         return "; ".join(bits)
 
 
@@ -211,13 +222,17 @@ def render_section(t: Territory, d: Degrade = FULL) -> str:
         lines += [f"- {e.slug}: {clip(e.description, d.desc)}" for e in full]
         if compact:
             lines.append(f"- {RECORDS}: " + " ".join(e.slug for e in compact))
-    records = sorted(e.slug for e in t.entries if e.compact
-                     and (e.group not in d.names_only or d.records == "none"))
+    records = sorted(
+        e.slug
+        for e in t.entries
+        if e.compact and (e.group not in d.names_only or d.records == "none")
+    )
     if d.records == "one" and records:
         lines.append(f"- {RECORDS}: " + " ".join(records))
     elif d.records == "none" and records:
-        lines.append(f"- ({len(records)} records not listed: "
-                     f"`mem find <terms> --territory {t.name}`)")
+        lines.append(
+            f"- ({len(records)} records not listed: `mem find <terms> --territory {t.name}`)"
+        )
     return "\n".join([HEADER, *lines]) + "\n" if lines else ""
 
 
@@ -267,8 +282,11 @@ def rendered(root: Path) -> list[str]:
     tdir = root / "territories"
     if not tdir.is_dir():
         return []
-    return [str(p.parent.relative_to(tdir)) for p in sorted(tdir.rglob("MEMORY.md"))
-            if markers(p.read_text(encoding="utf-8", errors="replace"))]
+    return [
+        str(p.parent.relative_to(tdir))
+        for p in sorted(tdir.rglob("MEMORY.md"))
+        if markers(p.read_text(encoding="utf-8", errors="replace"))
+    ]
 
 
 def members(index: Path) -> set[str]:
@@ -291,16 +309,18 @@ def hand_entries(text: str, own: set[str]) -> tuple[str, list[str]]:
     return text[:end] + (tail if tail.strip() else "\n"), took
 
 
-def render(root: Path, name: str, write: bool = True,
-           superseded: set[str] | None = None) -> tuple[str, str]:
+def render(
+    root: Path, name: str, write: bool = True, superseded: set[str] | None = None
+) -> tuple[str, str]:
     """(current text, rendered text) of an adopted territory's MEMORY.md; writes when
     they differ and `write` is set."""
     text, new, _, _ = render_full(root, name, write, superseded)
     return text, new
 
 
-def render_full(root: Path, name: str, write: bool = True,
-                superseded: set[str] | None = None) -> tuple[str, str, Degrade, Territory]:
+def render_full(
+    root: Path, name: str, write: bool = True, superseded: set[str] | None = None
+) -> tuple[str, str, Degrade, Territory]:
     """`render`, plus how far it had to step down and the territory it read."""
     t = load(root, name, superseded)
     text = t.index.read_text(encoding="utf-8")
@@ -373,10 +393,16 @@ def check(root: Path, names: list[str] | None = None) -> list[Finding]:
     want = session_start.layer(root)
     # a missing ALWAYS.md is `mem budget`'s to report; the hook writes one at session start
     if not names and want and always.is_file() and session_start.read(always) + "\n" != want:
-        out.append(Finding(WARN, "render-stale", str(always),
-                           "differs from MACHINE.md + GATES.md + standing/ + ROUTER.md as "
-                           "they are now, so sessions load an old layer; `mem render` "
-                           "rewrites it"))
+        out.append(
+            Finding(
+                WARN,
+                "render-stale",
+                str(always),
+                "differs from MACHINE.md + GATES.md + standing/ + ROUTER.md as "
+                "they are now, so sessions load an old layer; `mem render` "
+                "rewrites it",
+            )
+        )
     tdir = root / "territories"
     if not tdir.is_dir():
         return out
@@ -391,36 +417,67 @@ def check(root: Path, names: list[str] | None = None) -> list[Finding]:
         text = p.read_text(encoding="utf-8", errors="replace")
         if name in adopted:
             for f in hand_entries(text, members(p))[1]:
-                out.append(Finding(WARN, "index-hand-entry", str(p.parent / f),
-                                   "listed by hand below the rendered section, as the "
-                                   "harness's auto-memory appends it; `mem render` takes it "
-                                   "in from the memory's description"))
+                out.append(
+                    Finding(
+                        WARN,
+                        "index-hand-entry",
+                        str(p.parent / f),
+                        "listed by hand below the rendered section, as the "
+                        "harness's auto-memory appends it; `mem render` takes it "
+                        "in from the memory's description",
+                    )
+                )
             _, new, d, t = render_full(root, name, False, sup)
             if new != text:
-                out.append(Finding(WARN, "render-stale", str(p),
-                                   "the rendered MEMORIES section differs from what the "
-                                   "memories say now (a description or group changed, or "
-                                   "the section was hand-edited); `mem render` rewrites it"))
+                out.append(
+                    Finding(
+                        WARN,
+                        "render-stale",
+                        str(p),
+                        "the rendered MEMORIES section differs from what the "
+                        "memories say now (a description or group changed, or "
+                        "the section was hand-edited); `mem render` rewrites it",
+                    )
+                )
             if not d.none:
-                out.append(Finding(INFO, "index-degraded", str(p),
-                                   f"rendered {d.describe()} to fit {BYTE_TARGET:,} bytes / "
-                                   f"{LINE_TARGET} lines; shorten descriptions, split records "
-                                   "out, or restructure the territory to get the full index "
-                                   "back"))
+                out.append(
+                    Finding(
+                        INFO,
+                        "index-degraded",
+                        str(p),
+                        f"rendered {d.describe()} to fit {BYTE_TARGET:,} bytes / "
+                        f"{LINE_TARGET} lines; shorten descriptions, split records "
+                        "out, or restructure the territory to get the full index "
+                        "back",
+                    )
+                )
             out += long_descriptions(t)
             if t.groups:
-                out += [Finding(INFO, "field-invalid", str(p.parent / e.file),
-                                f"no `group:`, so it is listed under {OTHER}; give it one of "
-                                f"{name}'s groups")
-                        for e in t.entries if e.group is None]
+                out += [
+                    Finding(
+                        INFO,
+                        "field-invalid",
+                        str(p.parent / e.file),
+                        f"no `group:`, so it is listed under {OTHER}; give it one of "
+                        f"{name}'s groups",
+                    )
+                    for e in t.entries
+                    if e.group is None
+                ]
             text = new
         elif names:
             # Named and silent before (eval 2026-11-04), while a plain render of the same
             # territory refused it. A hand-written index is where `mem new` cannot honour
             # --group. Only when named: a whole-store check stays about rendered indexes.
-            out.append(Finding(INFO, "index-not-rendered", str(p),
-                               f"hand-written: `mem new -g` cannot file into it; "
-                               f"`mem render {name} --adopt` previews the migration"))
+            out.append(
+                Finding(
+                    INFO,
+                    "index-not-rendered",
+                    str(p),
+                    f"hand-written: `mem new -g` cannot file into it; "
+                    f"`mem render {name} --adopt` previews the migration",
+                )
+            )
         out += budget(p, text)
     return out
 
@@ -429,10 +486,17 @@ def long_descriptions(t: Territory) -> list[Finding]:
     """A description render has to cut even at full size: a refine item, since the cut line
     loses whatever the end of the description said."""
     d = t.index.parent
-    return [Finding(INFO, "description-long", str(d / e.file),
-                    f"description is {len(e.description.encode())} bytes; its index line is "
-                    f"cut at {LINE_DESC}. Say the conclusion in fewer words")
-            for e in t.entries if not e.compact and len(e.description.encode()) > LINE_DESC]
+    return [
+        Finding(
+            INFO,
+            "description-long",
+            str(d / e.file),
+            f"description is {len(e.description.encode())} bytes; its index line is "
+            f"cut at {LINE_DESC}. Say the conclusion in fewer words",
+        )
+        for e in t.entries
+        if not e.compact and len(e.description.encode()) > LINE_DESC
+    ]
 
 
 _TNAME = r"[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)+"
@@ -451,7 +515,7 @@ def router_entries(text: str) -> dict[str, str]:
         if not m:
             continue
         entry = [line]
-        for nxt in lines[i + 1:]:
+        for nxt in lines[i + 1 :]:
             if not nxt.startswith((" ", "\t")):
                 break
             entry.append(nxt)
@@ -473,9 +537,15 @@ def check_router(root: Path) -> list[Finding]:
     for p in sorted(tdir.rglob("MEMORY.md")):
         name = str(p.parent.relative_to(tdir))
         if not re.search(rf"(?<![\w/-]){re.escape(name)}(?![\w/-])", text):
-            out.append(Finding(ERROR, "router-missing-territory", str(p),
-                               f"{name} is not in ROUTER.md, so no session outside its own "
-                               "repos can find it; add a line under its area"))
+            out.append(
+                Finding(
+                    ERROR,
+                    "router-missing-territory",
+                    str(p),
+                    f"{name} is not in ROUTER.md, so no session outside its own "
+                    "repos can find it; add a line under its area",
+                )
+            )
     entries = router_entries(text)
     planned = set()
     for name, entry in sorted(entries.items()):
@@ -483,13 +553,22 @@ def check_router(root: Path) -> list[Finding]:
             continue
         if PLANNED in entry:
             planned.add(name)
-            out.append(Finding(INFO, "router-planned-territory", str(f),
-                               f"{name} is on the map as {PLANNED}"))
+            out.append(
+                Finding(
+                    INFO, "router-planned-territory", str(f), f"{name} is on the map as {PLANNED}"
+                )
+            )
         else:
-            out.append(Finding(ERROR, "router-unknown-territory", str(f),
-                               f"{name} has no territories/{name}/MEMORY.md; fix the line "
-                               f"if it moved or was archived, or say {PLANNED} if it is "
-                               "planned"))
+            out.append(
+                Finding(
+                    ERROR,
+                    "router-unknown-territory",
+                    str(f),
+                    f"{name} has no territories/{name}/MEMORY.md; fix the line "
+                    f"if it moved or was archived, or say {PLANNED} if it is "
+                    "planned",
+                )
+            )
     indexes = sorted(tdir.rglob("MEMORY.md"))
     names = [str(p.parent.relative_to(tdir)) for p in indexes]
     for p in indexes:
@@ -501,15 +580,33 @@ def check_router(root: Path) -> list[Finding]:
                 if not ref or ref == "none" or fnmatch.filter(names, ref):
                     continue
                 if ref in planned:
-                    out.append(Finding(INFO, "territory-ref-planned", str(p),
-                                       f"{key}: {ref}, which the router marks {PLANNED}"))
+                    out.append(
+                        Finding(
+                            INFO,
+                            "territory-ref-planned",
+                            str(p),
+                            f"{key}: {ref}, which the router marks {PLANNED}",
+                        )
+                    )
                 else:
-                    out.append(Finding(ERROR, "territory-ref-unknown", str(p),
-                                       f"{key}: {ref}, which is not a territory; it moved, "
-                                       "was archived, or needs a router entry"))
+                    out.append(
+                        Finding(
+                            ERROR,
+                            "territory-ref-unknown",
+                            str(p),
+                            f"{key}: {ref}, which is not a territory; it moved, "
+                            "was archived, or needs a router entry",
+                        )
+                    )
     for t, was, n in router_counts(root, write=False):
-        out.append(Finding(WARN, "router-count", str(f),
-                           f"{t} says ({was}), has {n} memories; `mem render` corrects it"))
+        out.append(
+            Finding(
+                WARN,
+                "router-count",
+                str(f),
+                f"{t} says ({was}), has {n} memories; `mem render` corrects it",
+            )
+        )
     return out
 
 
@@ -523,8 +620,8 @@ def memory_lines(text: str) -> int:
     m = SECTION_RE.search(text)
     if not m:
         return 0
-    nxt = re.search(r"^## ", text[m.end():], re.M)
-    return nlines(text[m.start():m.end() + nxt.start() if nxt else len(text)])
+    nxt = re.search(r"^## ", text[m.end() :], re.M)
+    return nlines(text[m.start() : m.end() + nxt.start() if nxt else len(text)])
 
 
 def budget(p: Path, text: str) -> list[Finding]:
@@ -533,28 +630,49 @@ def budget(p: Path, text: str) -> list[Finding]:
     lines, size = nlines(text), len(text.encode())
     out = []
     if lines > LINE_CAP or size > BYTE_CAP:
-        out.append(Finding(WARN, "index-over-cap", str(p),
-                           f"{lines} lines, {size:,} bytes: the harness loads only the first "
-                           f"{LINE_CAP} lines / {BYTE_CAP:,} bytes, so the tail is never seen"))
+        out.append(
+            Finding(
+                WARN,
+                "index-over-cap",
+                str(p),
+                f"{lines} lines, {size:,} bytes: the harness loads only the first "
+                f"{LINE_CAP} lines / {BYTE_CAP:,} bytes, so the tail is never seen",
+            )
+        )
     if not out and size > BYTE_WARN:
-        out.append(Finding(INFO, "index-near-cap", str(p),
-                           f"{size:,} of the harness's {BYTE_CAP:,} bytes"))
+        out.append(
+            Finding(INFO, "index-near-cap", str(p), f"{size:,} of the harness's {BYTE_CAP:,} bytes")
+        )
     mem = memory_lines(text)
     if mem > MEM_CAP:
-        out.append(Finding(WARN, "memories-over-cap", str(p),
-                           f"the MEMORIES section is {mem} lines, over the {MEM_CAP}-line cap"))
+        out.append(
+            Finding(
+                WARN,
+                "memories-over-cap",
+                str(p),
+                f"the MEMORIES section is {mem} lines, over the {MEM_CAP}-line cap",
+            )
+        )
     elif mem > MEM_WARN:
-        out.append(Finding(INFO, "memories-over-target", str(p),
-                           f"the MEMORIES section is {mem} lines, over the {MEM_WARN}-line target"))
+        out.append(
+            Finding(
+                INFO,
+                "memories-over-target",
+                str(p),
+                f"the MEMORIES section is {mem} lines, over the {MEM_WARN}-line target",
+            )
+        )
     return out
 
 
 # --- adoption --------------------------------------------------------------------------
 
-STOP = set("""a an and the of to in on at by for from with without into onto is are was
+STOP = set(
+    """a an and the of to in on at by for from with without into onto is are was
 were be been it its this that these those as or not no but so if then than via per all any
 every one only just also still now here there what which who how why when where do does
-did can never""".split())
+did can never""".split()
+)
 WORD_RE = re.compile(r"[a-z0-9][a-z0-9._/-]*[a-z0-9]|[a-z0-9]")
 
 
@@ -578,8 +696,11 @@ def uncovered(index: str, description: str) -> list[str]:
     for w in words(description):
         have.add(_stem(w))
         have.update(_stem(x) for x in w.split("-") if x)
-    return [w for w in words(index)
-            if _stem(w) not in have and not all(_stem(x) in have for x in w.split("-") if x)]
+    return [
+        w
+        for w in words(index)
+        if _stem(w) not in have and not all(_stem(x) in have for x in w.split("-") if x)
+    ]
 
 
 @dataclass
@@ -598,12 +719,12 @@ class Adoption:
     territory: str
     groups: list[str]
     lines: list[Line]
-    prose: list[str]                 # non-entry lines in the section, which a render drops
-    ghosts: list[str]                # index links to files that do not exist
-    unlisted: list[str]              # memories with no index line: they land under Other
+    prose: list[str]  # non-entry lines in the section, which a render drops
+    ghosts: list[str]  # index links to files that do not exist
+    unlisted: list[str]  # memories with no index line: they land under Other
     superseded: list[str]
     before: int
-    after: str                       # the whole MEMORY.md as --write would leave it
+    after: str  # the whole MEMORY.md as --write would leave it
     compact: list[str]
 
     @property
@@ -619,7 +740,7 @@ def parse_section(text: str) -> tuple[int, int, list[Line], list[str]] | None:
     nxt = re.compile(r"^## ", re.M).search(text, m.end())
     end = nxt.start() if nxt else len(text)
     group, lines, prose = None, [], []
-    for ln in text[m.end():end].splitlines():
+    for ln in text[m.end() : end].splitlines():
         if ln.startswith("### "):
             group = ln[4:].strip()
         elif e := index_entry(ln):
@@ -651,7 +772,7 @@ def adopt(root: Path, name: str) -> Adoption:
                 ghosts.append(ln.file)
             continue
         if ln.file in seen:
-            continue                  # listed twice: the first heading wins
+            continue  # listed twice: the first heading wins
         seen.add(ln.file)
         ln.slug, ln.description = e.slug, e.description
         ln.missing = uncovered(f"{ln.title} {ln.gloss}", f"{e.description} {e.slug}")
@@ -662,9 +783,18 @@ def adopt(root: Path, name: str) -> Adoption:
     section = "## MEMORIES\n" + BEGIN_LINE + "\n" + render_section(t) + END + "\n"
     after = text[:start] + section + ("\n" + text[end:].lstrip("\n") if text[end:].strip() else "")
     after = with_groups(after, groups)
-    return Adoption(name, groups, [ln for ln in lines if ln.slug], prose, ghosts, unlisted,
-                    t.superseded, text.count("\n"), after,
-                    [e.slug for e in t.entries if e.compact])
+    return Adoption(
+        name,
+        groups,
+        [ln for ln in lines if ln.slug],
+        prose,
+        ghosts,
+        unlisted,
+        t.superseded,
+        text.count("\n"),
+        after,
+        [e.slug for e in t.entries if e.compact],
+    )
 
 
 def write_adoption(root: Path, a: Adoption) -> int:

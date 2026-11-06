@@ -1,5 +1,6 @@
 """The always-loaded layer, measured as the SessionStart hook renders it, and the hook's own
 output measured against the harness limit that once kept the layer out of context."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -55,28 +56,51 @@ def check_budget(root: Path, mems: list[Memory]) -> list[Finding]:
     framing = 48 + max(0, len(standing_files) - 1) * 9 + 260
     total = sum(est_tokens(t) for _, t in always) + est_tokens("x" * framing)
     if always:
-        out.append(Finding(INFO, "budget", str(root),
-                           f"always-loaded layer: {len(always)} files, ~{total} est. tokens "
-                           "as injected (hook-rendered, frontmatter excluded)"))
+        out.append(
+            Finding(
+                INFO,
+                "budget",
+                str(root),
+                f"always-loaded layer: {len(always)} files, ~{total} est. tokens "
+                "as injected (hook-rendered, frontmatter excluded)",
+            )
+        )
     if total > ALWAYS_LOADED_TOKEN_CLIFF:
         lost = total - ALWAYS_LOADED_TOKEN_CLIFF
-        out.append(Finding(ERROR, "budget-truncating", str(root),
-                           f"~{total} est. tokens EXCEEDS MAX_CHARS "
-                           f"({ALWAYS_LOADED_TOKEN_CLIFF} tok): "
-                           f"the SessionStart hook is dropping ~{lost} tok of real content every "
-                           "session, from the END of the injected order. Run "
-                           "`mem budget --json` for the per-file breakdown and see "
-                           "what falls off with `mem hook session-start`'s own ordering."))
+        out.append(
+            Finding(
+                ERROR,
+                "budget-truncating",
+                str(root),
+                f"~{total} est. tokens EXCEEDS MAX_CHARS "
+                f"({ALWAYS_LOADED_TOKEN_CLIFF} tok): "
+                f"the SessionStart hook is dropping ~{lost} tok of real content every "
+                "session, from the END of the injected order. Run "
+                "`mem budget --json` for the per-file breakdown and see "
+                "what falls off with `mem hook session-start`'s own ordering.",
+            )
+        )
     elif total > ALWAYS_LOADED_TOKEN_WARN:
-        out.append(Finding(WARN, "budget-high", str(root),
-                           f"~{total} est. tokens exceeds the {ALWAYS_LOADED_TOKEN_WARN} "
-                           "soft warn"))
+        out.append(
+            Finding(
+                WARN,
+                "budget-high",
+                str(root),
+                f"~{total} est. tokens exceeds the {ALWAYS_LOADED_TOKEN_WARN} soft warn",
+            )
+        )
     out += check_delivery(root)
     if len(standing_files) > STANDING_CAP:
-        out.append(Finding(ERROR, "standing-cap", str(sdir),
-                           f"{len(standing_files)} standing files exceeds the hard cap of "
-                           f"{STANDING_CAP}; "
-                           "evict or merge one before adding another"))
+        out.append(
+            Finding(
+                ERROR,
+                "standing-cap",
+                str(sdir),
+                f"{len(standing_files)} standing files exceeds the hard cap of "
+                f"{STANDING_CAP}; "
+                "evict or merge one before adding another",
+            )
+        )
     return out
 
 
@@ -97,23 +121,47 @@ def check_delivery(root: Path, claude_md: Path | None = None) -> list[Finding]:
     rules = session_start.rules_path(claude_md)
     found = session_start.importers(root, claude_md) if want else [rules]
     if not found:
-        out.append(Finding(ERROR, "budget-not-imported", str(rules),
-                           "nothing imports the always-loaded layer, so no session sees "
-                           "GATES, standing or the router; `mem install` writes this file "
-                           "(docs/setup.md step 3d)"))
+        out.append(
+            Finding(
+                ERROR,
+                "budget-not-imported",
+                str(rules),
+                "nothing imports the always-loaded layer, so no session sees "
+                "GATES, standing or the router; `mem install` writes this file "
+                "(docs/setup.md step 3d)",
+            )
+        )
     elif len(found) > 1:
-        out.append(Finding(WARN, "budget-imported-twice", str(claude_md),
-                           f"imports the layer as well as {rules.name}, so it loads twice; "
-                           f"delete the `{session_start.import_line(root)}` line here"))
+        out.append(
+            Finding(
+                WARN,
+                "budget-imported-twice",
+                str(claude_md),
+                f"imports the layer as well as {rules.name}, so it loads twice; "
+                f"delete the `{session_start.import_line(root)}` line here",
+            )
+        )
     if want and session_start.read(root / session_start.ALWAYS) + "\n" != want:
         # measured on the layer as it will be, so a stale file does not count as the status
         # line `output` would add, and nothing is written here
-        out.append(Finding(WARN, "budget-always-stale", str(root / session_start.ALWAYS),
-                           "out of date with its sources; `mem render` rewrites it"))
+        out.append(
+            Finding(
+                WARN,
+                "budget-always-stale",
+                str(root / session_start.ALWAYS),
+                "out of date with its sources; `mem render` rewrites it",
+            )
+        )
     status = session_start.output_size(root, Path("/"), claude_md)
     if status > session_start.HOOK_OUTPUT_LIMIT:
-        out.append(Finding(ERROR, "budget-hook-output", str(root),
-                           f"the SessionStart hook prints {status:,} chars, past the "
-                           f"harness's {session_start.HOOK_OUTPUT_LIMIT:,}: the model will "
-                           "get a 2 KB preview and the rest goes to a file it never reads"))
+        out.append(
+            Finding(
+                ERROR,
+                "budget-hook-output",
+                str(root),
+                f"the SessionStart hook prints {status:,} chars, past the "
+                f"harness's {session_start.HOOK_OUTPUT_LIMIT:,}: the model will "
+                "get a 2 KB preview and the rest goes to a file it never reads",
+            )
+        )
     return out

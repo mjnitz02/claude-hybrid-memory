@@ -12,6 +12,7 @@ memory landed, and stamping it would make those memories look fresher than they 
 need `--baseline-date TERRITORY=DATE`, read from RETRO.md's migration entries, and the command
 refuses rather than guess one.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -68,15 +69,15 @@ class Stamp:
     rel: str
     territory: str
     date: dt.date
-    source: str        # "landed <sha>" | "baseline"
+    source: str  # "landed <sha>" | "baseline"
 
 
 @dataclass
 class Plan:
     stamps: list[Stamp]
-    baseline: dict[str, list[str]]    # territory -> baseline files with no date given
-    no_history: list[str]             # never committed: run `mem commit` first
-    bad_dates: list[str]              # --baseline-date problems
+    baseline: dict[str, list[str]]  # territory -> baseline files with no date given
+    no_history: list[str]  # never committed: run `mem commit` first
+    bad_dates: list[str]  # --baseline-date problems
 
 
 def plan(root: Path, baseline_dates: dict[str, dt.date]) -> Plan:
@@ -91,8 +92,11 @@ def plan(root: Path, baseline_dates: dict[str, dt.date]) -> Plan:
         # A record is dated history, written once and never re-checked, so it has no
         # "last seen true". Most were split out of an older memory, which makes their landing
         # commit the date of the split, not of what they say.
-        if (m.path in sup or m.last_verified is not None
-                or str(m.meta.get("tier") or "") == "record"):
+        if (
+            m.path in sup
+            or m.last_verified is not None
+            or str(m.meta.get("tier") or "") == "record"
+        ):
             continue
         rel = str(m.path.relative_to(root))
         got = storegit.first_added(root, rel)
@@ -101,8 +105,7 @@ def plan(root: Path, baseline_dates: dict[str, dt.date]) -> Plan:
             continue
         sha, day = got
         if sha != base:
-            stamps.append(Stamp(rel, m.container, dt.date.fromisoformat(day),
-                                f"landed {sha[:7]}"))
+            stamps.append(Stamp(rel, m.container, dt.date.fromisoformat(day), f"landed {sha[:7]}"))
             continue
         base_day = dt.date.fromisoformat(day)
         if m.container in baseline_dates:
@@ -114,8 +117,10 @@ def plan(root: Path, baseline_dates: dict[str, dt.date]) -> Plan:
         if terr not in used:
             bad.append(f"{terr}: no undated baseline file in it, so the date is unused")
         elif base_day and d > base_day:
-            bad.append(f"{terr}={d}: after the baseline commit ({base_day}), and the files "
-                       "were already there by then")
+            bad.append(
+                f"{terr}={d}: after the baseline commit ({base_day}), and the files "
+                "were already there by then"
+            )
     return Plan(stamps, dict(waiting), no_hist, bad)
 
 
@@ -135,9 +140,11 @@ def apply(root: Path, p: Plan) -> tuple[list[str], storegit.Result | None]:
         return skipped, None
     terrs = sorted({s.territory for s in p.stamps if s.source == "baseline"})
     why = f"; baseline dates for {', '.join(terrs)}" if terrs else ""
-    return skipped, storegit.commit(root, "mem backfill-verified",
-                                    subject=f"backfill last_verified on {n} memories "
-                                            f"(landing dates{why})")
+    return skipped, storegit.commit(
+        root,
+        "mem backfill-verified",
+        subject=f"backfill last_verified on {n} memories (landing dates{why})",
+    )
 
 
 def _describe(p: Plan, verbose: bool) -> list[str]:
@@ -164,18 +171,26 @@ def backfill_main(argv: list[str]) -> int:
         prog="mem backfill-verified",
         description="Stamp last_verified on every memory that has none: its landing date.",
         epilog="example: mem backfill-verified --baseline-date console/tools=2026-09-11 "
-               "--baseline-date cards/archive=2026-09-11 --write")
-    ap.add_argument("--baseline-date", action="append", default=[], metavar="TERRITORY=DATE",
-                    help="landing date for a territory's files that predate the store's "
-                         "history (see RETRO.md); repeat per territory")
+        "--baseline-date cards/archive=2026-09-11 --write",
+    )
+    ap.add_argument(
+        "--baseline-date",
+        action="append",
+        default=[],
+        metavar="TERRITORY=DATE",
+        help="landing date for a territory's files that predate the store's "
+        "history (see RETRO.md); repeat per territory",
+    )
     ap.add_argument("--write", action="store_true", help="apply it (default: show the plan)")
     ap.add_argument("--verbose", "-v", action="store_true", help="list every file")
     ap.add_argument("--root", type=Path, default=STORE)
     a = ap.parse_args(argv)
 
     if not storegit.is_repo(a.root):
-        print(f"mem backfill-verified: {a.root} has no history to read landing dates from",
-              file=sys.stderr)
+        print(
+            f"mem backfill-verified: {a.root} has no history to read landing dates from",
+            file=sys.stderr,
+        )
         return 2
     dates = {}
     for spec in a.baseline_date:
@@ -186,8 +201,11 @@ def backfill_main(argv: list[str]) -> int:
             print(f"mem backfill-verified: {spec!r} is not TERRITORY=YYYY-MM-DD", file=sys.stderr)
             return 2
     if a.write and storegit.pending(a.root):
-        print("mem backfill-verified: the store has uncommitted changes; `mem commit` them "
-              "first so this lands as its own commit", file=sys.stderr)
+        print(
+            "mem backfill-verified: the store has uncommitted changes; `mem commit` them "
+            "first so this lands as its own commit",
+            file=sys.stderr,
+        )
         return 2
 
     p = plan(a.root, dates)
@@ -195,18 +213,21 @@ def backfill_main(argv: list[str]) -> int:
     print("\n".join(_describe(p, a.verbose)) or "  none")
     blocked = bool(p.baseline or p.bad_dates)
     if p.baseline:
-        print("\nIn the baseline commit with no --baseline-date (their real landing date "
-              "is in RETRO.md):")
+        print(
+            "\nIn the baseline commit with no --baseline-date (their real landing date "
+            "is in RETRO.md):"
+        )
         print("\n".join(f"  {t}: {len(fs)}" for t, fs in sorted(p.baseline.items())))
     if p.bad_dates:
         print("\nRefused --baseline-date:")
         print("\n".join(f"  {b}" for b in p.bad_dates))
     if p.no_history:
-        print(f"\n{len(p.no_history)} never committed, skipped: "
-              + ", ".join(p.no_history))
+        print(f"\n{len(p.no_history)} never committed, skipped: " + ", ".join(p.no_history))
     if blocked:
-        print("\nNothing written: every baseline territory needs a date, and every date "
-              "must be usable.")
+        print(
+            "\nNothing written: every baseline territory needs a date, and every date "
+            "must be usable."
+        )
         return 1
     if not a.write:
         print("\nDry run. Pass --write to stamp and commit.")

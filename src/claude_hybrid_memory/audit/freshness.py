@@ -1,4 +1,5 @@
 """Freshness: which memories are past their check-on-use window."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -16,6 +17,7 @@ def age_phrase(age: int | None) -> str:
 class Due(NamedTuple):
     """A memory past its window: its volatility, age in days (None if never verified) and
     the window it is past."""
+
     volatility: str
     age: int | None
     limit: int
@@ -32,8 +34,11 @@ def past_window(meta: dict, today: dt.date) -> Due | None:
     "last seen true" (format-spec), so it is never due."""
     if str(meta.get("tier") or "").strip() == "record":
         return None
-    vol = str(meta.get("volatility") or "").strip() or STATUS_VOLATILITY.get(
-        str(meta.get("status") or "").strip().upper()) or "slow"
+    vol = (
+        str(meta.get("volatility") or "").strip()
+        or STATUS_VOLATILITY.get(str(meta.get("status") or "").strip().upper())
+        or "slow"
+    )
     limit = STALE_AFTER.get(vol, STALE_AFTER["slow"])
     lv = parse_date(meta.get("last_verified"))
     age = None if lv is None else (today - lv).days
@@ -42,8 +47,9 @@ def past_window(meta: dict, today: dt.date) -> Due | None:
     return Due(vol, age, limit)
 
 
-def check_freshness(mems: list[Memory], today: dt.date,
-                    superseded: frozenset = frozenset()) -> list[Finding]:
+def check_freshness(
+    mems: list[Memory], today: dt.date, superseded: frozenset = frozenset()
+) -> list[Finding]:
     """`superseded` is the absolute paths of superseded memories: never edited by design, so
     a staleness finding on one could never be cleared."""
     out = []
@@ -56,10 +62,22 @@ def check_freshness(mems: list[Memory], today: dt.date,
         if due.volatility == "live":
             # Not a work item (nothing queues it): a count the retrospective reports. The
             # check happens when a session is about to act on the claim (verify-on-use).
-            out.append(Finding(WARN, "stale-live", str(m.path),
-                               f"live, {age_phrase(due.age)} (window {due.limit}d): check its "
-                               "claim before acting on it, then `mem verified`"))
+            out.append(
+                Finding(
+                    WARN,
+                    "stale-live",
+                    str(m.path),
+                    f"live, {age_phrase(due.age)} (window {due.limit}d): check its "
+                    "claim before acting on it, then `mem verified`",
+                )
+            )
         else:
-            out.append(Finding(INFO, "stale", str(m.path),
-                               f"{due.volatility}; {age_phrase(due.age)} (limit {due.limit}d)"))
+            out.append(
+                Finding(
+                    INFO,
+                    "stale",
+                    str(m.path),
+                    f"{due.volatility}; {age_phrase(due.age)} (limit {due.limit}d)",
+                )
+            )
     return out

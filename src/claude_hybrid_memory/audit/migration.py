@@ -1,4 +1,5 @@
 """Migration state of the legacy silos."""
+
 from __future__ import annotations
 
 import os
@@ -25,33 +26,54 @@ def check_silos(legacy_root: Path, store_root: Path) -> list[Finding]:
         if md.is_symlink() and not (md / "MEMORY.md").is_file():
             # exists() follows the link, so a territory renamed or archived out from under
             # this silo would otherwise vanish from the audit without a word
-            fix = ("repoint it with `mem link`" if not md.exists() else
-                   "the target still exists, so remove the link by hand, then `mem link`")
-            out.append(Finding(ERROR, "silo-dangling", silo.name,
-                               f"-> {os.readlink(md)}, which is not a territory; the "
-                               f"repo loads no memory. {fix}"))
+            fix = (
+                "repoint it with `mem link`"
+                if not md.exists()
+                else "the target still exists, so remove the link by hand, then `mem link`"
+            )
+            out.append(
+                Finding(
+                    ERROR,
+                    "silo-dangling",
+                    silo.name,
+                    f"-> {os.readlink(md)}, which is not a territory; the "
+                    f"repo loads no memory. {fix}",
+                )
+            )
             continue
         if not md.exists():
             continue
         if md.is_symlink():
-            out.append(Finding(INFO, "silo-migrated", silo.name,
-                               f"-> {os.readlink(md)}"))
+            out.append(Finding(INFO, "silo-migrated", silo.name, f"-> {os.readlink(md)}"))
             continue
         files = [f for f in md.glob("*.md") if f.name != "MEMORY.md"]
         if not files:
             continue
         wd = silo_workdir(silo.name)
         if wd is None:
-            out.append(Finding(WARN, "silo-not-checked-out", silo.name,
-                               f"{len(files)} memory files but no directory on disk resolves "
-                               "to this silo; decide archive vs `mode: parked` -- absence from "
-                               "THIS disk is not evidence the repo is dead"))
+            out.append(
+                Finding(
+                    WARN,
+                    "silo-not-checked-out",
+                    silo.name,
+                    f"{len(files)} memory files but no directory on disk resolves "
+                    "to this silo; decide archive vs `mode: parked` -- absence from "
+                    "THIS disk is not evidence the repo is dead",
+                )
+            )
         collide = sorted({f.stem for f in files} & set(store_slugs))
         if collide:
-            out.append(Finding(ERROR, "silo-mixed-state", silo.name,
-                               f"still holds {len(collide)} slug(s) that also live in the store: "
-                               + ", ".join(collide[:5])))
+            out.append(
+                Finding(
+                    ERROR,
+                    "silo-mixed-state",
+                    silo.name,
+                    f"still holds {len(collide)} slug(s) that also live in the store: "
+                    + ", ".join(collide[:5]),
+                )
+            )
         else:
-            out.append(Finding(INFO, "silo-pending", silo.name,
-                               f"{len(files)} files, not yet reviewed"))
+            out.append(
+                Finding(INFO, "silo-pending", silo.name, f"{len(files)} files, not yet reviewed")
+            )
     return out

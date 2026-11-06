@@ -35,8 +35,9 @@ def test_refresh_is_incremental(fx: Fixture):
     st = cache.refresh(conn, fx.store)
     assert st.updated == 1
     # kit-sync-v1 is superseded by kit-sync-design, so it is only found when asked for
-    assert [h.slug for h in cache.find(conn, ["zeppelin"], include_superseded=True).hits] \
-        == ["kit-sync-v1"]
+    assert [h.slug for h in cache.find(conn, ["zeppelin"], include_superseded=True).hits] == [
+        "kit-sync-v1"
+    ]
 
     p.unlink()
     st = cache.refresh(conn, fx.store)
@@ -71,8 +72,10 @@ def test_find_needs_every_term_before_it_falls_back(fx: Fixture):
 
 def test_find_territory_filter_includes_children(fx: Fixture):
     conn, _ = index(fx)
+
     def where(t):
         return {h.container for h in cache.find(conn, ["sync"], territory=t)[0]}
+
     assert where("console") == where("console/kit") == {"console/kit"}
     assert where("cons") == set()  # a path segment, not a string prefix
     assert where("home") == {"home/lab"}
@@ -85,8 +88,10 @@ def test_fts_syntax_in_input_is_inert(fx: Fixture):
 
 
 def test_sections_skip_fenced_headings_and_keep_file_lines():
-    text = ("---\nname: a-b\n---\n\nIntro line.\n\n## Real\n\n```sh\n# not a heading\n```\n"
-            "\n### Sub\n\ntext\n")
+    text = (
+        "---\nname: a-b\n---\n\nIntro line.\n\n## Real\n\n```sh\n# not a heading\n```\n"
+        "\n### Sub\n\ntext\n"
+    )
     secs = cache.sections_of(text)
     assert [(s.level, s.heading) for s in secs] == [(0, ""), (2, "Real"), (3, "Sub")]
     lines = text.split("\n")
@@ -111,7 +116,8 @@ def test_show_cli(fx: Fixture):
     rc, _, err = run(mem_cmd("show", "README", *root), fx.env())
     assert rc == 0  # one README in this fixture, so not ambiguous
     (fx.store / "territories/home/lab/kit-sync-v1.md").write_text(
-        "---\nname: kit-sync-v1\ndescription: a namesake\n---\n")
+        "---\nname: kit-sync-v1\ndescription: a namesake\n---\n"
+    )
     rc, _, err = run(mem_cmd("show", "kit-sync-v1", *root), fx.env())
     assert rc == 2 and "console/kit/kit-sync-v1" in err and "home/lab/kit-sync-v1" in err
     rc, out, _ = run(mem_cmd("show", "home/lab/kit-sync-v1", *root), fx.env())
@@ -130,43 +136,78 @@ def test_find_cli_reports_hidden_archive(fx: Fixture):
 # `find sillytavern docker unraid`) are rerun against a scratch copy of the real store as the
 # acceptance check; these pin the rules that fixed them.
 
+
 def _mem(fx: Fixture, terr: str, slug: str, desc: str, body: str, **meta) -> None:
     extra = "".join(f"{k}: {v}\n" for k, v in meta.items())
     (fx.store / "territories" / terr / f"{slug}.md").write_text(
-        f"---\nname: {slug}\nkind: territory\ndescription: {desc}\n{extra}---\n\n{body}\n")
+        f"---\nname: {slug}\nkind: territory\ndescription: {desc}\n{extra}---\n\n{body}\n"
+    )
 
 
 def test_find_splits_an_argument_into_words_that_may_sit_in_different_sections(fx: Fixture):
-    _mem(fx, "console/kit", "kit-sd-panic", "The built-in slot panics under load.",
-         "## Hardware\n\nThe SD card goes in the side.\n\n## Fix\n\nUse the USB reader.",
-         volatility="stable", last_verified="2026-11-01")
+    _mem(
+        fx,
+        "console/kit",
+        "kit-sd-panic",
+        "The built-in slot panics under load.",
+        "## Hardware\n\nThe SD card goes in the side.\n\n## Fix\n\nUse the USB reader.",
+        volatility="stable",
+        last_verified="2026-11-01",
+    )
     conn, _ = index(fx)
-    found = cache.find(conn, ["card reader"])        # one argument, two words, two sections
+    found = cache.find(conn, ["card reader"])  # one argument, two words, two sections
     assert not found.partial and [h.slug for h in found.hits] == ["kit-sd-panic"]
 
 
 def test_find_matches_words_as_prefixes(fx: Fixture):
-    _mem(fx, "console/kit", "kit-no-deletions", "Never run deletions yourself.", "List them.",
-         volatility="stable", last_verified="2026-11-01")
+    _mem(
+        fx,
+        "console/kit",
+        "kit-no-deletions",
+        "Never run deletions yourself.",
+        "List them.",
+        volatility="stable",
+        last_verified="2026-11-01",
+    )
     conn, _ = index(fx)
     assert "kit-no-deletions" in {h.slug for h in cache.find(conn, ["delet"]).hits}
 
 
 def test_find_labels_a_single_argument_partial_when_no_memory_has_every_word(fx: Fixture):
     conn, _ = index(fx)
-    found = cache.find(conn, ["nightly zeppelin"])   # used to be one phrase: "no matches"
+    found = cache.find(conn, ["nightly zeppelin"])  # used to be one phrase: "no matches"
     assert found.partial and found.hits and all(h.matched == 1 for h in found.hits)
 
 
 def test_find_ranks_records_and_historical_below_current_state(fx: Fixture):
     body = "Docker on the unraid box, and the sillytavern container."
-    _mem(fx, "home/lab", "lab-st-now", "Where ST runs today.", body,
-         volatility="slow", last_verified="2026-11-01")
+    _mem(
+        fx,
+        "home/lab",
+        "lab-st-now",
+        "Where ST runs today.",
+        body,
+        volatility="slow",
+        last_verified="2026-11-01",
+    )
     for slug in ("lab-st-record-a", "lab-st-record-b"):
-        _mem(fx, "home/lab", slug, "Where ST ran, sillytavern docker unraid.", body * 3,
-             tier="record")
-    _mem(fx, "home/lab", "lab-st-old", "Where ST ran, sillytavern docker unraid.", body * 3,
-         status="HISTORICAL", last_verified="2026-11-01")
+        _mem(
+            fx,
+            "home/lab",
+            slug,
+            "Where ST ran, sillytavern docker unraid.",
+            body * 3,
+            tier="record",
+        )
+    _mem(
+        fx,
+        "home/lab",
+        "lab-st-old",
+        "Where ST ran, sillytavern docker unraid.",
+        body * 3,
+        status="HISTORICAL",
+        last_verified="2026-11-01",
+    )
     conn, _ = index(fx)
     hits = cache.find(conn, ["sillytavern", "docker", "unraid"]).hits
     assert hits[0].slug == "lab-st-now"
@@ -180,10 +221,25 @@ def test_find_counts_full_matches_outside_an_empty_territory(fx: Fixture):
 
 def test_find_flags_a_memory_past_its_window(fx: Fixture):
     import datetime as dt
-    _mem(fx, "home/lab", "lab-old-claim", "A live claim, long unchecked.", "Body.",
-         volatility="live", last_verified="2026-09-11")
-    _mem(fx, "home/lab", "lab-fresh-claim", "A live claim, checked.", "Body.",
-         volatility="live", last_verified="2026-11-01")
+
+    _mem(
+        fx,
+        "home/lab",
+        "lab-old-claim",
+        "A live claim, long unchecked.",
+        "Body.",
+        volatility="live",
+        last_verified="2026-09-11",
+    )
+    _mem(
+        fx,
+        "home/lab",
+        "lab-fresh-claim",
+        "A live claim, checked.",
+        "Body.",
+        volatility="live",
+        last_verified="2026-11-01",
+    )
     conn, _ = index(fx)
     due = {h.slug: h.due for h in cache.find(conn, ["claim"], today=dt.date(2026, 11, 4)).hits}
     assert due == {"lab-old-claim": "PAST WINDOW 54d > 14d live", "lab-fresh-claim": ""}
@@ -194,15 +250,24 @@ def test_find_puts_a_standing_directive_first_when_its_headline_matches(fx: Fixt
     # their description and repeat it in the body; the standing rule says it once. BM25
     # alone ranked the real rule 13th (independent review, 2026-11-04).
     for i in range(12):
-        _mem(fx, "console/kit", f"kit-delete-{i}", "DELETES the old file on install.",
-             "Delete. Deleted. Deletion. " * 5, volatility="slow", last_verified="2026-11-01")
+        _mem(
+            fx,
+            "console/kit",
+            f"kit-delete-{i}",
+            "DELETES the old file on install.",
+            "Delete. Deleted. Deletion. " * 5,
+            volatility="slow",
+            last_verified="2026-11-01",
+        )
     (fx.store / "standing/hands-off-deletions.md").write_text(
         "---\nname: hands-off-deletions\nkind: standing\ndescription: For deletions, hand "
-        "over a list.\nvolatility: stable\nlast_verified: 2026-11-01\n---\n\nReview first.\n")
+        "over a list.\nvolatility: stable\nlast_verified: 2026-11-01\n---\n\nReview first.\n"
+    )
     (fx.store / "standing/mentions-in-passing.md").write_text(
         "---\nname: mentions-in-passing\nkind: standing\ndescription: Something else.\n"
-        "volatility: stable\nlast_verified: 2026-11-01\n---\n\nOnce deleted a thing.\n")
+        "volatility: stable\nlast_verified: 2026-11-01\n---\n\nOnce deleted a thing.\n"
+    )
     conn, _ = index(fx)
     slugs = [h.slug for h in cache.find(conn, ["delet"], limit=5).hits]
     assert slugs[0] == "hands-off-deletions"
-    assert "mentions-in-passing" not in slugs           # a body mention earns no lift
+    assert "mentions-in-passing" not in slugs  # a body mention earns no lift

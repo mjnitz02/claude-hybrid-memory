@@ -27,8 +27,11 @@ def test_structure_flags_the_broken_file(fx: Fixture):
     assert ("missing-name", "kit_raw_notes.md") in found
     assert ("bad-slug", "kit_raw_notes.md") in found
     # a value outside a field's vocabulary is a refine item, not an error (spec.REFINE_CODES)
-    bad = [f for f in audit.check_structure(mems)
-           if f.code == "field-invalid" and f.path.endswith("kit-bad-recipe.md")]
+    bad = [
+        f
+        for f in audit.check_structure(mems)
+        if f.code == "field-invalid" and f.path.endswith("kit-bad-recipe.md")
+    ]
     assert {f.message.split()[0] for f in bad} >= {"status", "last_verified"}
     assert all(f.level == "info" for f in bad)
 
@@ -36,8 +39,8 @@ def test_structure_flags_the_broken_file(fx: Fixture):
 def test_links(fx: Fixture):
     mems, routers = scanned(fx)
     f = audit.check_links(mems, routers)
-    assert "dangling-link" in codes(f, "error")      # [[kit-missing-note]]
-    assert "ambiguous-slug" in codes(f, "error")     # kit-sync-v1 in store AND a silo
+    assert "dangling-link" in codes(f, "error")  # [[kit-missing-note]]
+    assert "ambiguous-slug" in codes(f, "error")  # kit-sync-v1 in store AND a silo
     assert "orphan" in codes(f, "warn")
     not_links = {x.path for x in f if x.code == "not-a-wikilink"}
     assert {"var", "override"} <= not_links
@@ -62,8 +65,9 @@ def test_a_superseded_file_is_not_at_fault_but_its_index_line_is(fx: Fixture):
     # listing it is what sends a session to the old word.
     _, routers = scanned(fx)
     f = audit.check_chains(fx.store, routers)
-    assert [(x.code, x.path.rsplit("/", 2)[-2:]) for x in f] == \
-        [("superseded-still-indexed", ["kit", "MEMORY.md"])]
+    assert [(x.code, x.path.rsplit("/", 2)[-2:]) for x in f] == [
+        ("superseded-still-indexed", ["kit", "MEMORY.md"])
+    ]
     assert "kit-sync-v1.md" in f[0].message and "console/kit/kit-sync-design" in f[0].message
 
 
@@ -71,7 +75,7 @@ def test_freshness(fx: Fixture):
     mems, _ = scanned(fx)
     f = audit.check_freshness(mems, TODAY)
     assert "stale-live" in codes(f, "warn")
-    assert not codes(f) & {"verify-refused", "verify-due"}   # recipes are no longer run
+    assert not codes(f) & {"verify-refused", "verify-due"}  # recipes are no longer run
 
 
 def test_a_record_is_never_stale_and_needs_no_volatility(fx: Fixture):
@@ -79,8 +83,10 @@ def test_a_record_is_never_stale_and_needs_no_volatility(fx: Fixture):
     2026-11-04 retro found all 52 of a real store's records reported twice, as `stale` and as
     `no-volatility`: 104 findings with nothing to do about any of them."""
     rec = fx.store / "territories/console/kit/kit-bench-run-2025-01.md"
-    rec.write_text("---\nname: kit-bench-run-2025-01\nkind: territory\ntier: record\n"
-                   "description: The January 2025 bench run.\n---\n\nNumbers.\n")
+    rec.write_text(
+        "---\nname: kit-bench-run-2025-01\nkind: territory\ntier: record\n"
+        "description: The January 2025 bench run.\n---\n\nNumbers.\n"
+    )
     mems, _ = scanned(fx)
     hit = lambda f: [x.code for x in f if x.path == str(rec)]  # noqa: E731
     assert hit(audit.check_freshness(mems, TODAY)) == []
@@ -89,8 +95,11 @@ def test_a_record_is_never_stale_and_needs_no_volatility(fx: Fixture):
 
 def test_retired_recipe_fields_are_flagged(fx: Fixture):
     mems, _ = scanned(fx)
-    old = {f.path.rsplit("/", 1)[-1]: f for f in audit.check_structure(mems)
-           if f.code == "obsolete-field"}
+    old = {
+        f.path.rsplit("/", 1)[-1]: f
+        for f in audit.check_structure(mems)
+        if f.code == "obsolete-field"
+    }
     assert set(old) >= {"kit-fodder-corpus.md", "kit-bad-recipe.md"}
     assert old["kit-bad-recipe.md"].level == "info"
 
@@ -107,7 +116,7 @@ def test_silos(fx: Fixture):
     by = {x.code: x for x in f}
     assert "silo-migrated" in by
     assert "silo-mixed-state" in by and "kit-sync-v1" in by["silo-mixed-state"].message
-    assert "silo-not-checked-out" in by   # /Users/nobody does not exist on this disk
+    assert "silo-not-checked-out" in by  # /Users/nobody does not exist on this disk
 
 
 def test_dup_hint_crosses_containers_only(fx: Fixture):
@@ -129,8 +138,9 @@ def test_secret_scan_never_prints_the_value(fx: Fixture):
 def test_secret_scan_ignores_code_that_names_a_secret(fx: Fixture):
     # switch-nax0-crypto.md's shape: Python slicing assigned to a variable named `secret`
     p = fx.store / "territories/console/kit/kit-sync-design.md"
-    p.write_text(p.read_text()
-                 + "\n    secret = kek_src[:0x10],\n    token = derive_token_for_session\n")
+    p.write_text(
+        p.read_text() + "\n    secret = kek_src[:0x10],\n    token = derive_token_for_session\n"
+    )
     assert audit.check_secrets(fx.store, []) == []
     p.write_text(p.read_text() + "\napi_key: 9f8e7d6c5b4a39281706f5e4\n")
     assert codes(audit.check_secrets(fx.store, []), "warn") == {"secret-maybe"}
@@ -138,12 +148,15 @@ def test_secret_scan_ignores_code_that_names_a_secret(fx: Fixture):
 
 def test_split_candidates_rank_by_size_markers_and_reads(fx: Fixture):
     from collections import Counter
+
     t = fx.store / "territories/console/kit"
     (t / "kit-big-log.md").write_text(
         "---\nname: kit-big-log\nkind: territory\ndescription: big, accreted\n---\n\n"
-        "Read bottom-up.\n\n## CORRECTION\n\n" + "x " * 6000 + "\n")
+        "Read bottom-up.\n\n## CORRECTION\n\n" + "x " * 6000 + "\n"
+    )
     (t / "kit-big-plain.md").write_text(
-        "---\nname: kit-big-plain\nkind: territory\ndescription: big, plain\n---\n\n" + "y " * 7000)
+        "---\nname: kit-big-plain\nkind: territory\ndescription: big, plain\n---\n\n" + "y " * 7000
+    )
     mems, _ = scanned(fx)
     f = [x for x in audit.check_split(mems, Counter(), fx.store) if x.code == "split-candidate"]
     assert [x.path.split("/")[-1] for x in f] == ["kit-big-log.md", "kit-big-plain.md"]

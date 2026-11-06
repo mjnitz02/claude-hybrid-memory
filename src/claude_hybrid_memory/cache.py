@@ -6,6 +6,7 @@ rebuilt on the next call. Lives at <store>/.cache/index.sqlite, which the store 
 Granularity is the section: a hit names the headings that matched and the line they start
 on, so a session can `Read` straight to them instead of reading whole files.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -78,7 +79,7 @@ class Stats:
     added: int = 0
     updated: int = 0
     removed: int = 0
-    touched: int = 0        # mtime moved, content identical: no reindex
+    touched: int = 0  # mtime moved, content identical: no reindex
     unchanged: int = 0
     files: int = 0
     sections: int = 0
@@ -96,7 +97,7 @@ def sections_of(text: str, body: str | None = None) -> list[Section]:
     `body` is the text after the frontmatter, when the caller has already parsed it."""
     if body is None:
         _, body, _ = parse_frontmatter(text)
-    first = text[:len(text) - len(body)].count("\n") + 1
+    first = text[: len(text) - len(body)].count("\n") + 1
     out: list[Section] = []
     level, heading, start, buf = 0, "", first, []
     fence = None
@@ -167,8 +168,9 @@ def refresh(conn: sqlite3.Connection, root: Path) -> Stats:
     disk = discover(root)
     with conn:
         conn.execute("BEGIN IMMEDIATE")
-        rows = {r[0]: r[1:] for r in conn.execute(
-            "SELECT path, id, size, mtime_ns, hash FROM files")}
+        rows = {
+            r[0]: r[1:] for r in conn.execute("SELECT path, id, size, mtime_ns, hash FROM files")
+        }
         for rel in rows.keys() - disk.keys():
             _drop(conn, rows[rel][0])
             st.removed += 1
@@ -184,8 +186,10 @@ def refresh(conn: sqlite3.Connection, root: Path) -> Stats:
                 continue
             h = hashlib.sha1(data).hexdigest()
             if row and row[3] == h:
-                conn.execute("UPDATE files SET size=?, mtime_ns=? WHERE id=?",
-                             (s.st_size, s.st_mtime_ns, row[0]))
+                conn.execute(
+                    "UPDATE files SET size=?, mtime_ns=? WHERE id=?",
+                    (s.st_size, s.st_mtime_ns, row[0]),
+                )
                 st.touched += 1
                 continue
             if row:
@@ -193,8 +197,17 @@ def refresh(conn: sqlite3.Connection, root: Path) -> Stats:
                 st.updated += 1
             else:
                 st.added += 1
-            _add(conn, rel, p, area, container, data.decode("utf-8", "replace"),
-                 s.st_size, s.st_mtime_ns, h)
+            _add(
+                conn,
+                rel,
+                p,
+                area,
+                container,
+                data.decode("utf-8", "replace"),
+                s.st_size,
+                s.st_mtime_ns,
+                h,
+            )
         if st.added or st.updated or st.removed:
             _rebuild_chains(conn)
     st.files = conn.execute("SELECT count(*) FROM files").fetchone()[0]
@@ -205,8 +218,10 @@ def refresh(conn: sqlite3.Connection, root: Path) -> Stats:
 
 
 def _drop(conn: sqlite3.Connection, file_id: int) -> None:
-    conn.execute("DELETE FROM sections_fts WHERE rowid IN "
-                 "(SELECT id FROM sections WHERE file_id=?)", (file_id,))
+    conn.execute(
+        "DELETE FROM sections_fts WHERE rowid IN (SELECT id FROM sections WHERE file_id=?)",
+        (file_id,),
+    )
     conn.execute("DELETE FROM files WHERE id=?", (file_id,))
 
 
@@ -217,29 +232,47 @@ def _add(conn, rel, p, area, container, text, size, mtime_ns, h) -> None:
     cur = conn.execute(
         "INSERT INTO files(path, area, container, slug, description, status, tier,"
         " last_verified, meta, size, mtime_ns, hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-        (rel, area, container, slug, desc, str(meta.get("status") or "").strip(),
-         str(meta.get("tier") or "").strip(), str(meta.get("last_verified") or "").strip(),
-         json.dumps(meta, default=str), size, mtime_ns, h))
+        (
+            rel,
+            area,
+            container,
+            slug,
+            desc,
+            str(meta.get("status") or "").strip(),
+            str(meta.get("tier") or "").strip(),
+            str(meta.get("last_verified") or "").strip(),
+            json.dumps(meta, default=str),
+            size,
+            mtime_ns,
+            h,
+        ),
+    )
     fid = cur.lastrowid
     for i, sec in enumerate(sections_of(text, body) or [Section(0, "", 1, "")]):
         sid = conn.execute(
             "INSERT INTO sections(file_id, ord, level, heading, line) VALUES (?,?,?,?,?)",
-            (fid, i, sec.level, sec.heading, sec.line)).lastrowid
-        conn.execute("INSERT INTO sections_fts(rowid, slug, description, heading, text)"
-                     " VALUES (?,?,?,?,?)", (sid, slug, desc, sec.heading, sec.text))
+            (fid, i, sec.level, sec.heading, sec.line),
+        ).lastrowid
+        conn.execute(
+            "INSERT INTO sections_fts(rowid, slug, description, heading, text) VALUES (?,?,?,?,?)",
+            (sid, slug, desc, sec.heading, sec.text),
+        )
 
 
 # --- chains -----------------------------------------------------------------------------
+
 
 def graph(conn) -> chains.Graph:
     """The version-chain graph over every cached file, archive included."""
     # Only a file whose frontmatter mentions the key can have refs. Parsing every row's JSON
     # on each write cost the PostToolUse hook ~8 ms of its 50 ms budget (2026-10-21).
-    nodes = [chains.Node(path, area, container, slug,
-                         chains.refs_of(json.loads(meta)) if has else ())
-             for path, area, container, slug, meta, has in conn.execute(
-                 "SELECT path, area, container, slug, meta, instr(meta, '\"supersedes\"') > 0"
-                 " FROM files ORDER BY path")]
+    nodes = [
+        chains.Node(path, area, container, slug, chains.refs_of(json.loads(meta)) if has else ())
+        for path, area, container, slug, meta, has in conn.execute(
+            "SELECT path, area, container, slug, meta, instr(meta, '\"supersedes\"') > 0"
+            " FROM files ORDER BY path"
+        )
+    ]
     return chains.build(nodes)
 
 
@@ -248,20 +281,27 @@ def _rebuild_chains(conn) -> None:
     dangling, or make a bare slug ambiguous, anywhere in the store."""
     ids = dict(conn.execute("SELECT path, id FROM files"))
     conn.execute("DELETE FROM chain")
-    conn.executemany("INSERT INTO chain(new_id, old_id) VALUES (?,?)",
-                     [(ids[new], ids[old]) for new, olds in graph(conn).older.items()
-                      for old in olds])
+    conn.executemany(
+        "INSERT INTO chain(new_id, old_id) VALUES (?,?)",
+        [(ids[new], ids[old]) for new, olds in graph(conn).older.items() for old in olds],
+    )
 
 
-SUPERSEDED = ("SELECT c.old_id FROM chain c JOIN files n ON n.id = c.new_id"
-              " WHERE n.area != 'archive'")
+SUPERSEDED = (
+    "SELECT c.old_id FROM chain c JOIN files n ON n.id = c.new_id WHERE n.area != 'archive'"
+)
 
 
 def superseded_by(conn, file_id: int) -> list[str]:
     """container/slug of each live memory that supersedes this one."""
-    return [f"{c}/{s}" for c, s in conn.execute(
-        "SELECT n.container, n.slug FROM chain c JOIN files n ON n.id = c.new_id"
-        " WHERE c.old_id = ? AND n.area != 'archive' ORDER BY n.path", (file_id,))]
+    return [
+        f"{c}/{s}"
+        for c, s in conn.execute(
+            "SELECT n.container, n.slug FROM chain c JOIN files n ON n.id = c.new_id"
+            " WHERE c.old_id = ? AND n.area != 'archive' ORDER BY n.path",
+            (file_id,),
+        )
+    ]
 
 
 # --- find -------------------------------------------------------------------------------
@@ -270,8 +310,8 @@ def superseded_by(conn, file_id: int) -> list[str]:
 # memory with as many words matched: in the 2026-11-04 eval, `find sillytavern docker unraid`
 # put five home/unraid records above the memory that held the answer. A tier in the sort,
 # not a score factor, so no amount of keyword density lifts history over current state.
-HEADLINE = 3.0      # a word in the slug or description multiplies that word's score
-MIN_PREFIX = 3      # words shorter than this match exactly, never as a prefix
+HEADLINE = 3.0  # a word in the slug or description multiplies that word's score
+MIN_PREFIX = 3  # words shorter than this match exactly, never as a prefix
 
 
 @dataclass
@@ -285,18 +325,18 @@ class Hit:
     tier: str
     last_verified: str
     score: float
-    sections: list = field(default_factory=list)    # [(heading, line)], best first
+    sections: list = field(default_factory=list)  # [(heading, line)], best first
     superseded_by: list = field(default_factory=list)
-    matched: int = 0                                 # how many of the query's words it has
-    headline: int = 0                                # how many of them are in slug/description
-    due: str = ""                                    # PAST WINDOW marker, else ""
+    matched: int = 0  # how many of the query's words it has
+    headline: int = 0  # how many of them are in slug/description
+    due: str = ""  # PAST WINDOW marker, else ""
 
 
 class Found(NamedTuple):
     hits: list
     archive_hidden: int
     superseded_hidden: int
-    partial: bool       # nothing had every word; these have some
+    partial: bool  # nothing had every word; these have some
     elsewhere: int = 0  # full matches outside --territory, when it found none inside
 
 
@@ -323,8 +363,15 @@ def _word_query(w: str) -> str:
     return q + " *" if len(w) >= MIN_PREFIX else q
 
 
-def find(conn, terms: list[str], territory: str | None = None, include_archive=False,
-         include_superseded=False, limit: int = 10, today=None) -> Found:
+def find(
+    conn,
+    terms: list[str],
+    territory: str | None = None,
+    include_archive=False,
+    include_superseded=False,
+    limit: int = 10,
+    today=None,
+) -> Found:
     """Each word matches as a prefix (`delet` finds `deletion`), anywhere in the file: one
     section need not hold them all. Files with every word come first; only when none has
     every word does it fall back to the files with the most, and says so, so a partial hit
@@ -346,31 +393,36 @@ def find(conn, terms: list[str], territory: str | None = None, include_archive=F
 
     def visible(h):
         return (include_archive or h.area != "archive") and (
-            include_superseded or h.path not in old)
+            include_superseded or h.path not in old
+        )
 
     def inside(h):
-        return not territory or h.container == territory or h.container.startswith(
-            territory + "/")
+        return not territory or h.container == territory or h.container.startswith(territory + "/")
 
     scoped = [h for h in ranked if inside(h)]
     full = [h for h in scoped if h.matched == len(words)]
     partial = not full and len(words) > 1
     pool = full or (scoped if partial else [])
     archived = sum(1 for h in pool if h.area == "archive" and not include_archive)
-    superseded = sum(1 for h in pool if h.path in old and not include_superseded
-                     and (include_archive or h.area != "archive"))
+    superseded = sum(
+        1
+        for h in pool
+        if h.path in old and not include_superseded and (include_archive or h.area != "archive")
+    )
     hits = [h for h in pool if visible(h)][:limit]
     elsewhere = 0
     if territory and not hits:
-        elsewhere = sum(1 for h in ranked if not inside(h) and visible(h)
-                        and h.matched == len(words))
+        elsewhere = sum(
+            1 for h in ranked if not inside(h) and visible(h) and h.matched == len(words)
+        )
     today = today or dt.date.today()
     for h in hits:
         if h.path in old:
             fid = conn.execute("SELECT id FROM files WHERE path=?", (h.path,)).fetchone()[0]
             h.superseded_by = superseded_by(conn, fid)
-        meta = json.loads(conn.execute("SELECT meta FROM files WHERE path=?",
-                                       (h.path,)).fetchone()[0])
+        meta = json.loads(
+            conn.execute("SELECT meta FROM files WHERE path=?", (h.path,)).fetchone()[0]
+        )
         if h.area != "archive" and h.path not in old and (due := past_window(meta, today)):
             h.due = due.marker()
     return Found(hits, archived, superseded, partial, elsewhere)
@@ -386,9 +438,11 @@ def _search(conn, words: list[str]) -> list[Hit]:
         best: dict[int, float] = {}
         in_head: set[int] = set()
         for fid, heading, line, score in conn.execute(
-                f"SELECT s.file_id, s.heading, s.line, bm25(sections_fts, {weights})"
-                " FROM sections_fts JOIN sections s ON s.id = sections_fts.rowid"
-                " WHERE sections_fts MATCH ? ORDER BY 4", (_word_query(w),)):
+            f"SELECT s.file_id, s.heading, s.line, bm25(sections_fts, {weights})"
+            " FROM sections_fts JOIN sections s ON s.id = sections_fts.rowid"
+            " WHERE sections_fts MATCH ? ORDER BY 4",
+            (_word_query(w),),
+        ):
             best[fid] = min(best.get(fid, 0.0), score)
             if heading:
                 k = (heading, line)
@@ -400,9 +454,10 @@ def _search(conn, words: list[str]) -> list[Hit]:
         # deletions rule only from 21st to 13th, since a dozen descriptions say "delete";
         # the standing tier in the sort below is what puts it first.
         for (fid,) in conn.execute(
-                "SELECT DISTINCT s.file_id FROM sections_fts JOIN sections s"
-                " ON s.id = sections_fts.rowid WHERE sections_fts MATCH ?",
-                ("{slug description} : " + _word_query(w),)):
+            "SELECT DISTINCT s.file_id FROM sections_fts JOIN sections s"
+            " ON s.id = sections_fts.rowid WHERE sections_fts MATCH ?",
+            ("{slug description} : " + _word_query(w),),
+        ):
             if fid in best:
                 best[fid] *= HEADLINE
                 in_head.add(fid)
@@ -411,7 +466,9 @@ def _search(conn, words: list[str]) -> list[Hit]:
             if hit is None:
                 row = conn.execute(
                     "SELECT path, area, container, slug, description, status, tier,"
-                    " last_verified FROM files WHERE id=?", (fid,)).fetchone()
+                    " last_verified FROM files WHERE id=?",
+                    (fid,),
+                ).fetchone()
                 hit = by_file[fid] = Hit(*row, score=0.0)
             hit.matched += 1
             hit.headline += fid in in_head
@@ -422,8 +479,10 @@ def _search(conn, words: list[str]) -> list[Hit]:
     # description holds every matched word (it binds every session, and `find delet` buried
     # the deletions rule at 13th on BM25 alone; one merely mentioning a word in its body
     # gets no lift), then current territory state, then history.
-    return sorted(by_file.values(), key=lambda h: (-h.matched, _is_history(h),
-                                                   not _is_directive(h), h.score, h.path))
+    return sorted(
+        by_file.values(),
+        key=lambda h: (-h.matched, _is_history(h), not _is_directive(h), h.score, h.path),
+    )
 
 
 def _is_directive(h: Hit) -> bool:
@@ -476,10 +535,12 @@ def near_duplicates(conn, rel: str, cut: float = NEAR_DUP_CUT, limit: int = 2) -
         return []
     best: dict[int, float] = {}
     for f2, score in conn.execute(
-            f"SELECT s.file_id, bm25(sections_fts, {', '.join(map(str, WEIGHTS))})"
-            " FROM sections_fts JOIN sections s ON s.id = sections_fts.rowid"
-            " JOIN files f ON f.id = s.file_id WHERE sections_fts MATCH ? AND f.area != 'archive'"
-            f" AND f.id NOT IN ({SUPERSEDED})", (q,)):
+        f"SELECT s.file_id, bm25(sections_fts, {', '.join(map(str, WEIGHTS))})"
+        " FROM sections_fts JOIN sections s ON s.id = sections_fts.rowid"
+        " JOIN files f ON f.id = s.file_id WHERE sections_fts MATCH ? AND f.area != 'archive'"
+        f" AND f.id NOT IN ({SUPERSEDED})",
+        (q,),
+    ):
         best[f2] = min(best.get(f2, 0.0), score)
     own = best.pop(fid, 0.0)
     if not own:
@@ -489,12 +550,19 @@ def near_duplicates(conn, rel: str, cut: float = NEAR_DUP_CUT, limit: int = 2) -
         ratio = score / own
         if ratio < cut or len(out) == limit:
             break
-        out.append(Near(ratio, *conn.execute(
-            "SELECT path, container, slug, description FROM files WHERE id=?", (f2,)).fetchone()))
+        out.append(
+            Near(
+                ratio,
+                *conn.execute(
+                    "SELECT path, container, slug, description FROM files WHERE id=?", (f2,)
+                ).fetchone(),
+            )
+        )
     return out
 
 
 # --- show -------------------------------------------------------------------------------
+
 
 def resolve(conn, spec: str) -> list[tuple[str, str, str]]:
     """slug, container/slug, or a store-relative path -> [(path, container, slug)]."""
@@ -521,12 +589,13 @@ def section_text(text: str, want: str) -> tuple[list[Section], str]:
     through to the next heading at its level or above. Returns (candidates, text)."""
     secs = sections_of(text)
     w = want.strip().lower()
-    cands = [s for s in secs if s.heading.lower() == w] or \
-            [s for s in secs if w in s.heading.lower()]
+    cands = [s for s in secs if s.heading.lower() == w] or [
+        s for s in secs if w in s.heading.lower()
+    ]
     if len(cands) != 1:
         return cands, ""
     lines = text.split("\n")
     sec = cands[0]
     after = [s for s in secs if s.line > sec.line and 0 < s.level <= sec.level]
     end = after[0].line - 1 if after else len(lines)
-    return cands, "\n".join(lines[sec.line - 1:end]).rstrip()
+    return cands, "\n".join(lines[sec.line - 1 : end]).rstrip()

@@ -11,6 +11,7 @@ router line "existing" once and "new" once, so the model's label is not used.
 Approval is a hash of the plan's decisions. Editing anything after approving voids it, and
 stage 4 refuses an unapproved plan, so the checkpoint is enforced, not remembered.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -45,8 +46,11 @@ def path(root: Path) -> Path:
 
 def territories(root: Path) -> set[str]:
     tdir = root / "territories"
-    return {str(m.parent.relative_to(tdir)) for m in tdir.rglob("MEMORY.md")} \
-        if tdir.is_dir() else set()
+    return (
+        {str(m.parent.relative_to(tdir)) for m in tdir.rglob("MEMORY.md")}
+        if tdir.is_dir()
+        else set()
+    )
 
 
 def _norm(t: str | None) -> str | None:
@@ -68,34 +72,46 @@ def draft(root: Path, inv: dict, summaries: dict[str, dict], router: str) -> dic
         return _norm(ss.get("territory_existing")) or _norm(ss.get("territory_new"))
 
     # repo name -> territory, so a relocation hint naming a repo resolves to its home
-    homes = {s["repo"].lower(): home(summary(s["silo"])) for s in inv["silos"]
-             if s.get("repo") and home(summary(s["silo"]))}
+    homes = {
+        s["repo"].lower(): home(summary(s["silo"]))
+        for s in inv["silos"]
+        if s.get("repo") and home(summary(s["silo"]))
+    }
     silos = []
     for s in inv["silos"]:
         ss = summary(s["silo"])
         t = home(ss)
         mode = ss.get("mode", "unknown")
         if s["workdir"] is None and mode not in ("dead", "parked"):
-            mode = "parked"           # absence from this disk is not death (mode: parked)
-        entry = {"silo": s["silo"], "territory": t, "new": t not in have if t else None,
-                 "in_router": bool(t and re.search(rf"(?<![\w/-]){re.escape(t)}(?![\w/-])",
-                                                   router)),
-                 "mode": mode, "subject": ss.get("subject", ""), "files": []}
+            mode = "parked"  # absence from this disk is not death (mode: parked)
+        entry = {
+            "silo": s["silo"],
+            "territory": t,
+            "new": t not in have if t else None,
+            "in_router": bool(t and re.search(rf"(?<![\w/-]){re.escape(t)}(?![\w/-])", router)),
+            "mode": mode,
+            "subject": ss.get("subject", ""),
+            "files": [],
+        }
         if not ss:
             entry["signals"] = ["no silo summary: run mem migrate summarize"]
         if s["mixed_state"]:
             entry.setdefault("signals", []).append(
-                f"mixed state: {', '.join(s['mixed_state'])} also in the store")
+                f"mixed state: {', '.join(s['mixed_state'])} also in the store"
+            )
         for f in [f for f in inv["files"] if f["silo"] == s["silo"]]:
-            entry["files"].append(_file_entry(f, summary(f["id"]) or None, t, homes, have,
-                                              mode))
+            entry["files"].append(_file_entry(f, summary(f["id"]) or None, t, homes, have, mode))
         silos.append(entry)
-    return {"generated": dt.datetime.now().isoformat(timespec="seconds"),
-            "approved": None, "silos": silos}
+    return {
+        "generated": dt.datetime.now().isoformat(timespec="seconds"),
+        "approved": None,
+        "silos": silos,
+    }
 
 
-def _file_entry(f: dict, s: dict | None, home: str | None, homes: dict, have: set,
-                mode: str) -> dict:
+def _file_entry(
+    f: dict, s: dict | None, home: str | None, homes: dict, have: set, mode: str
+) -> dict:
     e: dict = {"file": f["file"], "action": "land", "description": "keep"}
     signals = []
     if s is None:
@@ -110,8 +126,7 @@ def _file_entry(f: dict, s: dict | None, home: str | None, homes: dict, have: se
         e["action"] = "archive"
         e["why"] = s["obsolete"]["why"] or "the silo's summary says the project is dead"
     hint = _norm(s.get("territory_hint")) or homes.get(str(s.get("territory_hint") or "").lower())
-    if e["action"] == "land" and hint and hint != home and (hint in have or hint in
-                                                            homes.values()):
+    if e["action"] == "land" and hint and hint != home and (hint in have or hint in homes.values()):
         e["action"] = "relocate"
         e["to"] = hint
         e["why"] = f"summary says it is about {s['territory_hint']}"
@@ -134,10 +149,18 @@ def _file_entry(f: dict, s: dict | None, home: str | None, homes: dict, have: se
 
 def decisions(plan: dict) -> str:
     """What approval covers: every field a person decides, nothing generated or advisory."""
-    keep = [{"silo": s["silo"], "territory": s.get("territory"), "mode": s.get("mode"),
-             "files": [{k: f.get(k) for k in ("file", "action", "to", "description", "proposed")}
-                       for f in s.get("files", [])]}
-            for s in plan.get("silos", [])]
+    keep = [
+        {
+            "silo": s["silo"],
+            "territory": s.get("territory"),
+            "mode": s.get("mode"),
+            "files": [
+                {k: f.get(k) for k in ("file", "action", "to", "description", "proposed")}
+                for f in s.get("files", [])
+            ],
+        }
+        for s in plan.get("silos", [])
+    ]
     return hashlib.sha256(json.dumps(keep, sort_keys=True).encode()).hexdigest()
 
 
@@ -177,8 +200,13 @@ def is_approved(plan: dict) -> bool:
 
 
 def approve(plan: dict) -> dict:
-    return {**plan, "approved": {"at": dt.datetime.now().isoformat(timespec="seconds"),
-                                 "decisions": decisions(plan)}}
+    return {
+        **plan,
+        "approved": {
+            "at": dt.datetime.now().isoformat(timespec="seconds"),
+            "decisions": decisions(plan),
+        },
+    }
 
 
 def load(root: Path) -> dict | None:
@@ -204,14 +232,18 @@ def table(plan: dict, inv: dict) -> list[str]:
     for t, group in sorted(by_t.items()):
         s0 = group[0]
         state = ("NEW" if s0.get("new") else "existing") + (
-            ", in router" if s0.get("in_router") else ", not in router")
+            ", in router" if s0.get("in_router") else ", not in router"
+        )
         files = [f for s in group for f in s["files"]]
         n = {a: sum(1 for f in files if f["action"] == a) for a in ACTIONS}
         desc = sum(1 for f in files if f["description"] == "proposed")
-        out.append(f"\n{t}  ({state})  <- " + ", ".join(
-            f"{repo[s['silo']]} [{s['mode']}]" for s in group))
-        out.append(f"   {n['land']} land, {n['relocate']} relocate, {n['archive']} archive; "
-                   f"{desc} of {len(files)} descriptions replaced")
+        out.append(
+            f"\n{t}  ({state})  <- " + ", ".join(f"{repo[s['silo']]} [{s['mode']}]" for s in group)
+        )
+        out.append(
+            f"   {n['land']} land, {n['relocate']} relocate, {n['archive']} archive; "
+            f"{desc} of {len(files)} descriptions replaced"
+        )
         for s in group:
             for sig in s.get("signals", []):
                 out.append(f"   ! {repo[s['silo']]}: {sig}")

@@ -5,6 +5,7 @@ store. Each fixture file instead reproduces a SHAPE found in a real store on
 2026-10-21, and says which one. A test built on a shape nobody has seen proves only that the
 test agrees with itself.
 """
+
 from __future__ import annotations
 
 import os
@@ -57,7 +58,7 @@ FILES = {
     # the real migrated-legacy shape: a nested `metadata:` block the parser hoists
     "territories/home/lab/lab-backup-plan.md": (
         "---\nkind: territory\nname: lab-backup-plan\n"
-        "description: \"SHIPPED 2026-08-24 — nightly backups, verified by hand.\"\n"
+        'description: "SHIPPED 2026-08-24 — nightly backups, verified by hand."\n'
         "metadata: \n  node_type: memory\n  type: project\n"
         "  originSessionId: 00000000-0000-0000-0000-000000000000\n"
         "status: SHIPPED\nlast_verified: 2026-10-02\n---\n\n"
@@ -137,14 +138,17 @@ class Fixture:
     home: Path
     store: Path
     projects: Path
-    repo: Path       # a checkout whose silo is symlinked to console/kit
+    repo: Path  # a checkout whose silo is symlinked to console/kit
     elsewhere: Path  # a directory that maps to no territory
 
     def env(self, cwd: Path | None = None) -> dict[str, str]:
         e = dict(os.environ)
-        e.update(HOME=str(self.home), CLAUDE_MEMORY_STORE=str(self.store),
-                 CLAUDE_PROJECTS_DIR=str(self.projects),
-                 CLAUDE_PROJECT_DIR=str(cwd or self.repo))
+        e.update(
+            HOME=str(self.home),
+            CLAUDE_MEMORY_STORE=str(self.store),
+            CLAUDE_PROJECTS_DIR=str(self.projects),
+            CLAUDE_PROJECT_DIR=str(cwd or self.repo),
+        )
         e.pop("PYTHONPATH", None)
         return e
 
@@ -174,9 +178,11 @@ def build(base: Path, oversized: bool = False) -> Fixture:
         (store / "standing" / "huge-directive.md").write_text(
             "---\nname: huge-directive\nkind: standing\n"
             "description: The conclusion survives degradation.\n---\n\n" + big + "\n",
-            encoding="utf-8")
-        sections = "".join(f"## section {i:02d}\n- t/{i} : " + "y " * 1000 + "\n\n"
-                           for i in range(20))
+            encoding="utf-8",
+        )
+        sections = "".join(
+            f"## section {i:02d}\n- t/{i} : " + "y " * 1000 + "\n\n" for i in range(20)
+        )
         (store / "ROUTER.md").write_text(FILES["ROUTER.md"] + "\n" + sections, encoding="utf-8")
     return Fixture(home, store, projects, repo, elsewhere)
 
@@ -186,6 +192,7 @@ def _no_outer_repo(monkeypatch: pytest.MonkeyPatch) -> None:
     """Run as a pre-push hook, the suite inherits GIT_DIR and GIT_INDEX_FILE from the repo
     being pushed, and every fixture `git init` or commit would land in that repo instead."""
     from claude_hybrid_memory.storegit import REPO_ENV
+
     for k in REPO_ENV:
         monkeypatch.delenv(k, raising=False)
 

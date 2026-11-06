@@ -1,4 +1,5 @@
 """Version chains (direction §6, Phase 3): `supersedes:` on the newer memory, inverse derived."""
+
 from __future__ import annotations
 
 import json
@@ -25,6 +26,7 @@ def codes(g):
 
 # --- the graph ----------------------------------------------------------------------------
 
+
 def test_refs_take_every_yaml_form():
     assert chains.refs_of({"supersedes": "a"}) == ("a",)
     assert chains.refs_of({"supersedes": ["a", " b ", ""]}) == ("a", "b")
@@ -36,13 +38,21 @@ def test_bare_slug_prefers_its_own_container_and_otherwise_is_ambiguous():
     g = chains.build(nodes)
     assert g.older == {"t/a/new.md": ["t/a/dup.md"]}
     assert codes(g) == ["supersede-ambiguous"]
-    assert chains.build([n("t/c/x.md", ["t/b/dup"]), *nodes[1:3]]).older == \
-        {"t/c/x.md": ["t/b/dup.md"]}
+    assert chains.build([n("t/c/x.md", ["t/b/dup"]), *nodes[1:3]]).older == {
+        "t/c/x.md": ["t/b/dup.md"]
+    }
 
 
 def test_self_gone_and_cycles_are_reported():
-    g = chains.build([n("t/a/s.md", ["s"]), n("t/a/g.md", ["never-existed"]),
-                      n("t/a/x.md", ["y"]), n("t/a/y.md", ["z"]), n("t/a/z.md", ["x"])])
+    g = chains.build(
+        [
+            n("t/a/s.md", ["s"]),
+            n("t/a/g.md", ["never-existed"]),
+            n("t/a/x.md", ["y"]),
+            n("t/a/y.md", ["z"]),
+            n("t/a/z.md", ["x"]),
+        ]
+    )
     assert codes(g) == ["supersede-cycle", "supersede-self", "supersede-target-gone"]
     [cyc] = [f for f in g.findings if f.code == "supersede-cycle"]
     assert cyc.message.count("->") == 3
@@ -64,13 +74,17 @@ def test_walk_goes_both_ways_and_shows_dead_ends():
 
 def test_with_refs_rewrites_only_the_supersedes_line():
     block = "---\nname: a\nsupersedes:\n  - x\ndescription: d\nmetadata:\n  k: v\n---\nbody\n"
-    assert chains.with_refs(block, ["x", "y"]) == \
-        "---\nname: a\ndescription: d\nmetadata:\n  k: v\nsupersedes: [x, y]\n---\nbody\n"
-    assert chains.with_refs("---\nname: a\n---\n", ["q", "q"]) == \
-        "---\nname: a\nsupersedes: q\n---\n"
+    assert (
+        chains.with_refs(block, ["x", "y"])
+        == "---\nname: a\ndescription: d\nmetadata:\n  k: v\nsupersedes: [x, y]\n---\nbody\n"
+    )
+    assert (
+        chains.with_refs("---\nname: a\n---\n", ["q", "q"]) == "---\nname: a\nsupersedes: q\n---\n"
+    )
 
 
 # --- the cache ------------------------------------------------------------------------------
+
 
 def test_find_hides_superseded_counts_them_and_names_the_successor(fx: Fixture):
     conn = cache.connect(fx.store)
@@ -98,6 +112,7 @@ def test_chains_follow_edits_and_deletes(fx: Fixture):
 
 def test_audit_and_cache_derive_the_same_graph(fx: Fixture):
     from claude_hybrid_memory.audit.relations import store_graph
+
     conn = cache.connect(fx.store)
     cache.refresh(conn, fx.store)
     assert cache.graph(conn).older == store_graph(fx.store).older == {DESIGN: [V1]}
@@ -105,13 +120,16 @@ def test_audit_and_cache_derive_the_same_graph(fx: Fixture):
 
 # --- the CLI ---------------------------------------------------------------------------------
 
+
 def mem(fx: Fixture, *args):
     return run(mem_cmd(*args, "--root", str(fx.store)), fx.env())
 
 
 def test_supersede_writes_the_newer_file_only_and_logs_it(fx: Fixture):
-    old, new = fx.store / "territories/home/lab/lab-backup-plan.md", \
-        fx.store / "territories/home/lab/lab-ssh-read-only.md"
+    old, new = (
+        fx.store / "territories/home/lab/lab-backup-plan.md",
+        fx.store / "territories/home/lab/lab-ssh-read-only.md",
+    )
     before = old.read_bytes()
     rc, out, _ = mem(fx, "supersede", "lab-backup-plan", "lab-ssh-read-only")
     assert rc == 0 and "home/lab/lab-ssh-read-only now supersedes home/lab/lab-backup-plan" in out
@@ -121,8 +139,11 @@ def test_supersede_writes_the_newer_file_only_and_logs_it(fx: Fixture):
     assert old.read_bytes() == before
     assert "\nsupersedes: lab-backup-plan\n---" in new.read_text()
     [e] = list(events.read_all(fx.store))
-    assert (e["event"], e["path"], e["tool"]) == ("write", str(new.relative_to(fx.store)),
-                                                  "mem supersede")
+    assert (e["event"], e["path"], e["tool"]) == (
+        "write",
+        str(new.relative_to(fx.store)),
+        "mem supersede",
+    )
     rc, out, _ = mem(fx, "supersede", "lab-backup-plan", "lab-ssh-read-only")
     assert rc == 0 and "already supersedes" in out
     rc, _, err = mem(fx, "supersede", "lab-ssh-read-only", "lab-backup-plan")
@@ -135,10 +156,12 @@ def test_supersede_relinks_bodies_and_lists_gate_prose(fx: Fixture):
     # GATE line is always-loaded gate text, so it is listed for an Edit with the user's
     # named go-ahead, never rewritten by a subprocess (decided 2026-11-04).
     new = fx.store / "territories/home/lab/lab-ssh-policy.md"
-    new.write_text("---\nname: lab-ssh-policy\nkind: territory\nrole: gate\n"
-                   "description: SSH to the lab box is read-only; hand Matt the change.\n"
-                   "volatility: stable\nlast_verified: 2026-11-04\n---\n\n"
-                   "Replaces [[lab-ssh-read-only]].\n")
+    new.write_text(
+        "---\nname: lab-ssh-policy\nkind: territory\nrole: gate\n"
+        "description: SSH to the lab box is read-only; hand Matt the change.\n"
+        "volatility: stable\nlast_verified: 2026-11-04\n---\n\n"
+        "Replaces [[lab-ssh-read-only]].\n"
+    )
     rc, out, _ = mem(fx, "supersede", "lab-ssh-read-only", "lab-ssh-policy")
     assert rc == 0
     idx = fx.store / "territories/home/lab/MEMORY.md"
@@ -148,7 +171,7 @@ def test_supersede_relinks_bodies_and_lists_gate_prose(fx: Fixture):
     assert f"{idx}:" in out and "+ **Read-only box.** → [[lab-ssh-policy]]" in out
     design = (fx.store / DESIGN).read_text()
     assert "Uses [[lab-ssh-policy]] and [[kit-missing-note]]." in design
-    assert "[[ var ]]" in design and "[[override]]" in design      # not links, untouched
+    assert "[[ var ]]" in design and "[[override]]" in design  # not links, untouched
     assert "relinked territories/home/lab/MEMORY.md:" not in out and f"relinked {DESIGN}:" in out
     # the new memory naming what it replaced is deliberate, and the old one is never edited
     assert "Replaces [[lab-ssh-read-only]]." in new.read_text()
@@ -160,19 +183,23 @@ def test_relink_leaves_a_same_slug_in_another_territory_alone(fx: Fixture):
     # Synthetic. A bare [[slug]] resolves beside the file that holds it, so a link to a
     # different memory that shares the old slug must not move.
     from claude_hybrid_memory import relink
+
     twin = fx.store / "territories/console/kit/lab-ssh-read-only.md"
-    twin.write_text("---\nname: lab-ssh-read-only\nkind: territory\n"
-                    "description: A kit note that happens to share the slug.\n"
-                    "volatility: slow\nlast_verified: 2026-11-04\n---\n\nBody.\n")
+    twin.write_text(
+        "---\nname: lab-ssh-read-only\nkind: territory\n"
+        "description: A kit note that happens to share the slug.\n"
+        "volatility: slow\nlast_verified: 2026-11-04\n---\n\nBody.\n"
+    )
     conn = cache.connect(fx.store)
     cache.refresh(conn, fx.store)
     g = cache.graph(conn)
     old = g.nodes["territories/home/lab/lab-ssh-read-only.md"]
     new = g.nodes["territories/home/lab/lab-backup-plan.md"]
-    changed = {c.path for c in relink.relink(fx.store, list(g.nodes.values()), old, new,
-                                             write=False)}
-    assert "territories/home/lab/MEMORY.md" in changed     # found, though protected
-    assert DESIGN not in changed        # its bare link resolves to the console/kit twin
+    changed = {
+        c.path for c in relink.relink(fx.store, list(g.nodes.values()), old, new, write=False)
+    }
+    assert "territories/home/lab/MEMORY.md" in changed  # found, though protected
+    assert DESIGN not in changed  # its bare link resolves to the console/kit twin
 
 
 def test_supersede_appends_to_an_existing_ref_and_refuses_archive_as_the_newer(fx: Fixture):
@@ -185,11 +212,38 @@ def test_supersede_appends_to_an_existing_ref_and_refuses_archive_as_the_newer(f
 
 def test_history_shows_both_directions_and_the_git_log(fx: Fixture):
     subprocess.run(["git", "init", "-q", str(fx.store)], check=True)
-    subprocess.run(["git", "-C", str(fx.store), "-c", "user.name=t", "-c", "user.email=t@t",
-                    "commit", "-qam", "baseline", "--allow-empty"], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(fx.store),
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-qam",
+            "baseline",
+            "--allow-empty",
+        ],
+        check=True,
+    )
     subprocess.run(["git", "-C", str(fx.store), "add", "-A"], check=True)
-    subprocess.run(["git", "-C", str(fx.store), "-c", "user.name=t", "-c", "user.email=t@t",
-                    "commit", "-qm", "fixture store"], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(fx.store),
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-qm",
+            "fixture store",
+        ],
+        check=True,
+    )
     rc, out, _ = mem(fx, "history", "kit-sync-v1")
     assert rc == 0 and "SUPERSEDED" in out
     assert out.index("Superseded by (newer):") < out.index("console/kit/kit-sync-design")
@@ -211,6 +265,7 @@ def test_show_and_find_say_superseded(fx: Fixture):
 
 # --- the hook: split when next touched --------------------------------------------------------
 
+
 def test_editing_an_accreted_file_suggests_a_split_once_per_session(fx: Fixture):
     p = fx.store / "territories/home/lab/lab-backup-plan.md"
     cache.refresh(cache.connect(fx.store), fx.store)  # the file is known, not new
@@ -221,12 +276,12 @@ def test_editing_an_accreted_file_suggests_a_split_once_per_session(fx: Fixture)
     assert post(fx, "Edit", p, session="s2")[1]
 
 
-
 def test_relink_protects_always_loaded_files_and_gates_sections(fx: Fixture):
     # Synthetic. Which lines count as always-loaded gate text.
     from pathlib import Path
 
     from claude_hybrid_memory.relink import protected_lines
+
     lines = ["# t", "", "## GATES", "a [[x]]", "### sub", "b [[x]]", "## MEMORIES", "c [[x]]"]
     assert protected_lines(Path("territories/home/lab/MEMORY.md"), lines) == {2, 3, 4, 5}
     for top in ("GATES.md", "MACHINE.md", "ROUTER.md", "standing/rule.md"):

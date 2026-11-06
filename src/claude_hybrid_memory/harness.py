@@ -9,6 +9,7 @@ reading kept `_`, which only an older harness did):
 
 Imported by the SessionStart hook, so stdlib only and nothing heavy.
 """
+
 from __future__ import annotations
 
 import re
@@ -19,7 +20,7 @@ MAX_LEN = 200
 def _units(s: str) -> list[int]:
     """UTF-16 code units, which is what a JS string is made of."""
     b = s.encode("utf-16-le", "surrogatepass")
-    return [int.from_bytes(b[i:i + 2], "little") for i in range(0, len(b), 2)]
+    return [int.from_bytes(b[i : i + 2], "little") for i in range(0, len(b), 2)]
 
 
 def encode(s: str) -> str:

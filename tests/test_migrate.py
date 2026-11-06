@@ -3,6 +3,7 @@
 No test here calls a model. The fake summarizer answers in `claude -p --output-format json`
 shape, from the schema it is handed, and logs its argv so the isolation flags are checked.
 """
+
 from __future__ import annotations
 
 import json
@@ -14,7 +15,7 @@ from conftest import Fixture, mem_cmd, run
 
 from claude_hybrid_memory.migrate import apply, inventory, summarize
 
-FAKE = r'''
+FAKE = r"""
 import json, os, sys
 args = sys.argv[1:]
 schema = json.loads(args[args.index("--json-schema") + 1])
@@ -61,7 +62,7 @@ print(json.dumps({"type": "result", "is_error": False, "structured_output": out,
                   "usage": {"input_tokens": 100, "cache_creation_input_tokens": 20,
                             "output_tokens": 7},
                   "total_cost_usd": 0.01, "modelUsage": {"claude-sonnet-fixture": {}}}))
-'''
+"""
 
 ALPHA = "-Users-nobody-workspaces-alpha"
 BETA = "-Users-nobody-workspaces-beta-repo"
@@ -77,27 +78,41 @@ def silo(fx: Fixture, name: str, files: dict[str, str]) -> Path:
 
 @pytest.fixture
 def silos(fx: Fixture) -> Fixture:
-    silo(fx, ALPHA, {
-        "MEMORY.md": "# Memory Index\n\n- [Deploy notes](deploy-notes.md) — how alpha ships\n",
-        "deploy-notes.md": (
-            "---\nname: deploy-notes\ndescription: Alpha deploys through the nightly bench "
-            "pipeline with signed artifacts\n---\n\n"
-            "Fixed in commit `abc1234`, see PR #12. Shares a schema with beta-repo.\n"
-            "As of 2026-09-01 the fix is uncommitted.\n"
-            "Mockup at https://claude.ai/code/artifact/ca7d5214-dd16-4f6f-a4f0-bdce31a0e3eb\n"
-            "Mail ci-bot-385983851@site-alpha.iam.example.com about it.\n"
-            "Home is /Users/alpha/workspaces, ignore it.\n"),
-        "launch-record.md": (
-            "---\nname: launch-record\ntier: record\ndescription: The 1.0 launch\n---\n\n"
-            "Shipped at commit `def5678`.\n"),
-    })
-    silo(fx, BETA, {"schema-notes.md": (
-        "---\nname: schema-notes\ndescription: Beta deploys through the nightly bench "
-        "pipeline with signed artifacts too\n---\n\nSame pipeline.\n")})
+    silo(
+        fx,
+        ALPHA,
+        {
+            "MEMORY.md": "# Memory Index\n\n- [Deploy notes](deploy-notes.md) — how alpha ships\n",
+            "deploy-notes.md": (
+                "---\nname: deploy-notes\ndescription: Alpha deploys through the nightly bench "
+                "pipeline with signed artifacts\n---\n\n"
+                "Fixed in commit `abc1234`, see PR #12. Shares a schema with beta-repo.\n"
+                "As of 2026-09-01 the fix is uncommitted.\n"
+                "Mockup at https://claude.ai/code/artifact/ca7d5214-dd16-4f6f-a4f0-bdce31a0e3eb\n"
+                "Mail ci-bot-385983851@site-alpha.iam.example.com about it.\n"
+                "Home is /Users/alpha/workspaces, ignore it.\n"
+            ),
+            "launch-record.md": (
+                "---\nname: launch-record\ntier: record\ndescription: The 1.0 launch\n---\n\n"
+                "Shipped at commit `def5678`.\n"
+            ),
+        },
+    )
+    silo(
+        fx,
+        BETA,
+        {
+            "schema-notes.md": (
+                "---\nname: schema-notes\ndescription: Beta deploys through the nightly bench "
+                "pipeline with signed artifacts too\n---\n\nSame pipeline.\n"
+            )
+        },
+    )
     # a migrated silo: its dir is a symlink, so it is never pending
-    (fx.projects / "-Users-nobody-done" ).mkdir()
+    (fx.projects / "-Users-nobody-done").mkdir()
     (fx.projects / "-Users-nobody-done" / "memory").symlink_to(
-        fx.store / "territories" / "home" / "lab")
+        fx.store / "territories" / "home" / "lab"
+    )
     return fx
 
 
@@ -116,13 +131,12 @@ def test_inventory_signals(silos: Fixture):
     f = files_by_name(inv)
     d = f["deploy-notes.md"]
     assert d["index_line"].startswith("- [Deploy notes](deploy-notes.md)")
-    assert d["repos"] == ["beta-repo"]          # not its own repo, not the home path
+    assert d["repos"] == ["beta-repo"]  # not its own repo, not the home path
     kinds = {c["kind"]: c["match"] for c in d["live_claims"]}
     assert kinds["sha"] == "abc1234" and "pr-or-issue" in kinds
     assert "uncommitted" in kinds and "as-of" in kinds
-    assert not any("ca7d5214" in c["match"] or "385983851" in c["match"]
-                   for c in d["live_claims"])
-    assert f["launch-record.md"]["live_claims"] == []          # tier: record is exempt
+    assert not any("ca7d5214" in c["match"] or "385983851" in c["match"] for c in d["live_claims"])
+    assert f["launch-record.md"]["live_claims"] == []  # tier: record is exempt
     assert d["duplicates"][0]["id"] == f"{BETA}/schema-notes.md"
     assert len(d["sha256"]) == 64 and d["bytes"] > 0
     gone = next(s for s in inv["silos"] if s["silo"] == "-Users-nobody-gone-repo")
@@ -168,7 +182,7 @@ def test_each_job_runs_isolated_and_is_cached(silos: Fixture, fake: Path):
         assert a[a.index("--tools") + 1] == "" and a[a.index("--setting-sources") + 1] == ""
         assert '"disableAllHooks": true' in a[a.index("--settings") + 1]
         assert "--no-session-persistence" in a and a[a.index("--model") + 1] == "sonnet"
-        assert c["ls"] == [] and "mem-summarize-" in c["cwd"]    # an empty scratch cwd
+        assert c["ls"] == [] and "mem-summarize-" in c["cwd"]  # an empty scratch cwd
     n = len(calls(fake))
     again = summarize.run(silos.store, jobs(silos))
     assert all(r["cached"] for r in again) and len(calls(fake)) == n
@@ -195,14 +209,22 @@ def test_failures_retry_once_then_stay_failed(silos: Fixture, fake: Path):
     # a failure is not trusted from cache: the next run tries it again
     before = len(calls(fake))
     summarize.run(silos.store, jobs(silos))
-    assert len(calls(fake)) - before == 4           # broken and malformed, twice each
+    assert len(calls(fake)) - before == 4  # broken and malformed, twice each
 
 
 def test_validate():
     schema = json.loads(summarize.PROMPTS.joinpath("memory-summary.schema.json").read_text())
-    ok = {"conclusion": "c", "description_verdict": "good", "kind": "record",
-          "subject_repos": [], "territory_hint": None, "shape": ["index-only"], "verify": [],
-          "obsolete": {"likely": False, "why": ""}, "confidence": "low"}
+    ok = {
+        "conclusion": "c",
+        "description_verdict": "good",
+        "kind": "record",
+        "subject_repos": [],
+        "territory_hint": None,
+        "shape": ["index-only"],
+        "verify": [],
+        "obsolete": {"likely": False, "why": ""},
+        "confidence": "low",
+    }
     assert summarize.validate(ok, schema) == []
     bad = {**ok, "kind": "nope", "extra": 1, "shape": ["wat"]}
     del bad["confidence"]
@@ -211,8 +233,12 @@ def test_validate():
 
 
 def test_cli(silos: Fixture, fake: Path, tmp_path: Path):
-    env = {**silos.env(), summarize.RUNNER_ENV: str(tmp_path / "fake-claude"),
-           "FAKE_LOG": str(fake), "FAKE_STATE": str(tmp_path)}
+    env = {
+        **silos.env(),
+        summarize.RUNNER_ENV: str(tmp_path / "fake-claude"),
+        "FAKE_LOG": str(fake),
+        "FAKE_STATE": str(tmp_path),
+    }
     base = ["--root", str(silos.store), "--legacy", str(silos.projects)]
     rc, out, err = run(mem_cmd("migrate", "inventory", *base), env)
     assert rc == 0, err
@@ -227,8 +253,9 @@ def test_cli(silos: Fixture, fake: Path, tmp_path: Path):
     assert rc == 0 and "-> NEW fixture/alpha" in out
     assert "Conclusion of deploy-notes.md" in out and "dated-snapshot" in out
     run(mem_cmd("migrate", "summarize", *base), env)
-    rc, out, _ = run(mem_cmd("migrate", "summaries", "--silo", "alpha", "--silo", "beta", *base),
-                     env)
+    rc, out, _ = run(
+        mem_cmd("migrate", "summaries", "--silo", "alpha", "--silo", "beta", *base), env
+    )
     # files print under their own silo, not after the last one
     assert out.index("deploy-notes.md") < out.index(f"## {BETA}") < out.index("schema-notes.md")
     rc, out, _ = run(mem_cmd("migrate", "summaries", "--silo", "gone-repo", *base), env)
@@ -255,8 +282,8 @@ def test_map_draft(silos: Fixture, fake: Path):
     by = {s["silo"]: s for s in plan["silos"]}
     alpha, beta, gone = by[ALPHA], by[BETA], by["-Users-nobody-gone-repo"]
     assert alpha["territory"] == "fixture/alpha" and alpha["new"] is True
-    assert beta["territory"] == "home/lab" and beta["new"] is False     # code decides
-    assert gone["mode"] == "parked"                       # not on this disk is not dead
+    assert beta["territory"] == "home/lab" and beta["new"] is False  # code decides
+    assert gone["mode"] == "parked"  # not on this disk is not dead
     assert any("mixed state" in x for x in gone["signals"])
     f = {x["file"]: x for x in alpha["files"]}
     assert f["deploy-notes.md"]["description"] == "proposed"
@@ -297,8 +324,12 @@ def test_map_check_and_approval(silos: Fixture, fake: Path):
 def test_map_cli_keeps_edits_and_enforces_approval(silos: Fixture, fake: Path, tmp_path: Path):
     from claude_hybrid_memory.migrate import plan as P
 
-    env = {**silos.env(), summarize.RUNNER_ENV: str(tmp_path / "fake-claude"),
-           "FAKE_LOG": str(fake), "FAKE_STATE": str(tmp_path)}
+    env = {
+        **silos.env(),
+        summarize.RUNNER_ENV: str(tmp_path / "fake-claude"),
+        "FAKE_LOG": str(fake),
+        "FAKE_STATE": str(tmp_path),
+    }
     base = ["--root", str(silos.store), "--legacy", str(silos.projects)]
     run(mem_cmd("migrate", "summarize", *base), env)
     rc, out, err = run(mem_cmd("migrate", "map", *base), env)
@@ -310,9 +341,11 @@ def test_map_cli_keeps_edits_and_enforces_approval(silos: Fixture, fake: Path, t
     plan = P.load(silos.store)
     plan["silos"][0]["files"][0]["proposed"] = "Matt's own wording."
     P.write(silos.store, plan)
-    rc, out, _ = run(mem_cmd("migrate", "map", *base), env)     # no redraft over edits
-    assert "drafted" not in out and P.load(silos.store)["silos"][0]["files"][0]["proposed"] \
-        == "Matt's own wording."
+    rc, out, _ = run(mem_cmd("migrate", "map", *base), env)  # no redraft over edits
+    assert (
+        "drafted" not in out
+        and P.load(silos.store)["silos"][0]["files"][0]["proposed"] == "Matt's own wording."
+    )
     rc, out, _ = run(mem_cmd("migrate", "map", "--approve", *base), env)
     assert rc == 0 and "approved" in out and P.is_approved(P.load(silos.store))
     plan = P.load(silos.store)
@@ -327,9 +360,13 @@ def test_map_cli_keeps_edits_and_enforces_approval(silos: Fixture, fake: Path, t
 def git_init(root: Path) -> None:
     import subprocess
 
-    for args in (["init", "-q"], ["config", "user.email", "fixture@example.invalid"],
-                 ["config", "user.name", "Fixture"], ["add", "-A"],
-                 ["commit", "-q", "-m", "Baseline"]):
+    for args in (
+        ["init", "-q"],
+        ["config", "user.email", "fixture@example.invalid"],
+        ["config", "user.name", "Fixture"],
+        ["add", "-A"],
+        ["commit", "-q", "-m", "Baseline"],
+    ):
         subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
     (root / ".gitignore").write_text(".cache/\n")
 
@@ -337,8 +374,9 @@ def git_init(root: Path) -> None:
 def subjects(root: Path) -> list[str]:
     import subprocess
 
-    return subprocess.run(["git", "-C", str(root), "log", "--format=%s"], capture_output=True,
-                          text=True).stdout.splitlines()
+    return subprocess.run(
+        ["git", "-C", str(root), "log", "--format=%s"], capture_output=True, text=True
+    ).stdout.splitlines()
 
 
 @pytest.fixture
@@ -352,7 +390,8 @@ def landed(silos: Fixture, fake: Path):
     p.write_text(p.read_text() + "\nSee [[old-thing]] and [[user-profile]].\n")
     for d in (md, silos.projects / BETA / "memory"):
         (d / "user_profile.md").write_text(
-            "---\nname: User profile\ndescription: who\nmetadata:\n  type: user\n---\n\nBody.\n")
+            "---\nname: User profile\ndescription: who\nmetadata:\n  type: user\n---\n\nBody.\n"
+        )
     git_init(silos.store)
     plan, inv = plan_for(silos)
     P.write(silos.store, P.approve(plan))
@@ -360,10 +399,15 @@ def landed(silos: Fixture, fake: Path):
 
 
 def apply_cli(fx: Fixture, fake: Path, *extra: str) -> tuple[int, str, str]:
-    env = {**fx.env(), summarize.RUNNER_ENV: str(fake.parent / "fake-claude"),
-           "FAKE_LOG": str(fake), "FAKE_STATE": str(fake.parent)}
-    return run(mem_cmd("migrate", *extra, "--root", str(fx.store), "--legacy",
-                       str(fx.projects)), env)
+    env = {
+        **fx.env(),
+        summarize.RUNNER_ENV: str(fake.parent / "fake-claude"),
+        "FAKE_LOG": str(fake),
+        "FAKE_STATE": str(fake.parent),
+    }
+    return run(
+        mem_cmd("migrate", *extra, "--root", str(fx.store), "--legacy", str(fx.projects)), env
+    )
 
 
 def test_apply_lands_each_silo_in_two_commits(landed: Fixture, fake: Path):
@@ -400,7 +444,7 @@ def test_apply_lands_each_silo_in_two_commits(landed: Fixture, fake: Path):
     silo = fx.projects / ALPHA / "memory"
     assert silo.is_symlink() and silo.resolve() == alpha.resolve()
     assert (fx.projects / ALPHA / "memory.premigration" / "deploy-notes.md").is_file()
-    rc, out, _ = apply_cli(fx, fake, "apply")                  # nothing left to land
+    rc, out, _ = apply_cli(fx, fake, "apply")  # nothing left to land
     assert rc == 0 and "0 silo(s) landed" in out
 
 
@@ -418,7 +462,7 @@ def test_undo_puts_a_silo_back(landed: Fixture, fake: Path):
     head = subjects(fx.store)[0]
     rc, _, err = apply_cli(fx, fake, "undo", "--silo", "gone-repo")
     assert rc == 1 and "nothing changed" in err and subjects(fx.store)[0] == head
-    rc, out, _ = apply_cli(fx, fake, "apply", "--silo", "beta")      # and it lands again
+    rc, out, _ = apply_cli(fx, fake, "apply", "--silo", "beta")  # and it lands again
     assert rc == 0 and "landed" in out
 
 
@@ -444,9 +488,10 @@ def test_refine_queue_derives_and_drops(landed: Fixture, fake: Path):
     p = md / "deploy-notes.md"
     p.write_text(p.read_text() + "VERIFY-MARK\n")
     (md / "house-rule.md").write_text(
-        "---\nname: house-rule\ndescription: d\n---\n\nSTANDING-MARK LOW-CONF\n")
+        "---\nname: house-rule\ndescription: d\n---\n\nSTANDING-MARK LOW-CONF\n"
+    )
     plan, _ = plan_for(fx)
-    for s in plan["silos"]:                     # keep one names-subject description as it was
+    for s in plan["silos"]:  # keep one names-subject description as it was
         for e in s["files"]:
             if e["file"] == "house-rule.md":
                 e["description"] = "keep"
@@ -460,12 +505,16 @@ def test_refine_queue_derives_and_drops(landed: Fixture, fake: Path):
     alpha = "territories/fixture/alpha"
     q = items()
     dn, hr = f"{alpha}/deploy-notes.md", f"{alpha}/house-rule.md"
-    assert not any(k.startswith("verify:") for k in q)              # claims are checked on use
-    assert {f"shape:{dn}", f"standing-candidate:{hr}", f"description:{hr}",
-            f"low-confidence:{hr}"} <= q.keys()
+    assert not any(k.startswith("verify:") for k in q)  # claims are checked on use
+    assert {
+        f"shape:{dn}",
+        f"standing-candidate:{hr}",
+        f"description:{hr}",
+        f"low-confidence:{hr}",
+    } <= q.keys()
     ranks = [i["rank"] for i in queue.build(fx.store, fx.projects)["items"]]
     assert ranks == sorted(ranks)
-    assert next(iter(q)) == f"standing-candidate:{hr}"             # promotions lead
+    assert next(iter(q)) == f"standing-candidate:{hr}"  # promotions lead
 
     # working an item is what drops it
     f = fx.store / dn
@@ -476,7 +525,7 @@ def test_refine_queue_derives_and_drops(landed: Fixture, fake: Path):
     assert f"shape:{dn}" not in q
     assert f"description:{hr}" not in q and f"standing-candidate:{hr}" in q
     (fx.store / "standing").mkdir(exist_ok=True)
-    h.replace(fx.store / "standing" / "house-rule.md")             # promoted
+    h.replace(fx.store / "standing" / "house-rule.md")  # promoted
     assert not any(k.endswith(hr) for k in items())
 
     # a declined item is suppressed by its key in RETRO.md, and counted
@@ -508,14 +557,22 @@ def test_refine_queue_never_queues_a_memory_for_verification(fx: Fixture):
 
     index = fx.store / "territories/console/kit/MEMORY.md"
     head = "---\nterritory: console/kit\n"
-    index.write_text(index.read_text().replace(
-        head, head + "members:\n  kit-repo: {owner: self, mode: active}\n", 1))
+    index.write_text(
+        index.read_text().replace(
+            head, head + "members:\n  kit-repo: {owner: self, mode: active}\n", 1
+        )
+    )
     types = {i["type"] for i in queue.build(fx.store, fx.projects)["items"]}
     assert not types & {"unverified", "verify", "stale-live"}
 
 
-@pytest.mark.parametrize("entry", ["- home/kiln : The kiln. PULL WHEN: any of it.",
-                                   "- home/lathe, home/kiln : PULL WHEN: in that repo."])
+@pytest.mark.parametrize(
+    "entry",
+    [
+        "- home/kiln : The kiln. PULL WHEN: any of it.",
+        "- home/lathe, home/kiln : PULL WHEN: in that repo.",
+    ],
+)
 def test_router_line_leaves_a_hand_written_entry_alone(tmp_path: Path, entry: str):
     router = f"# MEMORY ROUTER\n\n## home\nStandalone.\n\n{entry}\n\n## fixture\n"
     (tmp_path / "ROUTER.md").write_text(router)
@@ -537,6 +594,7 @@ def _git_store(root: Path) -> None:
 
     def g(*a):
         subprocess.run(["git", "-C", str(root), *a], check=True, capture_output=True)
+
     g("init", "-q")
     g("config", "user.email", "fixture@example.invalid")
     g("config", "user.name", "Fixture")
@@ -552,13 +610,16 @@ def test_volatility_pass_classifies_only_what_nothing_dates(fx: Fixture, fake: P
     from claude_hybrid_memory.store import parse_frontmatter
 
     kit = fx.store / "territories/console/kit"
-    for name, extra, body in [("kit-v-plain", "", "A fact."),
-                              ("kit-v-state", "", "LIVE-MARK the PR is open."),
-                              ("kit-v-status", "status: SHIPPED\n", "Done."),
-                              ("kit-v-record", "tier: record\n", "A run."),
-                              ("kit-v-stated", "volatility: slow\n", "Stated.")]:
-        (kit / f"{name}.md").write_text(f"---\nname: {name}\ndescription: d\nkind: territory\n"
-                                        f"{extra}---\n\n{body}\n")
+    for name, extra, body in [
+        ("kit-v-plain", "", "A fact."),
+        ("kit-v-state", "", "LIVE-MARK the PR is open."),
+        ("kit-v-status", "status: SHIPPED\n", "Done."),
+        ("kit-v-record", "tier: record\n", "A run."),
+        ("kit-v-stated", "volatility: slow\n", "Stated."),
+    ]:
+        (kit / f"{name}.md").write_text(
+            f"---\nname: {name}\ndescription: d\nkind: territory\n{extra}---\n\n{body}\n"
+        )
     _git_store(fx.store)
     picked = {t.mem.slug for t in V.targets(fx.store)}
     assert {"kit-v-plain", "kit-v-state"} <= picked
@@ -568,7 +629,7 @@ def test_volatility_pass_classifies_only_what_nothing_dates(fx: Fixture, fake: P
     base = ["volatility", "--root", str(fx.store), "--territory", "console/kit"]
     rc, out, err = run(mem_cmd("migrate", *base, "--dry-run"), env)
     assert rc == 0 and "to run" in out and not calls(fake), out + err
-    rc, _, err = run(mem_cmd("migrate", *base, "--write"), env)       # nothing cached yet
+    rc, _, err = run(mem_cmd("migrate", *base, "--write"), env)  # nothing cached yet
     assert rc == 2 and "run without --write first" in err
 
     rc, out, err = run(mem_cmd("migrate", *base), env)
@@ -577,7 +638,7 @@ def test_volatility_pass_classifies_only_what_nothing_dates(fx: Fixture, fake: P
     n = len(calls(fake))
     rc, out, err = run(mem_cmd("migrate", *base, "--write"), env)
     assert rc == 0 and "committed" in out, out + err
-    assert len(calls(fake)) == n                                      # --write runs nothing
+    assert len(calls(fake)) == n  # --write runs nothing
     vol = lambda f: parse_frontmatter((kit / f).read_text())[0].get("volatility")  # noqa: E731
     assert vol("kit-v-plain.md") == "stable" and vol("kit-v-state.md") == "live"
     assert vol("kit-v-status.md") is None and vol("kit-v-stated.md") == "slow"
@@ -599,9 +660,10 @@ def test_apply_dates_each_file_from_when_it_was_written(landed: Fixture, fake: P
     os.utime(src, (when, when))
     rc, out, err = apply_cli(fx, fake, "apply")
     assert rc == 0, out + err
-    assert "mem migrate volatility" in out                          # the next step is named
-    meta = parse_frontmatter((fx.store / "territories/fixture/alpha/deploy-notes.md")
-                             .read_text())[0]
+    assert "mem migrate volatility" in out  # the next step is named
+    meta = parse_frontmatter((fx.store / "territories/fixture/alpha/deploy-notes.md").read_text())[
+        0
+    ]
     assert str(meta["last_verified"]) == "2026-08-03"
 
 
@@ -614,11 +676,12 @@ def test_written_date_prefers_the_harness_stamp(tmp_path: Path):
     f.write_text("x")
     nested = "---\nname: a\nmetadata:\n  modified: 2026-10-16T15:46:35.090Z\n---\nB\n"
     assert written_date(nested, f) == dt.date(2026, 10, 16)
-    assert written_date("---\nname: a\n---\nB\n", f) == dt.date.today()   # mtime: just now
+    assert written_date("---\nname: a\n---\nB\n", f) == dt.date.today()  # mtime: just now
 
 
 def test_refine_queue_territory_of_a_store_wide_finding():
     from claude_hybrid_memory.migrate.queue import _territory
+
     assert _territory(".") == ""
     assert _territory("territories/home/lab/x.md") == "home/lab"
     assert _territory("GATES.md") == "GATES.md"

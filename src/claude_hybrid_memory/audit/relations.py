@@ -1,4 +1,5 @@
 """`overrides:` and `supersedes:` must point at something real."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -23,11 +24,23 @@ def check_relations(mems: list[Memory]) -> list[Finding]:
             if ov.split("#")[0].strip().upper() in ("CLAUDE.MD", "CLAUDE"):
                 pass
             elif ov not in by_slug:
-                out.append(Finding(ERROR, "override-target-missing", str(m.path),
-                                   f"overrides: {ov} does not exist"))
+                out.append(
+                    Finding(
+                        ERROR,
+                        "override-target-missing",
+                        str(m.path),
+                        f"overrides: {ov} does not exist",
+                    )
+                )
             elif ov not in standing:
-                out.append(Finding(ERROR, "override-target-not-standing", str(m.path),
-                                   f"overrides: {ov} exists but is not kind: standing"))
+                out.append(
+                    Finding(
+                        ERROR,
+                        "override-target-not-standing",
+                        str(m.path),
+                        f"overrides: {ov} exists but is not kind: standing",
+                    )
+                )
     return out
 
 
@@ -63,7 +76,13 @@ def check_chains(root: Path, routers: dict) -> list[Finding]:
             continue
         if any(Path(t).name == Path(old).name for t in INDEX_LINK_RE.findall(r.raw)):
             by = ", ".join(s.key for s in g.successors(old))
-            out.append(Finding(WARN, "superseded-still-indexed", str(r.path),
-                               f"lists {Path(old).name}, superseded by {by}; drop its line "
-                               "so the index routes to the current memory"))
+            out.append(
+                Finding(
+                    WARN,
+                    "superseded-still-indexed",
+                    str(r.path),
+                    f"lists {Path(old).name}, superseded by {by}; drop its line "
+                    "so the index routes to the current memory",
+                )
+            )
     return out

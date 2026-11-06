@@ -1,4 +1,5 @@
 """Reading the store and the legacy silos into `Memory` objects."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -19,8 +20,8 @@ class Memory:
     path: Path
     meta: dict
     body: str
-    scope: str          # "store" | "legacy"
-    container: str      # territory path, or legacy silo name
+    scope: str  # "store" | "legacy"
+    container: str  # territory path, or legacy silo name
     raw: str = ""
     links: list = field(default_factory=list)
     nonlinks: list = field(default_factory=list)
@@ -99,7 +100,7 @@ def parse_frontmatter(text: str) -> tuple[dict, str, list[str]]:
     if end == -1:
         return {}, text, []
     block = text[3:end].lstrip("\n")
-    body = text[end + 4:].lstrip("\n")
+    body = text[end + 4 :].lstrip("\n")
     loose = _parse_loose(block)
     try:
         meta = yaml.load(block, _Loader)
@@ -119,11 +120,18 @@ def parse_frontmatter(text: str) -> tuple[dict, str, list[str]]:
     else:
         for k, v in meta.items():
             lv = loose.get(k)
-            if (isinstance(v, str) and isinstance(lv, str) and lv != v and lv.startswith(v)
-                    and lv[len(v):].lstrip().startswith("#")):
+            if (
+                isinstance(v, str)
+                and isinstance(lv, str)
+                and lv != v
+                and lv.startswith(v)
+                and lv[len(v) :].lstrip().startswith("#")
+            ):
                 meta[k] = lv
-                problems.append(f"`{k}:` has an unquoted ' #' that YAML reads as a comment; "
-                                "kept the full text -- quote the value")
+                problems.append(
+                    f"`{k}:` has an unquoted ' #' that YAML reads as a comment; "
+                    "kept the full text -- quote the value"
+                )
     # hoist legacy nested metadata
     nested = meta.get("metadata")
     if isinstance(nested, dict):
@@ -195,8 +203,18 @@ def load_file(p: Path, scope: str, container: str) -> Memory:
             links.append(t)
         else:
             maybe.append(t)
-    return Memory(p, meta, body, scope, container, raw=raw, links=links,
-                  nonlinks=nonlinks, maybe=maybe, fm_problems=fm_problems)
+    return Memory(
+        p,
+        meta,
+        body,
+        scope,
+        container,
+        raw=raw,
+        links=links,
+        nonlinks=nonlinks,
+        maybe=maybe,
+        fm_problems=fm_problems,
+    )
 
 
 def scan_store(root: Path) -> tuple[list[Memory], dict]:

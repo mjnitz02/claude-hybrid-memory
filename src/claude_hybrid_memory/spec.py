@@ -1,4 +1,5 @@
 """The vocabulary of docs/format-spec.md: the values each field may take."""
+
 from __future__ import annotations
 
 import re
@@ -13,9 +14,13 @@ MODES = {"active", "occasional-pr", "reference", "dead-upstream", "scratch", "pa
 TIERS = {"state", "record"}
 
 STATUS_VOLATILITY = {
-    "SHIPPED": "stable", "RESOLVED": "stable", "HISTORICAL": "stable",
+    "SHIPPED": "stable",
+    "RESOLVED": "stable",
+    "HISTORICAL": "stable",
     "PARKED": "slow",
-    "STILL LIVE": "live", "BLOCKED": "live", "IN FLIGHT": "live",
+    "STILL LIVE": "live",
+    "BLOCKED": "live",
+    "IN FLIGHT": "live",
 }
 STALE_AFTER = {"stable": 365, "slow": 30, "live": 14}
 # Frontmatter the spec no longer has. `verify:` recipes and their `expect:` were executed by
@@ -30,10 +35,18 @@ INDEX_LINK_RE = re.compile(r"\]\(([^)]+\.md)\)")
 # Findings only a refinement pass acts on. `mem render --check`, `mem audit --refine` and the
 # refine queue show them; a plain `mem audit` does not, because a session writing memories
 # is never the one that should be making room or fixing a field's vocabulary.
-REFINE_CODES = frozenset({
-    "index-degraded", "description-long", "index-over-cap", "index-near-cap",
-    "memories-over-target", "memories-over-cap", "field-invalid", "missing-kind",
-})
+REFINE_CODES = frozenset(
+    {
+        "index-degraded",
+        "description-long",
+        "index-over-cap",
+        "index-near-cap",
+        "memories-over-target",
+        "memories-over-cap",
+        "field-invalid",
+        "missing-kind",
+    }
+)
 
 # An index line names its memory one of two ways. The link form is what hand-written indexes
 # and the harness's auto-memory write; the bare form is what `mem render` and `mem new` write,
@@ -43,7 +56,8 @@ REFINE_CODES = frozenset({
 #     - slug: gloss
 #     - Records: slug slug slug         (a LIST_LABELS line: names only)
 LINK_ENTRY_RE = re.compile(
-    r"^- \[(?P<title>[^\]]*)\]\((?P<file>[^)]+\.md)\)\s*(?:[—–-]+\s*)?(?P<gloss>.*)$")
+    r"^- \[(?P<title>[^\]]*)\]\((?P<file>[^)]+\.md)\)\s*(?:[—–-]+\s*)?(?P<gloss>.*)$"
+)
 BARE_ENTRY_RE = re.compile(r"^- (?P<slug>[\w.-]+): (?P<gloss>.*)$")
 LIST_LABELS = ("Records", "Names")
 
@@ -79,6 +93,7 @@ def entry_line_re(filename: str) -> re.Pattern:
     f = re.escape(filename)
     s = re.escape(filename.removesuffix(".md"))
     return re.compile(rf"^- (?:\[[^\]]*\]\((?:[^)]*/)?{f}\)|{s}:\s).*$", re.M)
+
 
 # The accretion markers direction §2 counted (24 files of 296): a mutable file acting as a log.
 # The phrases match in any case ("History below"); CORRECTION and SUPERSEDED only shouted, since

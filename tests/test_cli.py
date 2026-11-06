@@ -1,6 +1,7 @@
 """The CLI surface the 2026-11-04 usability eval tripped on: one parser's worth of polish
 across every command, flags in either position, `mem show <territory>`, and the
 no-territory hook naming the command to run. Synthetic fixtures throughout."""
+
 from __future__ import annotations
 
 import json
@@ -14,18 +15,30 @@ from claude_hybrid_memory.hooks.session_start import guess_territory
 
 def test_global_flags_before_the_subcommand_move_after_it():
     assert _hoist(["--root", "X", "find", "reader"]) == ["find", "reader", "--root", "X"]
-    assert _hoist(["--root=X", "--json", "verified", "s", "-m", "n"]) == \
-        ["verified", "s", "-m", "n", "--root=X", "--json"]
+    assert _hoist(["--root=X", "--json", "verified", "s", "-m", "n"]) == [
+        "verified",
+        "s",
+        "-m",
+        "n",
+        "--root=X",
+        "--json",
+    ]
     assert _hoist(["-t", "a/b", "new", "slug"]) == ["new", "slug", "-t", "a/b"]
-    assert _hoist(["--root", "X", "hook", "session-start"]) == \
-        ["hook", "session-start", "--root", "X"]
+    assert _hoist(["--root", "X", "hook", "session-start"]) == [
+        "hook",
+        "session-start",
+        "--root",
+        "X",
+    ]
     assert _hoist(["find", "x", "--root", "X"]) == ["find", "x", "--root", "X"]  # untouched
     assert _hoist(["--help"]) == ["--help"]
 
 
 def test_flags_in_either_position_reach_the_command(fx: Fixture):
-    for argv in (("--root", str(fx.store), "find", "nightly"),
-                 ("find", "nightly", "--root", str(fx.store))):
+    for argv in (
+        ("--root", str(fx.store), "find", "nightly"),
+        ("find", "nightly", "--root", str(fx.store)),
+    ):
         rc, out, err = run(mem_cmd(*argv), fx.env())
         assert rc == 0, err
         assert "lab-backup-plan" in out
@@ -34,8 +47,18 @@ def test_flags_in_either_position_reach_the_command(fx: Fixture):
 def test_top_level_help_lists_every_command(fx: Fixture):
     rc, out, _ = run(mem_cmd("--help"), fx.env())
     assert rc == 0
-    for cmd in ("find", "show", "new", "verified", "supersede", "audit", "link", "render",
-                "commit", "fix"):
+    for cmd in (
+        "find",
+        "show",
+        "new",
+        "verified",
+        "supersede",
+        "audit",
+        "link",
+        "render",
+        "commit",
+        "fix",
+    ):
         assert f"mem {cmd}" in out
 
 
@@ -70,8 +93,7 @@ def test_find_with_only_a_territory_points_at_show(fx: Fixture):
 
 
 def test_the_hook_takes_root(fx: Fixture, tmp_path: Path):
-    rc, out, _ = run(mem_cmd("hook", "session-start", "--root", str(tmp_path / "none")),
-                     fx.env())
+    rc, out, _ = run(mem_cmd("hook", "session-start", "--root", str(tmp_path / "none")), fx.env())
     assert rc == 0
     ctx = json.loads(out)["hookSpecificOutput"]["additionalContext"]
     assert f"no store at `{tmp_path / 'none'}`" in ctx
@@ -86,14 +108,18 @@ def _territory(store: Path, t: str, head: str, body: str) -> None:
 def test_guess_territory_prefers_members_then_mentions(tmp_path: Path):
     store = tmp_path / "store"
     _territory(store, "console/tools", "", "The retrotink scaler. retrotink again.")
-    _territory(store, "home/lab", "members:\n  retrotink-flasher: {owner: self, mode: parked}\n",
-               "Nothing about it here.")
+    _territory(
+        store,
+        "home/lab",
+        "members:\n  retrotink-flasher: {owner: self, mode: parked}\n",
+        "Nothing about it here.",
+    )
     _territory(store, "solo/other", "", "Unrelated.")
     all_t = ["console/tools", "home/lab", "solo/other"]
     t, why, firm = guess_territory(store, tmp_path / "retrotink-flasher", all_t)
-    assert t == "home/lab" and "members" in why and firm         # a parked repo, cloned back
+    assert t == "home/lab" and "members" in why and firm  # a parked repo, cloned back
     t, why, firm = guess_territory(store, tmp_path / "retrotink", all_t[::2])
-    assert t == "console/tools" and "`retrotink` 2x" in why and firm   # the full name
+    assert t == "console/tools" and "`retrotink` 2x" in why and firm  # the full name
     t, why, firm = guess_territory(store, tmp_path / "retrotink-mk2", all_t[::2])
     assert t == "console/tools" and "part of the name" in why and not firm
     assert guess_territory(store, tmp_path / "zzz", all_t) is None
@@ -102,7 +128,8 @@ def test_guess_territory_prefers_members_then_mentions(tmp_path: Path):
 def test_a_part_name_guess_is_only_possibly(fx: Fixture, tmp_path: Path):
     # The review's case: `random-notes` got a bold "Best guess" on one passing "random".
     (fx.store / "territories/home/lab/MEMORY.md").write_text(
-        (fx.store / "territories/home/lab/MEMORY.md").read_text() + "\nA random aside.\n")
+        (fx.store / "territories/home/lab/MEMORY.md").read_text() + "\nA random aside.\n"
+    )
     repo = tmp_path / "random-notes"
     (repo / ".git").mkdir(parents=True)
     rc, out, _ = run(mem_cmd("hook", "session-start"), fx.env(cwd=repo))
@@ -120,6 +147,7 @@ def test_the_no_territory_note_names_the_link_command(fx: Fixture, tmp_path: Pat
 
 
 # --- P3 polish from the same eval -------------------------------------------------------
+
 
 def test_show_says_how_much_it_left_out(fx: Fixture):
     rc, out, _ = run(mem_cmd("show", "lab-backup-plan"), fx.env())
@@ -140,10 +168,24 @@ def test_render_check_names_an_unrendered_territory(fx: Fixture):
 
 def test_log_takes_a_territory_or_a_slug_and_refuses_a_typo(fx: Fixture):
     import subprocess
+
     subprocess.run(["git", "init", "-q", str(fx.store)], check=True)
     subprocess.run(["git", "-C", str(fx.store), "add", "-A"], check=True)
-    subprocess.run(["git", "-C", str(fx.store), "-c", "user.name=t", "-c", "user.email=t@t",
-                    "commit", "-qm", "baseline"], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(fx.store),
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-qm",
+            "baseline",
+        ],
+        check=True,
+    )
     for spec in ("home/lab", "lab-backup-plan", "territories/home/lab"):
         rc, out, err = run(mem_cmd("log", spec), fx.env())
         assert rc == 0 and "baseline" in out, (spec, err)
@@ -153,8 +195,14 @@ def test_log_takes_a_territory_or_a_slug_and_refuses_a_typo(fx: Fixture):
 
 def test_new_keeps_the_router_count_true(fx: Fixture):
     import subprocess
-    p = subprocess.run(mem_cmd("new", "lab-probe", "-t", "home/lab", "-v", "slow", "-d", "x"),
-                       input="Body.\n", capture_output=True, text=True, env=fx.env())
+
+    p = subprocess.run(
+        mem_cmd("new", "lab-probe", "-t", "home/lab", "-v", "slow", "-d", "x"),
+        input="Body.\n",
+        capture_output=True,
+        text=True,
+        env=fx.env(),
+    )
     assert p.returncode == 0, p.stderr
     real = len(list((fx.store / "territories/home/lab").glob("*.md"))) - 2  # MEMORY, EXPORTS
     assert f"- home/lab ({real}) :" in (fx.store / "ROUTER.md").read_text()
@@ -172,14 +220,26 @@ def test_audit_scopes_to_a_territory(fx: Fixture):
 
 def test_link_under_a_scratch_root_needs_legacy_too(fx: Fixture, tmp_path: Path):
     import shutil
+
     scratch = tmp_path / "scratch"
     shutil.copytree(fx.store, scratch)
     env = fx.env()
     env["HOME"] = str(fx.home)
     rc, _, err = run(mem_cmd("link", "-t", "home/lab", "--root", str(scratch), "--write"), env)
     assert rc == 2 and "pass --legacy too" in err
-    rc, _, err = run(mem_cmd("link", "-t", "home/lab", "--root", str(scratch),
-                             "--legacy", str(tmp_path / "projects"), "--write"), env)
+    rc, _, err = run(
+        mem_cmd(
+            "link",
+            "-t",
+            "home/lab",
+            "--root",
+            str(scratch),
+            "--legacy",
+            str(tmp_path / "projects"),
+            "--write",
+        ),
+        env,
+    )
     assert rc == 0, err
 
 
@@ -188,11 +248,17 @@ def test_cwd_territory_resolves_inside_a_scratch_root(fx: Fixture, tmp_path: Pat
     # copy's territory, not fail to map (eval 2026-11-04) or write the original.
     import shutil
     import subprocess
+
     scratch = tmp_path / "scratch"
     shutil.copytree(fx.store, scratch)
-    p = subprocess.run(mem_cmd("new", "kit-probe", "-v", "slow", "-d", "x", "--root",
-                               str(scratch)), input="Body.\n", capture_output=True,
-                       text=True, env=fx.env(), cwd=fx.repo)
+    p = subprocess.run(
+        mem_cmd("new", "kit-probe", "-v", "slow", "-d", "x", "--root", str(scratch)),
+        input="Body.\n",
+        capture_output=True,
+        text=True,
+        env=fx.env(),
+        cwd=fx.repo,
+    )
     assert p.returncode == 0, p.stderr
     assert (scratch / "territories/console/kit/kit-probe.md").is_file()
     assert not (fx.store / "territories/console/kit/kit-probe.md").exists()
@@ -201,31 +267,57 @@ def test_cwd_territory_resolves_inside_a_scratch_root(fx: Fixture, tmp_path: Pat
 def test_dup_finds_a_near_duplicate_in_the_same_territory_but_not_a_record(fx: Fixture):
     # Synthetic, in the eval's shape: the twin sits beside the original in one territory,
     # where the cross-territory description check never looks.
-    body = "SillyTavern runs headless on the lab box behind a privoxy VPN container; only " \
-           "server-bounced calls obey requestProxy, a browser fetch leaks the real IP."
+    body = (
+        "SillyTavern runs headless on the lab box behind a privoxy VPN container; only "
+        "server-bounced calls obey requestProxy, a browser fetch leaks the real IP."
+    )
     lab = fx.store / "territories/home/lab"
-    for slug, extra in (("lab-st-headless", ""), ("lab-st-headless-twin", ""),
-                        ("lab-st-headless-2026-08", "tier: record\n")):
+    for slug, extra in (
+        ("lab-st-headless", ""),
+        ("lab-st-headless-twin", ""),
+        ("lab-st-headless-2026-08", "tier: record\n"),
+    ):
         (lab / f"{slug}.md").write_text(
             f"---\nname: {slug}\nkind: territory\ndescription: {body}\n{extra}"
-            "volatility: slow\nlast_verified: 2026-11-01\n---\n\n" + body + "\n")
+            "volatility: slow\nlast_verified: 2026-11-01\n---\n\n" + body + "\n"
+        )
     rc, out, _ = run(mem_cmd("dup", "--scan", "store", "--json"), fx.env())
     near = [f for f in json.loads(out) if f["code"] == "near-duplicate"]
-    pairs = {frozenset((f["path"].rsplit("/", 1)[1],
-                        f["message"].split(" with ")[1].split(":")[0].rsplit("/", 1)[1]))
-             for f in near}
+    pairs = {
+        frozenset(
+            (
+                f["path"].rsplit("/", 1)[1],
+                f["message"].split(" with ")[1].split(":")[0].rsplit("/", 1)[1],
+            )
+        )
+        for f in near
+    }
     assert frozenset(("lab-st-headless.md", "lab-st-headless-twin.md")) in pairs
-    assert not [p for p in pairs if "2026-08" in "".join(p)]       # a record is never a dup
+    assert not [p for p in pairs if "2026-08" in "".join(p)]  # a record is never a dup
 
 
 def test_audit_changed_reports_only_uncommitted_files(fx: Fixture):
     import subprocess
+
     rc, _, err = run(mem_cmd("audit", "--changed"), fx.env())
     assert rc == 2 and "not a git repository" in err
     subprocess.run(["git", "init", "-q", str(fx.store)], check=True)
     subprocess.run(["git", "-C", str(fx.store), "add", "-A"], check=True)
-    subprocess.run(["git", "-C", str(fx.store), "-c", "user.name=t", "-c", "user.email=t@t",
-                    "commit", "-qm", "baseline"], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(fx.store),
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-qm",
+            "baseline",
+        ],
+        check=True,
+    )
     rc, out, _ = run(mem_cmd("audit", "--changed", "--json"), fx.env())
     assert json.loads(out) == []
     p = fx.store / "territories/home/lab/lab-backup-plan.md"
