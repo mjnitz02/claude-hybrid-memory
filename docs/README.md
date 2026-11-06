@@ -7,8 +7,8 @@ Start with the [main README](../README.md) for the quick start.
 | Doc | What it covers |
 |---|---|
 | [overview.md](overview.md) | Why it exists, how the store is laid out, and the two rules behind every decision |
-| [commands.md](commands.md) | Every `mem` command, the hooks, and the `make` targets |
-| [setup.md](setup.md) | What `make install` does, step by step, and how to do each step by hand |
+| [commands.md](commands.md) | Every `mem` command, the hooks, and the `task` targets |
+| [setup.md](setup.md) | What `task install` does, step by step, and how to do each step by hand |
 | [fast-adoption.md](fast-adoption.md) | Bringing existing memory in all at once: summarise, one map checkpoint, land as-is, refine after |
 | [migration.md](migration.md) | Moving one territory by hand, and the invariant every migration keeps |
 | [self-verification.md](self-verification.md) | The retrospective: what is mechanical and what is judgment |

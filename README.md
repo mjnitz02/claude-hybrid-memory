@@ -121,7 +121,7 @@ The full list is in [`docs/commands.md`](docs/commands.md).
 ## Contributing
 
 A single-maintainer project, open in case the approach helps someone. Issues are welcome;
-open one before a non-trivial PR. To work on it, clone the repo and run `make install`: it
+open one before a non-trivial PR. To work on it, clone the repo and run `uv run task install`: it
 loads your checkout as the plugin (`hybrid-memory@skills-dir`), so edits are live. See [CONTRIBUTING](.github/CONTRIBUTING.md).
 
 ## License

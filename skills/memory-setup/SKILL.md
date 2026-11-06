@@ -30,7 +30,7 @@ from the plugin's `bin/`):
 is also the repair for broken scaffolding. The plugin already carries the hooks and skills.
 Matt runs it, or it runs on his go-ahead, because it includes step 1b and, on a machine set
 up before the plugin, removes the old `mem` hooks from `~/.claude/settings.json` and the old
-skill symlinks. In a checkout he works on, it is `make install` (`mem install --dev`)
+skill symlinks. In a checkout he works on, it is `task install` (`mem install --dev`)
 instead. It writes `~/.claude/rules/claude-hybrid-memory.md` (step 3d) and never edits
 `~/.claude/CLAUDE.md`. If it warns `install-imported-twice`, hand Matt the `# Memory` block
 to delete from his `CLAUDE.md`; do not edit it yourself. If it warns `install-no-plugin`,

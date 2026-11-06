@@ -16,13 +16,27 @@ multi-ecosystem-groups:
     schedule:
       interval: weekly
 updates:
-  # Python — uv resolves from pyproject.toml and writes uv.lock. The pre-commit
-  # hooks for ruff and pytest run through uv, so this covers them too.
+  # Python — uv resolves from pyproject.toml and writes uv.lock. The git hooks
+  # for ruff and pytest, and Task itself, run through uv, so this covers them too.
   - package-ecosystem: uv
     directory: /
     # `patterns` is required on every member of a multi-ecosystem group.
     patterns: ['*']
     multi-ecosystem-group: dependencies
+    # Exact pins in pyproject.toml. A new ty or jscpd can report findings
+    # across the tree, so they are bumped by hand with the fixes in the same PR.
+    # Naming update-types keeps this to version updates; security fixes still come.
+    ignore:
+      - dependency-name: ty
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+          - version-update:semver-patch
+      - dependency-name: jscpd
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+          - version-update:semver-patch
     # Nobody reviews these PRs before they merge, so wait a week after a
     # release: time for a compromised or broken version to be yanked upstream.
     # Security updates ignore the cooldown.
