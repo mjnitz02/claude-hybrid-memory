@@ -1,4 +1,5 @@
 """The store's own history: `mem commit | log | diff` and the SessionEnd hook (direction §16.1)."""
+
 from __future__ import annotations
 
 import json
@@ -11,8 +12,9 @@ from claude_hybrid_memory import events, storegit
 
 
 def git(root, *args) -> str:
-    return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True,
-                          check=True).stdout
+    return subprocess.run(
+        ["git", "-C", str(root), *args], capture_output=True, text=True, check=True
+    ).stdout
 
 
 def init(root) -> None:
@@ -26,8 +28,14 @@ def init(root) -> None:
 
 
 def end(fx: Fixture, payload: str) -> tuple[int, str, str]:
-    p = subprocess.run(hook_cmd()[:-1] + ["session-end"], input=payload, capture_output=True,
-                       text=True, env=fx.env(), timeout=30)
+    p = subprocess.run(
+        hook_cmd()[:-1] + ["session-end"],
+        input=payload,
+        capture_output=True,
+        text=True,
+        env=fx.env(),
+        timeout=30,
+    )
     return p.returncode, p.stdout, p.stderr
 
 
@@ -38,7 +46,8 @@ def subjects(root) -> list[str]:
 def test_session_end_commits_memory_and_events(fx: Fixture):
     init(fx.store)
     (fx.store / "territories/home/lab/lab-new-note.md").write_text(
-        "---\nname: lab-new-note\nkind: territory\ndescription: New.\n---\n\nBody.\n")
+        "---\nname: lab-new-note\nkind: territory\ndescription: New.\n---\n\nBody.\n"
+    )
     (fx.store / "standing/working-register.md").write_text("changed\n")
     (fx.store / "territories/console/kit/kit-sync-v1.md").unlink()
     for _ in range(3):
@@ -46,14 +55,16 @@ def test_session_end_commits_memory_and_events(fx: Fixture):
     (fx.store / ".cache").mkdir()
     (fx.store / ".cache/index.sqlite").write_text("derived")
 
-    payload = json.dumps({"session_id": "sess-1", "hook_event_name": "SessionEnd",
-                          "reason": "clear"})
+    payload = json.dumps(
+        {"session_id": "sess-1", "hook_event_name": "SessionEnd", "reason": "clear"}
+    )
     assert end(fx, payload) == (0, "", "")
     subject, base = subjects(fx.store)
     assert base == "Baseline"
     # ROUTER.md too: session end keeps its counts true (console/kit lost one, home/lab gained one)
-    assert subject == ("mem: 1 added, 2 modified, 1 deleted in ROUTER.md, standing, "
-                       "console/kit +1 more; 3 events")
+    assert subject == (
+        "mem: 1 added, 2 modified, 1 deleted in ROUTER.md, standing, console/kit +1 more; 3 events"
+    )
     body = git(fx.store, "log", "-1", "--format=%b")
     assert "Trigger: session end (clear) · session sess-1" in body
     assert "A  territories/home/lab/lab-new-note.md" in body
@@ -207,8 +218,9 @@ def test_show_at_reads_a_past_version_even_of_a_deleted_file(fx: Fixture):
     rc, out, _ = run(mem_cmd("show", "lab-backup-plan", "--at", "HEAD", "--full"), fx.env())
     assert rc == 0 and out == original
     (fx.store / "territories/console/kit/kit-sync-v1.md").unlink()
-    rc, out, _ = run(mem_cmd("show", "console/kit/kit-sync-v1.md", "--at", "HEAD", "--meta"),
-                     fx.env())
+    rc, out, _ = run(
+        mem_cmd("show", "console/kit/kit-sync-v1.md", "--at", "HEAD", "--meta"), fx.env()
+    )
     assert rc == 0 and "description: The first sync cut." in out
     rc, _, err = run(mem_cmd("show", "lab-backup-plan", "--at", "nope"), fx.env())
     assert rc == 2 and "names no commit" in err
@@ -222,8 +234,10 @@ def test_audit_at_checks_a_past_store_and_names_live_paths(fx: Fixture):
     now = json.loads(run(mem_cmd("audit", "--json", "--scan", "store"), fx.env())[1])
     rc, out, _ = run(mem_cmd("audit", "--json", "--scan", "store", "--at", "HEAD"), fx.env())
     then = json.loads(out)
+
     def key(fs):
         return {(f["code"], f["path"]) for f in fs}
+
     assert key(now) - key(then) == {("secret-maybe", str(p))}
     assert not [f["path"] for f in then if "mem-at-" in f["path"] + f["message"]]
     rc, out, _ = run(mem_cmd("audit", "--scan", "store", "--at", "HEAD"), fx.env())
@@ -235,6 +249,9 @@ def test_audit_at_checks_a_past_store_and_names_live_paths(fx: Fixture):
 def test_only_storegit_runs_git():
     """direction §16.1: storegit.py is the one place `mem` runs git."""
     src = Path(__file__).resolve().parents[1] / "src" / "claude_hybrid_memory"
-    offenders = [str(f.relative_to(src)) for f in src.rglob("*.py")
-                 if '"git"' in f.read_text() and f.name != "storegit.py"]
+    offenders = [
+        str(f.relative_to(src))
+        for f in src.rglob("*.py")
+        if '"git"' in f.read_text() and f.name != "storegit.py"
+    ]
     assert offenders == []

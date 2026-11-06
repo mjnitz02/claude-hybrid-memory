@@ -8,14 +8,19 @@ from claude_hybrid_memory.harness import silo_name
 # node, not by reasoning about them: the long cases exercise the 200-char cut and the hash,
 # and the last one the UTF-16 unit counting (an emoji is two dashes, and two hash units).
 VECTORS = [
-    ("/Users/alice/workspaces/console_tools",
-     "-Users-alice-workspaces-console-tools"),
-    ("/Users/x/Library/Mobile Documents/iCloud~md~obsidian/Documents/GoogleDrive-a@b.com",
-     "-Users-x-Library-Mobile-Documents-iCloud-md-obsidian-Documents-GoogleDrive-a-b-com"),
-    ("/Users/x/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/repo",
-     "-Users-x-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-d-f4fl0o"),
-    ("/Users/x/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/end",
-     "-Users-x-d-j--vu----d-j--vu----d-j--vu----d-j--vu----d-j--vu----d-j--vu----d-j--vu----d-j--vu----d-j--vu----d-j--vu----d-j--vu----d-j--vu----d-j--vu----d-j--vu----d-j--vu----d-j--vu----d-j--vu----d-j--yixc26"),
+    ("/Users/alice/workspaces/console_tools", "-Users-alice-workspaces-console-tools"),
+    (
+        "/Users/x/Library/Mobile Documents/iCloud~md~obsidian/Documents/GoogleDrive-a@b.com",
+        "-Users-x-Library-Mobile-Documents-iCloud-md-obsidian-Documents-GoogleDrive-a-b-com",
+    ),
+    (
+        "/Users/x/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/repo",
+        "-Users-x-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-deep-d-f4fl0o",
+    ),
+    (
+        "/Users/x/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/d\u00e9j\u00e0-vu_\ud83d\ude00/end",
+        "-Users-x-d-j--vu----d-j--vu----d-j--vu----d-j--vu----d-j--vu----d-j--vu----d-j--vu----d-j--vu----d-j--vu----d-j--vu----d-j--vu----d-j--vu----d-j--vu----d-j--vu----d-j--vu----d-j--vu----d-j--vu----d-j--yixc26",
+    ),
 ]
 
 

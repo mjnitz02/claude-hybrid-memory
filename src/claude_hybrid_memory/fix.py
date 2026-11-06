@@ -1,4 +1,5 @@
 """`mem fix`: autofix what is mechanical, report what is not."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -95,10 +96,13 @@ def flatten_harness(text: str, router: bool = False) -> tuple[str, list[str]] | 
     j = i + 1
     while j < len(lines) and (lines[j][:1] in (" ", "\t") or not lines[j].strip()):
         j += 1
-    block, top = lines[i + 1:j], lines[:i] + lines[j:]
+    block, top = lines[i + 1 : j], lines[:i] + lines[j:]
     top_keys = {m.group(1) for ln in top if (m := re.match(r"^([A-Za-z_][\w.-]*)\s*:", ln))}
-    has_lv = router or "last_verified" in top_keys or any(
-        re.match(r"^\s+last_verified\s*:", ln) for ln in block)
+    has_lv = (
+        router
+        or "last_verified" in top_keys
+        or any(re.match(r"^\s+last_verified\s*:", ln) for ln in block)
+    )
     base = min((len(ln) - len(ln.lstrip()) for ln in block if ln.strip()), default=0)
     kept, actions, skip = [], [], False
     for ln in block:
@@ -107,12 +111,14 @@ def flatten_harness(text: str, router: bool = False) -> tuple[str, list[str]] | 
         depth = len(ln) - len(ln.lstrip())
         if depth == base:
             key = ln.strip().split(":", 1)[0].strip()
-            drop = (key in HARNESS_FIELDS and not (key == "modified" and not has_lv)) \
-                or key in top_keys
+            drop = (
+                key in HARNESS_FIELDS and not (key == "modified" and not has_lv)
+            ) or key in top_keys
             skip = drop
             if drop:
-                actions.append(f"dropped {key}" + (" (already at top level)"
-                                                   if key in top_keys else ""))
+                actions.append(
+                    f"dropped {key}" + (" (already at top level)" if key in top_keys else "")
+                )
                 continue
             actions.append(f"hoisted {key}")
         elif skip:
@@ -155,15 +161,22 @@ def do_fix(mems: list[Memory], routers: dict, write: bool, stamp_today: bool) ->
         want = desired_slug(m.stem)
         key = (m.container, want)
         if key in taken and taken[key] != m.path:
-            out.append(Finding(ERROR, "fix-collision", str(m.path),
-                               f"renaming to {want}.md would collide with {taken[key].name} "
-                               f"in {m.container}; resolve by hand"))
+            out.append(
+                Finding(
+                    ERROR,
+                    "fix-collision",
+                    str(m.path),
+                    f"renaming to {want}.md would collide with {taken[key].name} "
+                    f"in {m.container}; resolve by hand",
+                )
+            )
             continue
         taken[key] = m.path
         plan[m.path] = (want, m.path.with_name(want + ".md"))
 
-    renames = {m.stem: plan[m.path][0] for m in mems
-               if m.path in plan and plan[m.path][0] != m.stem}
+    renames = {
+        m.stem: plan[m.path][0] for m in mems if m.path in plan and plan[m.path][0] != m.stem
+    }
 
     def rewrite_links(text: str) -> str:
         for old, new in renames.items():
@@ -184,9 +197,15 @@ def do_fix(mems: list[Memory], routers: dict, write: bool, stamp_today: bool) ->
                 text = q[0]
                 actions.append(f"quoted {', '.join(q[1])} (frontmatter-not-yaml)")
             else:
-                out.append(Finding(WARN, "fix-frontmatter-skip", str(m.path),
-                                   "frontmatter is not valid YAML and quoting would not read "
-                                   "back verbatim; fix by hand"))
+                out.append(
+                    Finding(
+                        WARN,
+                        "fix-frontmatter-skip",
+                        str(m.path),
+                        "frontmatter is not valid YAML and quoting would not read "
+                        "back verbatim; fix by hand",
+                    )
+                )
 
         flat = flatten_harness(text)
         if flat:
@@ -194,7 +213,7 @@ def do_fix(mems: list[Memory], routers: dict, write: bool, stamp_today: bool) ->
             actions.append("flattened harness metadata: (" + ", ".join(flat[1]) + ")")
 
         if not m.name:
-            if m.meta and re.search(r"^name\s*:", text[:text.find("\n---", 3)], re.M):
+            if m.meta and re.search(r"^name\s*:", text[: text.find("\n---", 3)], re.M):
                 text = re.sub(r"^(name\s*:).*$", rf"\g<1> {want}", text, count=1, flags=re.M)
             elif m.meta:
                 text = re.sub(r"^---\n", f"---\nname: {want}\n", text, count=1)
@@ -202,8 +221,9 @@ def do_fix(mems: list[Memory], routers: dict, write: bool, stamp_today: bool) ->
                 text = f"---\nname: {want}\nkind: territory\n---\n" + text
             actions.append(f"insert name: {want}")
         elif m.name != want:
-            text = re.sub(r"^(\s*name:\s*).*$", lambda mo, w=want: mo.group(1) + w,
-                          text, count=1, flags=re.M)
+            text = re.sub(
+                r"^(\s*name:\s*).*$", lambda mo, w=want: mo.group(1) + w, text, count=1, flags=re.M
+            )
             actions.append(f"name: {m.name!r} -> {want}")
 
         if not str(m.meta.get("kind") or "").strip() and text.startswith("---"):
@@ -229,8 +249,8 @@ def do_fix(mems: list[Memory], routers: dict, write: bool, stamp_today: bool) ->
         if old and text.startswith("---"):
             end = text.find("\n---", 3)
             # indented too: the loader hoists keys nested under a harness `metadata:` block
-            fm = re.sub(rf"^[ \t]*(?:{'|'.join(old)})\s*:.*\n", "", text[:end + 1], flags=re.M)
-            text = fm + text[end + 1:]
+            fm = re.sub(rf"^[ \t]*(?:{'|'.join(old)})\s*:.*\n", "", text[: end + 1], flags=re.M)
+            text = fm + text[end + 1 :]
             actions.append(f"removed {', '.join(old)} (obsolete-field)")
 
         linked = rewrite_links(text)
@@ -265,11 +285,17 @@ def do_fix(mems: list[Memory], routers: dict, write: bool, stamp_today: bool) ->
             r.path.write_text(text, encoding="utf-8")
 
     if not stamp_today:
-        out.append(Finding(INFO, "fix-no-stamp", "-",
-                           "last_verified NOT stamped. mtime is not evidence of verification "
-                           "(a copy or checkout resets it), and a wrong date is worse than a "
-                           "missing one. Pass --stamp-today only when the claims were actually "
-                           "checked."))
+        out.append(
+            Finding(
+                INFO,
+                "fix-no-stamp",
+                "-",
+                "last_verified NOT stamped. mtime is not evidence of verification "
+                "(a copy or checkout resets it), and a wrong date is worse than a "
+                "missing one. Pass --stamp-today only when the claims were actually "
+                "checked.",
+            )
+        )
     if out and not write:
         out.append(Finding(INFO, "fix-dry-run", "-", "dry run; pass --write to apply"))
     return out

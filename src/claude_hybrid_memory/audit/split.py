@@ -3,6 +3,7 @@
 There is no read gate, by decision (direction §16.2). A large file is a maintenance question with
 a *why* behind it, so it surfaces here and in the retro rather than at read time.
 """
+
 from __future__ import annotations
 
 from collections import Counter
@@ -22,11 +23,17 @@ def check_split(mems: list[Memory], reads: Counter, root) -> list[Finding]:
     out = []
     accreted = [m for m in terr if ACCRETION_RE.search(m.raw)]
     if accreted:
-        out.append(Finding(INFO, "accretion", str(root),
-                           f"{len(accreted)} of {len(terr)} territory files carry accretion "
-                           "markers (read bottom-up, history below, CORRECTION, SUPERSEDED): "
-                           "mutable files acting as logs. Split into state + records when "
-                           "next touched (direction §15 Phase 3)."))
+        out.append(
+            Finding(
+                INFO,
+                "accretion",
+                str(root),
+                f"{len(accreted)} of {len(terr)} territory files carry accretion "
+                "markers (read bottom-up, history below, CORRECTION, SUPERSEDED): "
+                "mutable files acting as logs. Split into state + records when "
+                "next touched (direction §15 Phase 3).",
+            )
+        )
     big = []
     for m in terr:
         size = len(m.raw.encode())
@@ -36,8 +43,14 @@ def check_split(mems: list[Memory], reads: Counter, root) -> list[Finding]:
             big.append((size * (1 + markers) * (1 + n_reads), m, size, markers, n_reads))
     big.sort(key=lambda x: -x[0])
     for rank, (_, m, size, markers, n_reads) in enumerate(big, 1):
-        out.append(Finding(WARN, "split-candidate", str(m.path),
-                           f"#{rank} of {len(big)}: {size / 1024:.1f} KB (~{size // 4:,} tokens), "
-                           f"{markers} accretion marker(s), read {n_reads}x in events. Why is "
-                           "it this big, and should it be separate memories?"))
+        out.append(
+            Finding(
+                WARN,
+                "split-candidate",
+                str(m.path),
+                f"#{rank} of {len(big)}: {size / 1024:.1f} KB (~{size // 4:,} tokens), "
+                f"{markers} accretion marker(s), read {n_reads}x in events. Why is "
+                "it this big, and should it be separate memories?",
+            )
+        )
     return out

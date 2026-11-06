@@ -8,6 +8,7 @@ audit checks them, and `mem history` walks them.
 A memory is superseded when any memory outside `archive/` names it. A successor that was
 itself retired to the archive no longer hides anything.
 """
+
 from __future__ import annotations
 
 import re
@@ -18,11 +19,11 @@ from claude_hybrid_memory.findings import ERROR, INFO, WARN, Finding
 
 @dataclass(frozen=True)
 class Node:
-    path: str           # store-relative
-    area: str           # territory | standing | archive
+    path: str  # store-relative
+    area: str  # territory | standing | archive
     container: str
     slug: str
-    refs: tuple = ()    # `supersedes:` as written
+    refs: tuple = ()  # `supersedes:` as written
 
     @property
     def key(self) -> str:
@@ -31,19 +32,21 @@ class Node:
 
 @dataclass
 class Graph:
-    nodes: dict = field(default_factory=dict)       # path -> Node
-    older: dict = field(default_factory=dict)       # path -> [path it supersedes]
-    newer: dict = field(default_factory=dict)       # path -> [path superseding it]
+    nodes: dict = field(default_factory=dict)  # path -> Node
+    older: dict = field(default_factory=dict)  # path -> [path it supersedes]
+    newer: dict = field(default_factory=dict)  # path -> [path superseding it]
     unresolved: dict = field(default_factory=dict)  # path -> [(ref, why)]
     findings: list = field(default_factory=list)
 
     def superseded(self) -> set[str]:
-        return {old for old, news in self.newer.items()
-                if any(self.nodes[n].area != "archive" for n in news)}
+        return {
+            old
+            for old, news in self.newer.items()
+            if any(self.nodes[n].area != "archive" for n in news)
+        }
 
     def successors(self, path: str) -> list[Node]:
-        return [self.nodes[n] for n in self.newer.get(path, [])
-                if self.nodes[n].area != "archive"]
+        return [self.nodes[n] for n in self.newer.get(path, []) if self.nodes[n].area != "archive"]
 
 
 def refs_of(meta: dict) -> tuple:
@@ -74,8 +77,14 @@ def build(nodes: list[Node]) -> Graph:
         for ref in n.refs:
             hits = lookup(nodes, ref, n.container)
             if len(hits) == 1 and hits[0].path == n.path:
-                g.findings.append(Finding(ERROR, "supersede-self", n.path,
-                                          f"supersedes: {ref} names this memory itself"))
+                g.findings.append(
+                    Finding(
+                        ERROR,
+                        "supersede-self",
+                        n.path,
+                        f"supersedes: {ref} names this memory itself",
+                    )
+                )
             elif len(hits) == 1:
                 old = hits[0].path
                 if old not in g.older.setdefault(n.path, []):
@@ -83,21 +92,39 @@ def build(nodes: list[Node]) -> Graph:
                     g.newer.setdefault(old, []).append(n.path)
             elif hits:
                 g.unresolved.setdefault(n.path, []).append((ref, "ambiguous"))
-                g.findings.append(Finding(WARN, "supersede-ambiguous", n.path,
-                                          f"supersedes: {ref} matches "
-                                          f"{', '.join(h.key for h in hits)}; write it as "
-                                          "container/slug"))
+                g.findings.append(
+                    Finding(
+                        WARN,
+                        "supersede-ambiguous",
+                        n.path,
+                        f"supersedes: {ref} matches "
+                        f"{', '.join(h.key for h in hits)}; write it as "
+                        "container/slug",
+                    )
+                )
             else:
                 # Not an error: a memory merged away before the store had history leaves
                 # nothing to point at, and the successor is still the current word.
                 g.unresolved.setdefault(n.path, []).append((ref, "not found"))
-                g.findings.append(Finding(INFO, "supersede-target-gone", n.path,
-                                          f"supersedes: {ref} is in neither the store nor "
-                                          "archive/; the chain ends here"))
+                g.findings.append(
+                    Finding(
+                        INFO,
+                        "supersede-target-gone",
+                        n.path,
+                        f"supersedes: {ref} is in neither the store nor "
+                        "archive/; the chain ends here",
+                    )
+                )
     for cycle in _cycles(g.older):
         names = " -> ".join(g.nodes[p].key for p in cycle + cycle[:1])
-        g.findings.append(Finding(ERROR, "supersede-cycle", cycle[0],
-                                  f"{names}: every memory in the loop is hidden as superseded"))
+        g.findings.append(
+            Finding(
+                ERROR,
+                "supersede-cycle",
+                cycle[0],
+                f"{names}: every memory in the loop is hidden as superseded",
+            )
+        )
     return g
 
 
@@ -117,7 +144,7 @@ def _cycles(older: dict) -> list[list[str]]:
                 trail.pop()
                 state[node] = 2
             elif state.get(nxt) == 1:
-                out.append(trail[trail.index(nxt):])
+                out.append(trail[trail.index(nxt) :])
             elif nxt not in state:
                 state[nxt] = 1
                 trail.append(nxt)
@@ -155,7 +182,7 @@ def with_refs(text: str, refs: list[str]) -> str:
     out, in_old = [], False
     for line in head:
         if in_old and line[:1] in (" ", "\t", "-") and line.strip():
-            continue        # a block-list item, or a continuation, of the old value
+            continue  # a block-list item, or a continuation, of the old value
         in_old = bool(re.match(r"supersedes\s*:", line))
         if not in_old:
             out.append(line)

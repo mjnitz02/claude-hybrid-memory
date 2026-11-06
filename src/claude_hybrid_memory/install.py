@@ -21,6 +21,7 @@ here: editing MACHINE.md (only the user knows what is true of this box) or
 ~/.claude/CLAUDE.md (theirs; it is read, never written), territories and silo migration
 (steps 4 and 5, which change where sessions read memory from).
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -106,8 +107,9 @@ def plugin_source(claude: Path) -> str | None:
     except (OSError, ValueError, AttributeError):
         pass
     try:
-        installed = json.loads((claude / "plugins" / "installed_plugins.json")
-                               .read_text(encoding="utf-8")).get("plugins", {})
+        installed = json.loads(
+            (claude / "plugins" / "installed_plugins.json").read_text(encoding="utf-8")
+        ).get("plugins", {})
     except (OSError, ValueError, AttributeError):
         return None
     return "marketplace" if any(k.startswith(PLUGIN + "@") for k in installed) else None
@@ -120,20 +122,37 @@ def ensure_store(root: Path, repo: Path, dry: bool) -> list[Finding]:
         if not dry:
             for d in made:
                 (root / d).mkdir(parents=True, exist_ok=True)
-        out.append(Finding(INFO, "install-store", str(root),
-                           ("would create " if dry else "created ") + ", ".join(made)))
+        out.append(
+            Finding(
+                INFO,
+                "install-store",
+                str(root),
+                ("would create " if dry else "created ") + ", ".join(made),
+            )
+        )
     for t in TEMPLATES:
         dest = root / t
         if dest.exists():
             continue
         if not dry:
             dest.write_bytes((repo / "templates" / t).read_bytes())
-        out.append(Finding(INFO, "install-template", str(dest),
-                           ("would copy " if dry else "copied ") + f"templates/{t}"))
+        out.append(
+            Finding(
+                INFO,
+                "install-template",
+                str(dest),
+                ("would copy " if dry else "copied ") + f"templates/{t}",
+            )
+        )
         if t == "MACHINE.md":
-            out.append(Finding(WARN, "install-edit-machine", str(dest),
-                               "fill in the machine name and this box's calibration "
-                               "(setup.md step 1)"))
+            out.append(
+                Finding(
+                    WARN,
+                    "install-edit-machine",
+                    str(dest),
+                    "fill in the machine name and this box's calibration (setup.md step 1)",
+                )
+            )
     if not out:
         out.append(Finding(INFO, "install-ok", str(root), "store directories and files present"))
     return out
@@ -146,15 +165,33 @@ def ensure_git(root: Path, dry: bool, today: str) -> list[Finding]:
             return [Finding(INFO, "install-ok", str(root / ".git"), "store has its own history")]
         if not dry:
             storegit.ensure_ignore(root)
-        return [Finding(INFO, "install-gitignore", str(root / ".gitignore"),
-                        ("would add " if dry else "added ") + ", ".join(missing))]
+        return [
+            Finding(
+                INFO,
+                "install-gitignore",
+                str(root / ".gitignore"),
+                ("would add " if dry else "added ") + ", ".join(missing),
+            )
+        ]
     top = storegit.enclosing(root) if root.is_dir() else None
     if top:
-        return [Finding(ERROR, "install-git", str(root),
-                        f"sits inside the checkout {top}; refusing to nest a repository")]
+        return [
+            Finding(
+                ERROR,
+                "install-git",
+                str(root),
+                f"sits inside the checkout {top}; refusing to nest a repository",
+            )
+        ]
     if dry:
-        return [Finding(INFO, "install-git", str(root),
-                        "would `git init` the store and make a baseline commit")]
+        return [
+            Finding(
+                INFO,
+                "install-git",
+                str(root),
+                "would `git init` the store and make a baseline commit",
+            )
+        ]
     r = storegit.init(root, today)
     if r.status == "committed":
         return [Finding(INFO, "install-git", str(root), f"initialized; {r.sha} {r.detail}")]
@@ -167,27 +204,46 @@ def ensure_dev_link(repo: Path, claude: Path, dry: bool) -> list[Finding]:
     if dest.is_symlink() and Path(os.path.realpath(dest)) == repo.resolve():
         return [Finding(INFO, "install-ok", str(dest), f"loads this checkout ({repo})")]
     if dest.exists() and not dest.is_symlink():
-        return [Finding(ERROR, "install-dev-link", str(dest),
-                        f"exists and is not a symlink; left alone (wanted -> {repo})")]
+        return [
+            Finding(
+                ERROR,
+                "install-dev-link",
+                str(dest),
+                f"exists and is not a symlink; left alone (wanted -> {repo})",
+            )
+        ]
     if not dry:
         dest.parent.mkdir(parents=True, exist_ok=True)
         if dest.is_symlink():
             dest.unlink()
         dest.symlink_to(repo.resolve())
-    return [Finding(INFO, "install-dev-link", str(dest),
-                    f"{'would link' if dry else 'linked'} -> {repo.resolve()}; loads as "
-                    f"{PLUGIN}@skills-dir from the next session")]
+    return [
+        Finding(
+            INFO,
+            "install-dev-link",
+            str(dest),
+            f"{'would link' if dry else 'linked'} -> {repo.resolve()}; loads as "
+            f"{PLUGIN}@skills-dir from the next session",
+        )
+    ]
 
 
-def ensure_plugin(repo: Path, claude: Path, dry: bool, stamp: str,
-                  source: str | None = None) -> list[Finding]:
+def ensure_plugin(
+    repo: Path, claude: Path, dry: bool, stamp: str, source: str | None = None
+) -> list[Finding]:
     """The plugin must be there; once it is, the pre-plugin wiring must not be."""
     source = source or plugin_source(claude)
     if not source:
-        return [Finding(WARN, "install-no-plugin", str(claude),
-                        f"the {PLUGIN} plugin is not installed, so no hook runs and no skill "
-                        "loads; see README (or `task install` for a dev checkout). Any "
-                        "pre-plugin hooks and skill links are left in place until it is")]
+        return [
+            Finding(
+                WARN,
+                "install-no-plugin",
+                str(claude),
+                f"the {PLUGIN} plugin is not installed, so no hook runs and no skill "
+                "loads; see README (or `task install` for a dev checkout). Any "
+                "pre-plugin hooks and skill links are left in place until it is",
+            )
+        ]
     out = [Finding(INFO, "install-ok", str(claude), f"plugin present ({source})")]
     names = {p.parent.name for p in (repo / "skills").glob("*/SKILL.md")}
     skills = claude / "skills"
@@ -197,15 +253,22 @@ def ensure_plugin(repo: Path, claude: Path, dry: bool, stamp: str,
         if link.is_symlink() and target.parent.name == "skills" and (target / "SKILL.md").exists():
             if not dry:
                 link.unlink()
-            out.append(Finding(INFO, "install-legacy-skill", str(link),
-                               f"{'would remove' if dry else 'removed'} pre-plugin link -> "
-                               f"{target}; the plugin ships this skill"))
+            out.append(
+                Finding(
+                    INFO,
+                    "install-legacy-skill",
+                    str(link),
+                    f"{'would remove' if dry else 'removed'} pre-plugin link -> "
+                    f"{target}; the plugin ships this skill",
+                )
+            )
     path = claude / "settings.json"
     try:
         settings = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     except (OSError, ValueError) as e:
-        return out + [Finding(ERROR, "install-settings", str(path),
-                              f"not readable JSON, untouched: {e}")]
+        return out + [
+            Finding(ERROR, "install-settings", str(path), f"not readable JSON, untouched: {e}")
+        ]
     if not isinstance(settings, dict):
         return out + [Finding(ERROR, "install-settings", str(path), "unexpected shape, untouched")]
     gone = drop_hooks(settings)
@@ -216,10 +279,17 @@ def ensure_plugin(repo: Path, claude: Path, dry: bool, stamp: str,
         tmp.write_text(json.dumps(settings, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         os.replace(tmp, path)
         gone.append(f"backup at {backup.name}")
-    return out + [Finding(INFO, "install-legacy-hook", str(path),
-                          ("would: " if dry else "") + g + ("" if g.startswith("backup") else
-                                                            "; the plugin runs it now"))
-                  for g in gone]
+    return out + [
+        Finding(
+            INFO,
+            "install-legacy-hook",
+            str(path),
+            ("would: " if dry else "")
+            + g
+            + ("" if g.startswith("backup") else "; the plugin runs it now"),
+        )
+        for g in gone
+    ]
 
 
 def ensure_rules(claude_md: Path, root: Path, dry: bool) -> list[Finding]:
@@ -239,14 +309,26 @@ def ensure_rules(claude_md: Path, root: Path, dry: bool) -> list[Finding]:
             tmp = rules.with_name(rules.name + ".tmp")
             tmp.write_text(want, encoding="utf-8")
             os.replace(tmp, rules)
-        out.append(Finding(INFO, "install-rules", str(rules),
-                           (f"would {verb}" if dry else f"{verb[:-1]}ten")
-                           + ": imports the always-loaded layer"))
+        out.append(
+            Finding(
+                INFO,
+                "install-rules",
+                str(rules),
+                (f"would {verb}" if dry else f"{verb[:-1]}ten")
+                + ": imports the always-loaded layer",
+            )
+        )
     if session_start.imports(root, claude_md):
-        out.append(Finding(WARN, "install-imported-twice", str(claude_md),
-                           f"also imports the layer, so it loads twice; delete the "
-                           f"`{session_start.import_line(root)}` line (and its `# Memory` "
-                           "block) from it"))
+        out.append(
+            Finding(
+                WARN,
+                "install-imported-twice",
+                str(claude_md),
+                f"also imports the layer, so it loads twice; delete the "
+                f"`{session_start.import_line(root)}` line (and its `# Memory` "
+                "block) from it",
+            )
+        )
     return out
 
 
@@ -256,8 +338,14 @@ CHECK_SESSION = "mem-install-check"
 def _hook(mem: str, name: str, payload: dict, env: dict) -> tuple[int, str, float]:
     t0 = time.perf_counter()
     try:
-        p = subprocess.run([mem, "hook", name], input=json.dumps(payload), capture_output=True,
-                           text=True, env=env, timeout=30)
+        p = subprocess.run(
+            [mem, "hook", name],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=30,
+        )
     except (OSError, subprocess.TimeoutExpired) as e:
         return -1, str(e), (time.perf_counter() - t0) * 1000
     return p.returncode, p.stdout, (time.perf_counter() - t0) * 1000
@@ -281,8 +369,12 @@ def check_hooks(root: Path, mem: str, repo: Path, claude: Path = CLAUDE) -> list
     with tempfile.TemporaryDirectory(prefix="mem-install-check-") as tmp:
         copy = Path(tmp) / "memory"
         shutil.copytree(root, copy, symlinks=True, ignore=shutil.ignore_patterns(".cache"))
-        env = {**os.environ, "CLAUDE_MEMORY_STORE": str(copy), "CLAUDE_PROJECT_DIR": str(repo),
-               "CLAUDE_CONFIG_DIR": str(claude)}
+        env = {
+            **os.environ,
+            "CLAUDE_MEMORY_STORE": str(copy),
+            "CLAUDE_PROJECT_DIR": str(repo),
+            "CLAUDE_CONFIG_DIR": str(claude),
+        }
 
         rc, so, ms = _hook(mem, "session-start", {"source": "startup"}, env)
         try:
@@ -291,54 +383,86 @@ def check_hooks(root: Path, mem: str, repo: Path, claude: Path = CLAUDE) -> list
             ctx = ""
         limit = session_start.HOOK_OUTPUT_LIMIT
         if ctx and len(ctx) > limit:
-            bad("session-start", f"{len(ctx):,} chars of context, past the harness's "
-                f"{limit:,}; sessions would see only a 2 KB preview of it")
+            bad(
+                "session-start",
+                f"{len(ctx):,} chars of context, past the harness's "
+                f"{limit:,}; sessions would see only a 2 KB preview of it",
+            )
         elif ctx and (copy / session_start.ALWAYS).is_file():
-            out.append(Finding(INFO, "install-check-session-start", mem,
-                               f"ok, {len(ctx):,} chars of context, ALWAYS.md rendered, "
-                               f"{ms:.0f} ms"))
+            out.append(
+                Finding(
+                    INFO,
+                    "install-check-session-start",
+                    mem,
+                    f"ok, {len(ctx):,} chars of context, ALWAYS.md rendered, {ms:.0f} ms",
+                )
+            )
         elif ctx:
             bad("session-start", "no ALWAYS.md rendered; the rules file would import nothing")
         else:
-            bad("session-start", f"exit {rc}, no context; every session would start without "
-                "the router. Try `mem hook session-start` by hand")
+            bad(
+                "session-start",
+                f"exit {rc}, no context; every session would start without "
+                "the router. Try `mem hook session-start` by hand",
+            )
 
         target = next(iter(sorted((copy / "standing").glob("*.md"))), copy / "ROUTER.md")
-        read = {"tool_name": "Read", "tool_input": {"file_path": str(target)},
-                "session_id": CHECK_SESSION, "cwd": str(repo)}
+        read = {
+            "tool_name": "Read",
+            "tool_input": {"file_path": str(target)},
+            "session_id": CHECK_SESSION,
+            "cwd": str(repo),
+        }
         rc, so, ms = _hook(mem, "post-tool", read, env)
-        logged = any(CHECK_SESSION in f.read_text(encoding="utf-8")
-                     for f in (copy / "events").glob("*.jsonl"))
+        logged = any(
+            CHECK_SESSION in f.read_text(encoding="utf-8")
+            for f in (copy / "events").glob("*.jsonl")
+        )
         if rc == 0 and not so and logged:
-            out.append(Finding(INFO, "install-check-post-tool", mem,
-                               f"ok, a memory read logged, {ms:.0f} ms"))
+            out.append(
+                Finding(
+                    INFO, "install-check-post-tool", mem, f"ok, a memory read logged, {ms:.0f} ms"
+                )
+            )
         else:
             bad("post-tool", f"exit {rc}, output {so[:80]!r}, read logged: {logged}")
 
         # a change for the hook to commit, so "clean afterwards" means it committed something
         (copy / f"{CHECK_SESSION}.md").write_text("probe\n", encoding="utf-8")
-        rc, so, ms = _hook(mem, "session-end", {"reason": "other", "session_id": CHECK_SESSION},
-                           env)
+        rc, so, ms = _hook(
+            mem, "session-end", {"reason": "other", "session_id": CHECK_SESSION}, env
+        )
         left = storegit.pending(copy) if storegit.is_repo(copy) else ["(no .git)"]
         if rc == 0 and not left:
-            out.append(Finding(INFO, "install-check-session-end", mem,
-                               f"ok, a change committed, {ms:.0f} ms"))
+            out.append(
+                Finding(
+                    INFO, "install-check-session-end", mem, f"ok, a change committed, {ms:.0f} ms"
+                )
+            )
         else:
             bad("session-end", f"exit {rc}, still uncommitted: {', '.join(left[:5])}")
     return out
 
 
-def run(root: Path, repo: Path = REPO, claude: Path = CLAUDE, mem: Path = MEM,
-        dry: bool = False, dev: bool = False) -> list[Finding]:
+def run(
+    root: Path,
+    repo: Path = REPO,
+    claude: Path = CLAUDE,
+    mem: Path = MEM,
+    dry: bool = False,
+    dev: bool = False,
+) -> list[Finding]:
     now = dt.datetime.now()
     link = ensure_dev_link(repo, claude, dry) if dev else []
     # a dry run that would link the checkout counts it as present
     source = "skills-dir" if dev and dry else None
-    out = (ensure_store(root, repo, dry)
-           + ensure_git(root, dry, now.date().isoformat())
-           + link
-           + ensure_plugin(repo, claude, dry, now.strftime("%Y%m%d-%H%M%S"), source)
-           + ensure_rules(claude / "CLAUDE.md", root, dry))
+    out = (
+        ensure_store(root, repo, dry)
+        + ensure_git(root, dry, now.date().isoformat())
+        + link
+        + ensure_plugin(repo, claude, dry, now.strftime("%Y%m%d-%H%M%S"), source)
+        + ensure_rules(claude / "CLAUDE.md", root, dry)
+    )
     if dry or any(f.level == ERROR for f in out):
         return out
     return out + check_hooks(root, str(mem), repo, claude)

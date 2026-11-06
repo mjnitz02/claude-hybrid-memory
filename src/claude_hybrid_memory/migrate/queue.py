@@ -23,6 +23,7 @@ commit, which rewrote links and descriptions, or the landing commit when there w
 to decide (apply.py). It is read from the store's history, so there is nothing to keep in
 step with what git already says happened.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -37,36 +38,60 @@ from claude_hybrid_memory.migrate import plan as P
 from claude_hybrid_memory.migrate import workdir
 from claude_hybrid_memory.store import parse_frontmatter, scan_store
 
-AUDIT_CODES = ("split-candidate", "possible-duplicate", "frontmatter-not-yaml",
-               "superseded-still-indexed", "budget-high", "budget-always-stale",
-               # refine-only (spec.REFINE_CODES): what writing sessions are never asked to fix
-               "index-over-cap", "memories-over-cap", "index-degraded", "description-long",
-               "memories-over-target", "field-invalid", "missing-kind")
+AUDIT_CODES = (
+    "split-candidate",
+    "possible-duplicate",
+    "frontmatter-not-yaml",
+    "superseded-still-indexed",
+    "budget-high",
+    "budget-always-stale",
+    # refine-only (spec.REFINE_CODES): what writing sessions are never asked to fix
+    "index-over-cap",
+    "memories-over-cap",
+    "index-degraded",
+    "description-long",
+    "memories-over-target",
+    "field-invalid",
+    "missing-kind",
+)
 SHAPES = ("build-diary", "dated-snapshot", "accreted")
 
 # Lower works first. The always-loaded layer costs every session, so promotions lead.
-RANK = {"gate-candidate": 0, "standing-candidate": 1, "description": 4,
-        "frontmatter-not-yaml": 5, "superseded-still-indexed": 5,
-        "budget-high": 5, "budget-always-stale": 5, "split-candidate": 6, "shape": 7,
-        "possible-duplicate": 8, "index-only": 10,
-        "low-confidence": 11, "territory-hint": 12,
-        "index-over-cap": 3, "memories-over-cap": 5, "index-degraded": 5,
-        "description-long": 4, "memories-over-target": 7, "field-invalid": 6,
-        "missing-kind": 6}
+RANK = {
+    "gate-candidate": 0,
+    "standing-candidate": 1,
+    "description": 4,
+    "frontmatter-not-yaml": 5,
+    "superseded-still-indexed": 5,
+    "budget-high": 5,
+    "budget-always-stale": 5,
+    "split-candidate": 6,
+    "shape": 7,
+    "possible-duplicate": 8,
+    "index-only": 10,
+    "low-confidence": 11,
+    "territory-hint": 12,
+    "index-over-cap": 3,
+    "memories-over-cap": 5,
+    "index-degraded": 5,
+    "description-long": 4,
+    "memories-over-target": 7,
+    "field-invalid": 6,
+    "missing-kind": 6,
+}
 
 DECLINED_RE = re.compile(r"`refine:([^`]+)`")
-
 
 
 @dataclass
 class Item:
     key: str
     type: str
-    path: str          # store-relative
+    path: str  # store-relative
     territory: str
     rank: int
     detail: str
-    source: str        # audit | summary | summary+heuristic
+    source: str  # audit | summary | summary+heuristic
 
 
 def path(root: Path) -> Path:
@@ -111,10 +136,10 @@ def latest_summaries(root: Path) -> dict[str, dict]:
 @dataclass
 class Landed:
     id: str
-    entry: dict        # the plan's file entry
-    territory: str     # where it lives now
-    rel: str           # store-relative path now
-    base: str | None   # the text as landed
+    entry: dict  # the plan's file entry
+    territory: str  # where it lives now
+    rel: str  # store-relative path now
+    base: str | None  # the text as landed
 
 
 def landed(root: Path, plan: dict) -> list[Landed]:
@@ -134,12 +159,19 @@ def landed(root: Path, plan: dict) -> list[Landed]:
                 continue
             now = e["to"] if e["action"] == "relocate" else s["territory"]
             slug = desired_slug(e["file"][:-3])
-            for cand in (f"{leaf}-{slug}", slug):     # apply.py prefixes on collision
+            for cand in (f"{leaf}-{slug}", slug):  # apply.py prefixes on collision
                 rel = f"territories/{now}/{cand}.md"
                 if (root / rel).is_file():
                     base = storegit.read_at(root, shas[0], rel)
-                    out.append(Landed(f"{s['silo']}/{e['file']}", e, now, rel,
-                                      base.decode("utf-8", "replace") if base else None))
+                    out.append(
+                        Landed(
+                            f"{s['silo']}/{e['file']}",
+                            e,
+                            now,
+                            rel,
+                            base.decode("utf-8", "replace") if base else None,
+                        )
+                    )
                     break
     return out
 
@@ -153,8 +185,9 @@ def _audit_items(root: Path, legacy: Path, today: dt.date) -> list[Item]:
         if f.code not in AUDIT_CODES:
             continue
         rel = _rel(root, f.path)
-        out.append(Item(f"{f.code}:{rel}", f.code, rel, _territory(rel), RANK[f.code],
-                        f.message, "audit"))
+        out.append(
+            Item(f"{f.code}:{rel}", f.code, rel, _territory(rel), RANK[f.code], f.message, "audit")
+        )
     return out
 
 
@@ -174,13 +207,17 @@ def _summary_items(root: Path, plan: dict, superseded: set[str]) -> list[Item]:
         bmeta, bbody, _ = parse_frontmatter(la.base) if la.base else ({}, None, [])
 
         def add(t: str, detail: str, la: Landed = la):
-            items.append(Item(f"{t}:{la.rel}", t, la.rel, la.territory, RANK[t], detail,
-                              "summary"))
+            items.append(Item(f"{t}:{la.rel}", t, la.rel, la.territory, RANK[t], detail, "summary"))
 
-        if (s["description_verdict"] != "good" and la.entry.get("description") != "proposed"
-                and meta.get("description") == bmeta.get("description")):
-            add("description", f"summary says {s['description_verdict']}; it read: "
-                               f"{s['conclusion']}")
+        if (
+            s["description_verdict"] != "good"
+            and la.entry.get("description") != "proposed"
+            and meta.get("description") == bmeta.get("description")
+        ):
+            add(
+                "description",
+                f"summary says {s['description_verdict']}; it read: {s['conclusion']}",
+            )
         shapes = [x for x in s["shape"] if x in SHAPES]
         if shapes and body == bbody:
             add("shape", ", ".join(shapes))
@@ -196,8 +233,9 @@ def _summary_items(root: Path, plan: dict, superseded: set[str]) -> list[Item]:
     return items
 
 
-def build(root: Path, legacy: Path, today: dt.date | None = None,
-          territory: str | None = None) -> dict:
+def build(
+    root: Path, legacy: Path, today: dt.date | None = None, territory: str | None = None
+) -> dict:
     from claude_hybrid_memory import audit
 
     today = today or dt.date.today()
@@ -208,12 +246,18 @@ def build(root: Path, legacy: Path, today: dt.date | None = None,
         items += _summary_items(root, plan, superseded)
     skip = declined(root)
     open_ = [i for i in items if i.key not in skip]
-    kept = [i for i in open_ if not territory or i.territory == territory
-            or i.territory.startswith(territory + "/")]
+    kept = [
+        i
+        for i in open_
+        if not territory or i.territory == territory or i.territory.startswith(territory + "/")
+    ]
     kept.sort(key=lambda i: (i.rank, i.territory, i.path))
-    return {"generated": dt.datetime.now().isoformat(timespec="seconds"),
-            "territory": territory, "declined": len(items) - len(open_),
-            "items": [asdict(i) for i in kept]}
+    return {
+        "generated": dt.datetime.now().isoformat(timespec="seconds"),
+        "territory": territory,
+        "declined": len(items) - len(open_),
+        "items": [asdict(i) for i in kept],
+    }
 
 
 def write(root: Path, q: dict) -> Path:

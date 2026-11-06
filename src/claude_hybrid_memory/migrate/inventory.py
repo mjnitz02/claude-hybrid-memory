@@ -7,6 +7,7 @@ heuristic half of the `verify:` decision), size and accretion.
 
 Files are read directly, never through a tool, so no usage event is logged.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -28,23 +29,29 @@ from claude_hybrid_memory.store import Memory, load_file, scan_store
 # the summarizer's directive gives.
 LIVE_CLAIMS = {
     # not inside a UUID, URL, email, digest or path: none of those is a commit
-    "sha": re.compile(r"(?<![\w\-/@.:])(?=[0-9a-f]*[a-f])(?=[0-9a-f]*[0-9])[0-9a-f]{7,40}"
-                      r"(?![\w\-@.])"),
+    "sha": re.compile(
+        r"(?<![\w\-/@.:])(?=[0-9a-f]*[a-f])(?=[0-9a-f]*[0-9])[0-9a-f]{7,40}"
+        r"(?![\w\-@.])"
+    ),
     "pr-or-issue": re.compile(r"(?i)\b(?:PR|pull|issue)\s*#?\d+\b|(?<![\w&])#\d{2,}\b"),
-    "uncommitted": re.compile(r"(?i)\b(?:uncommitted|unpushed|untracked|not yet merged|"
-                             r"in the working tree)\b"),
+    "uncommitted": re.compile(
+        r"(?i)\b(?:uncommitted|unpushed|untracked|not yet merged|"
+        r"in the working tree)\b"
+    ),
     "as-of": re.compile(r"(?i)\bas of\s+(?:\d{4}-\d{2}-\d{2}|today|now)"),
-    "phase-status": re.compile(r"(?i)\bphase\s+\w+\b[^.\n]{0,40}\b(?:done|landed|complete|"
-                               r"shipped|in progress|started|pending)\b"),
+    "phase-status": re.compile(
+        r"(?i)\bphase\s+\w+\b[^.\n]{0,40}\b(?:done|landed|complete|"
+        r"shipped|in progress|started|pending)\b"
+    ),
     "currently": re.compile(r"(?i)\b(?:currently|right now)\b[^.\n]{0,60}\bv?\d+\.\d+"),
 }
 MAX_CLAIMS = 8
-REPO_MIN = 4          # shorter names ("api", "web") match ordinary prose
+REPO_MIN = 4  # shorter names ("api", "web") match ordinary prose
 
 
 @dataclass
 class FileRecord:
-    id: str                      # "<silo>/<file>"
+    id: str  # "<silo>/<file>"
     silo: str
     file: str
     path: str
@@ -52,12 +59,12 @@ class FileRecord:
     sha256: str
     meta: dict
     fm_problems: list[str]
-    index_line: str              # the silo MEMORY.md line that links it, if any
+    index_line: str  # the silo MEMORY.md line that links it, if any
     links_out: list[str]
     linked_from: list[str]
-    repos: list[str]             # repos named in the text, other than the silo's own
-    duplicates: list[dict]       # {"id": ..., "overlap": 0.61}
-    live_claims: list[dict]      # {"kind": "sha", "text": "..."}
+    repos: list[str]  # repos named in the text, other than the silo's own
+    duplicates: list[dict]  # {"id": ..., "overlap": 0.61}
+    live_claims: list[dict]  # {"kind": "sha", "text": "..."}
     accretion: int
     split_candidate: bool
 
@@ -65,12 +72,12 @@ class FileRecord:
 @dataclass
 class SiloRecord:
     silo: str
-    source: str                  # the memory directory read
-    workdir: str | None          # None: nothing on THIS disk resolves to it
-    repo: str | None             # the repo name the silo is for, where it can be told
+    source: str  # the memory directory read
+    workdir: str | None  # None: nothing on THIS disk resolves to it
+    repo: str | None  # the repo name the silo is for, where it can be told
     files: list[str] = field(default_factory=list)
-    index: str = ""              # the silo's MEMORY.md, verbatim
-    mixed_state: list[str] = field(default_factory=list)   # slugs also in the store
+    index: str = ""  # the silo's MEMORY.md, verbatim
+    mixed_state: list[str] = field(default_factory=list)  # slugs also in the store
 
 
 def pending_silos(legacy: Path) -> list[Path]:
@@ -80,8 +87,11 @@ def pending_silos(legacy: Path) -> list[Path]:
         return out
     for silo in sorted(legacy.iterdir()):
         md = silo / "memory"
-        if md.is_dir() and not md.is_symlink() and any(
-                f.name != "MEMORY.md" for f in md.glob("*.md")):
+        if (
+            md.is_dir()
+            and not md.is_symlink()
+            and any(f.name != "MEMORY.md" for f in md.glob("*.md"))
+        ):
             out.append(md)
     return out
 
@@ -114,8 +124,13 @@ def live_claims(text: str) -> list[dict]:
             if (kind, start) in seen:
                 continue
             seen.add((kind, start))
-            out.append({"kind": kind, "match": m.group(),
-                        "text": text[start:end if end >= 0 else None].strip()[:160]})
+            out.append(
+                {
+                    "kind": kind,
+                    "match": m.group(),
+                    "text": text[start : end if end >= 0 else None].strip()[:160],
+                }
+            )
             if len(out) >= MAX_CLAIMS:
                 return out
     return out
@@ -156,11 +171,11 @@ def build(root: Path, sources: list[Path]) -> dict:
 
     repos = known_repos(root, silos)
     # `Users/` excluded: a repo named after the account would match every home path
-    repo_rx = {r: re.compile(rf"(?<![\w-])(?<!Users/){re.escape(r)}(?![\w-])", re.I)
-               for r in repos}
+    repo_rx = {r: re.compile(rf"(?<![\w-])(?<!Users/){re.escape(r)}(?![\w-])", re.I) for r in repos}
     by_slug = {m.slug: f"{s.silo}/{m.path.name}" for s, m in mems}
-    by_slug.update({m.slug: str(m.path.relative_to(root)) for m in store_mems
-                    if root in m.path.parents})
+    by_slug.update(
+        {m.slug: str(m.path.relative_to(root)) for m in store_mems if root in m.path.parents}
+    )
     inbound: dict[str, list[str]] = {}
     for s, m in mems:
         for t in m.links:
@@ -170,11 +185,15 @@ def build(root: Path, sources: list[Path]) -> dict:
             if root in m.path.parents:
                 inbound.setdefault(t, []).append(str(m.path.relative_to(root)))
 
-    others = [(f"{s.silo}/{m.path.name}", s.silo, toks(str(m.meta.get("description") or "")))
-              for s, m in mems]
-    others += [(str(m.path.relative_to(root)), m.container,
-                toks(str(m.meta.get("description") or "")))
-               for m in store_mems if root in m.path.parents]
+    others = [
+        (f"{s.silo}/{m.path.name}", s.silo, toks(str(m.meta.get("description") or "")))
+        for s, m in mems
+    ]
+    others += [
+        (str(m.path.relative_to(root)), m.container, toks(str(m.meta.get("description") or "")))
+        for m in store_mems
+        if root in m.path.parents
+    ]
     others = [o for o in others if len(o[2]) >= 4]
 
     files = []
@@ -189,21 +208,43 @@ def build(root: Path, sources: list[Path]) -> dict:
                 j = len(mine & ot) / len(mine | ot)
                 if j >= OVERLAP:
                     dups.append({"id": oid, "overlap": round(j, 2)})
-        index_line = next((ln.strip() for ln in s.index.splitlines()
-                           if any(x == m.path.name for x in INDEX_LINK_RE.findall(ln))), "")
+        index_line = next(
+            (
+                ln.strip()
+                for ln in s.index.splitlines()
+                if any(x == m.path.name for x in INDEX_LINK_RE.findall(ln))
+            ),
+            "",
+        )
         raw = m.raw.encode()
-        files.append(FileRecord(
-            id=fid, silo=s.silo, file=m.path.name, path=str(m.path), bytes=len(raw),
-            sha256=hashlib.sha256(raw).hexdigest(), meta=_jsonable(m.meta),
-            fm_problems=m.fm_problems, index_line=index_line,
-            links_out=m.links, linked_from=sorted(set(inbound.get(m.slug, [])) - {fid}),
-            repos=sorted(r for r, rx in repo_rx.items() if r != s.repo and rx.search(m.body)),
-            duplicates=sorted(dups, key=lambda d: -d["overlap"]),
-            live_claims=[] if str(m.meta.get("tier") or "") == "record" else live_claims(m.body),
-            accretion=len(ACCRETION_RE.findall(m.raw)), split_candidate=len(raw) > SPLIT_BYTES))
-    return {"generated": dt.datetime.now().isoformat(timespec="seconds"),
-            "root": str(root), "silos": [asdict(s) for s in silos],
-            "files": [asdict(f) for f in files]}
+        files.append(
+            FileRecord(
+                id=fid,
+                silo=s.silo,
+                file=m.path.name,
+                path=str(m.path),
+                bytes=len(raw),
+                sha256=hashlib.sha256(raw).hexdigest(),
+                meta=_jsonable(m.meta),
+                fm_problems=m.fm_problems,
+                index_line=index_line,
+                links_out=m.links,
+                linked_from=sorted(set(inbound.get(m.slug, [])) - {fid}),
+                repos=sorted(r for r, rx in repo_rx.items() if r != s.repo and rx.search(m.body)),
+                duplicates=sorted(dups, key=lambda d: -d["overlap"]),
+                live_claims=[]
+                if str(m.meta.get("tier") or "") == "record"
+                else live_claims(m.body),
+                accretion=len(ACCRETION_RE.findall(m.raw)),
+                split_candidate=len(raw) > SPLIT_BYTES,
+            )
+        )
+    return {
+        "generated": dt.datetime.now().isoformat(timespec="seconds"),
+        "root": str(root),
+        "silos": [asdict(s) for s in silos],
+        "files": [asdict(f) for f in files],
+    }
 
 
 def write(root: Path, inv: dict) -> Path:

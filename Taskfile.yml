@@ -54,27 +54,24 @@ tasks:
       - uv run ruff check .
 
   fix:
-    desc: ruff check, applying safe fixes
+    desc: ruff check applying safe fixes, then ruff format
     cmds:
       - uv run ruff check --fix .
+      - task: lint-format
 
-  # Not yet part of `check`, the hooks or CI: the tree has never been run through
-  # ruff format, and adopting it is its own PR.
   lint-format:
-    desc: Format code with ruff (not yet enforced)
+    desc: Format code with ruff
     cmds:
       - uv run ruff format .
 
-  # Not yet part of `check`, the hooks or CI until the existing findings are fixed.
   # The version is pinned in uv.lock; ty reads the Python version from requires-python.
   lint-typing:
-    desc: Static type checking with ty (not yet enforced)
+    desc: Static type checking with ty
     cmds:
       - uv run ty check
 
-  # Not yet part of `check`, the hooks or CI until the existing clones are fixed.
   lint-dupes:
-    desc: Check for copy-pasted code with jscpd (not yet enforced)
+    desc: Check for copy-pasted code with jscpd
     cmds:
       - uv run jscpd --no-tips --config .jscpd.json
 

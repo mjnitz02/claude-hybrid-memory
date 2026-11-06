@@ -3,6 +3,7 @@
 `claude plugin validate` is not run here, so CI needs no Claude CLI; it is run by hand when
 these files change (setup.md, "The plugin").
 """
+
 from __future__ import annotations
 
 import json
@@ -56,8 +57,9 @@ def shim_without_uv(tmp_path: Path) -> Path:
     root = tmp_path / "plugin"
     (root / "bin").mkdir(parents=True)
     text = (REPO / "bin" / "mem").read_text()
-    text = text.replace('"$HOME/.local/bin/uv" /opt/homebrew/bin/uv /usr/local/bin/uv',
-                        "/nonexistent/uv")
+    text = text.replace(
+        '"$HOME/.local/bin/uv" /opt/homebrew/bin/uv /usr/local/bin/uv', "/nonexistent/uv"
+    )
     assert "/nonexistent/uv" in text
     f = root / "bin" / "mem"
     f.write_text(text)

@@ -99,16 +99,15 @@ group, so `uv run task <name>` always works, and `uv tool install go-task-bin` p
 `task` on your PATH. The git hooks run under [prek](https://prek.j178.dev/), a Rust
 drop-in for pre-commit that reads the same `.pre-commit-config.yaml`.
 
-    task check        # every git hook (ruff, whitespace, lockfile, Taskfile schema, secrets) + tests; what CI runs
+    task check        # every git hook (ruff, ruff format, ty, jscpd, whitespace, lockfile, Taskfile schema, secrets) + tests; what CI runs
     task test         # fixture stores: synthetic content, real shapes (args after `--` go to pytest)
     task test-live    # the installed `mem`, read-only, against this machine's real store
     task hooks        # git hooks: lint + secret scan on commit, tests on push
     task install         # dev install: load this checkout as the plugin, then `mem install`
     task install-check   # what `task install` would change, writing nothing
 
-Three more run on demand and are not yet enforced by `check`, the hooks or CI. Each joins
-them with the PR that fixes what it currently reports:
+Each linter also runs on its own; `check` runs all of them through the hooks:
 
-    task lint-format  # ruff format
+    task fix          # ruff check --fix, then ruff format
     task lint-typing  # ty, pinned exactly in pyproject.toml
     task lint-dupes   # jscpd copy-paste detection, settings in .jscpd.json

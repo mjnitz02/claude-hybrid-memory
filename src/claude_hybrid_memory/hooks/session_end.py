@@ -6,6 +6,7 @@ events and those renders, goes into one generated commit. It runs after the sess
 over, so nothing it prints reaches anyone; a failure leaves the changes for the next
 commit and is otherwise silent.
 """
+
 from __future__ import annotations
 
 import json
@@ -27,8 +28,9 @@ def main() -> int:
     store = Path(os.path.realpath(STORE))
     try:
         from claude_hybrid_memory import render
+
         render.render_all(store)
     except Exception:
-        pass        # a broken render must not cost the session its commit
+        pass  # a broken render must not cost the session its commit
     storegit.commit(store, f"session end ({reason})", data.get("session_id", ""))
     return 0

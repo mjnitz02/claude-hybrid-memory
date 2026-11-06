@@ -11,6 +11,7 @@ which is never re-checked, nor a superseded memory, which is never edited. Verdi
 cached under `.cache/migrate/volatility/` and land as-is, like adoption: a classification is
 cheap to correct by hand, and a re-run only pays for files whose text changed.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -37,11 +38,9 @@ def targets(root: Path, territory: str | None = None) -> list[Target]:
     sup = superseded_paths(root)
     out = []
     for m in mems:
-        if (m.path in sup or m.volatility is not None
-                or str(m.meta.get("tier") or "") == "record"):
+        if m.path in sup or m.volatility is not None or str(m.meta.get("tier") or "") == "record":
             continue
-        if territory and not (m.container == territory
-                              or m.container.startswith(territory + "/")):
+        if territory and not (m.container == territory or m.container.startswith(territory + "/")):
             continue
         out.append(Target(str(m.path.relative_to(root)), m.container, m))
     return out
@@ -67,5 +66,6 @@ def apply(root: Path, verdicts: dict[str, str]) -> tuple[list[str], storegit.Res
     n = len(verdicts) - len(skipped)
     if not n:
         return skipped, None
-    return skipped, storegit.commit(root, "mem migrate volatility",
-                                    subject=f"volatility on {n} memories (classified, as-is)")
+    return skipped, storegit.commit(
+        root, "mem migrate volatility", subject=f"volatility on {n} memories (classified, as-is)"
+    )

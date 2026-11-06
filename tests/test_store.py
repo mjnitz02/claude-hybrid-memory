@@ -9,7 +9,8 @@ from claude_hybrid_memory.store import load_file, parse_frontmatter, scan_legacy
 
 def test_nested_metadata_is_hoisted():
     meta, body, _ = parse_frontmatter(
-        "---\nname: a-b\nmetadata: \n  type: project\n  originSessionId: x\n---\n\nBody\n")
+        "---\nname: a-b\nmetadata: \n  type: project\n  originSessionId: x\n---\n\nBody\n"
+    )
     assert meta["metadata"] == {"type": "project", "originSessionId": "x"}
     assert meta["type"] == "project"
     assert body == "Body\n"
@@ -38,11 +39,13 @@ def test_no_frontmatter():
 # The shapes below are the ones strict YAML disagreed with on a real store's 409
 # frontmatter blocks (2026-10-21); each names the file it reproduces.
 
+
 def test_unquoted_hash_keeps_the_full_value():
     # memoryecho-capture.md: YAML alone cut 174 chars down to "Capture is the"
     meta, _, problems = parse_frontmatter(
         "---\nname: x-y\n"
-        "description: SHIPPED 2026-08-04 (PR #12) - capture lives at the root\n---\n")
+        "description: SHIPPED 2026-08-04 (PR #12) - capture lives at the root\n---\n"
+    )
     assert meta["description"] == "SHIPPED 2026-08-04 (PR #12) - capture lives at the root"
     assert len(problems) == 1 and "`description:`" in problems[0]
 
@@ -51,7 +54,8 @@ def test_unquoted_colon_falls_back_and_says_so():
     # ios-codeql-and-scanning.md: `build-mode: manual` inside an unquoted description
     meta, _, problems = parse_frontmatter(
         "---\nname: x-y\ndescription: RESOLVED - `build-mode: manual` is merged\n"
-        "last_verified: 2026-10-02\n---\n")
+        "last_verified: 2026-10-02\n---\n"
+    )
     assert meta["name"] == "x-y" and meta["last_verified"] == "2026-10-02"
     assert meta["description"].startswith("RESOLVED")
     assert len(problems) == 1 and "not valid YAML" in problems[0]
@@ -61,7 +65,8 @@ def test_yaml_reads_quoting_the_hand_parser_got_wrong():
     # undumped-observation-is-evidence.md: the old strip("\"'") ate the closing quote;
     # jai-proxy-card-recheck.md: escaped quotes came through with their backslashes
     meta, _, problems = parse_frontmatter(
-        "---\ndescription: \"treat 'we have no data'\"\nexpect: \"not to \\\"fix\\\"\"\n---\n")
+        '---\ndescription: "treat \'we have no data\'"\nexpect: "not to \\"fix\\""\n---\n'
+    )
     assert meta["description"] == "treat 'we have no data'"
     assert meta["expect"] == 'not to "fix"'
     assert problems == []
@@ -69,7 +74,8 @@ def test_yaml_reads_quoting_the_hand_parser_got_wrong():
 
 def test_dates_stay_text_and_bad_ones_do_not_raise():
     meta, _, problems = parse_frontmatter(
-        "---\nlast_verified: 2026-13-45\nother: 2026-10-02\n---\n")
+        "---\nlast_verified: 2026-13-45\nother: 2026-10-02\n---\n"
+    )
     assert meta == {"last_verified": "2026-13-45", "other": "2026-10-02"} and problems == []
 
 

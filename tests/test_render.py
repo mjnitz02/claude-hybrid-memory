@@ -1,4 +1,5 @@
 """Rendered territory indexes (direction §6, Phase 4): adoption, render, check, and the hook."""
+
 from __future__ import annotations
 
 import json
@@ -19,15 +20,17 @@ def grouped(fx: Fixture) -> None:
     prose line inside the section that a render cannot keep."""
     p = fx.store / KIT / "MEMORY.md"
     head = p.read_text().split("## MEMORIES")[0]
-    p.write_text(head + "## MEMORIES\n\n"
-                 "### Sync\n"
-                 "- [Sync design](kit-sync-design.md) — start here; the v1 notes are history.\n"
-                 "- [Sync v1](kit-sync-v1.md) — the first cut.\n\n"
-                 "### Bench work\n"
-                 "- [Fodder corpus](kit-fodder-corpus.md) — HISTORICAL test corpus.\n"
-                 "- [Gone file](kit-gone-file.md) — listed, but deleted.\n"
-                 "- [Raw notes](kit_raw_notes.md) — SHIPPED raw notes from the bench.\n\n"
-                 "Ask Matt before adding a group.\n")
+    p.write_text(
+        head + "## MEMORIES\n\n"
+        "### Sync\n"
+        "- [Sync design](kit-sync-design.md) — start here; the v1 notes are history.\n"
+        "- [Sync v1](kit-sync-v1.md) — the first cut.\n\n"
+        "### Bench work\n"
+        "- [Fodder corpus](kit-fodder-corpus.md) — HISTORICAL test corpus.\n"
+        "- [Gone file](kit-gone-file.md) — listed, but deleted.\n"
+        "- [Raw notes](kit_raw_notes.md) — SHIPPED raw notes from the bench.\n\n"
+        "Ask Matt before adding a group.\n"
+    )
 
 
 def test_adopt_dry_run_reports_and_writes_nothing(fx: Fixture):
@@ -59,7 +62,8 @@ def test_adopt_write_renders_and_keeps_the_hand_written_head(fx: Fixture):
     meta, _, problems = parse_frontmatter(text)
     assert meta["groups"] == ["Sync", "Bench work"] and not problems
     assert meta["consumes"] == "home/lab"
-    s, e = render.markers(text)
+    assert (span := render.markers(text))
+    s, e = span
     assert text[s:e] == (
         "Each name below is `<name>.md` beside this file.\n"
         "### Sync\n"
@@ -69,14 +73,17 @@ def test_adopt_write_renders_and_keeps_the_hand_written_head(fx: Fixture):
         "- Records: kit-fodder-corpus\n"
         "### Other\n"
         "- kit-bad-recipe: A recipe that pipes.\n"
-        "- kit-unlisted-orphan: Nothing links here and no router lists it.\n")
+        "- kit-unlisted-orphan: Nothing links here and no router lists it.\n"
+    )
     m, _, _ = parse_frontmatter((fx.store / KIT / "kit-fodder-corpus.md").read_text())
     assert m["group"] == "Bench work"
     # the superseded file is never edited, so it gets no group either
     assert "group:" not in (fx.store / KIT / "kit-sync-v1.md").read_text()
     # the two in Other have no group: refine items, nothing else
     assert {(f.code, Path(f.path).name) for f in render.check(fx.store, ["console/kit"])} == {
-        ("field-invalid", "kit-bad-recipe.md"), ("field-invalid", "kit-unlisted-orphan.md")}
+        ("field-invalid", "kit-bad-recipe.md"),
+        ("field-invalid", "kit-unlisted-orphan.md"),
+    }
     rc, _, err = run(mem_cmd("render", "console/kit", "--adopt"), fx.env())
     assert rc == 2 and "already rendered" in err
 
@@ -141,8 +148,14 @@ def test_session_end_renders_before_it_commits(fx: Fixture):
     init(fx.store)
     p = fx.store / KIT / "kit-sync-design.md"
     p.write_text(p.read_text().replace("start here.", "start here, always."))
-    subprocess.run(hook_cmd()[:-1] + ["session-end"], input="{}", text=True, env=fx.env(),
-                   timeout=30, check=True)
+    subprocess.run(
+        hook_cmd()[:-1] + ["session-end"],
+        input="{}",
+        text=True,
+        env=fx.env(),
+        timeout=30,
+        check=True,
+    )
     assert git(fx.store, "status", "--porcelain") == ""
     assert "start here, always." in git(fx.store, "show", f"HEAD:{KIT}/MEMORY.md")
 
@@ -187,13 +200,16 @@ def test_an_appended_pointer_is_taken_into_the_section(fx: Fixture):
     render.write_adoption(fx.store, render.adopt(fx.store, "console/kit"))
     (fx.store / KIT / "kit-new-probe.md").write_text(
         "---\nname: kit-new-probe\ndescription: The probe says it works.\nmetadata:\n"
-        "  type: project\n---\n\nBody.\n")
+        "  type: project\n---\n\nBody.\n"
+    )
     index = fx.store / KIT / "MEMORY.md"
-    index.write_text(index.read_text() + "- [kit-new-probe](kit-new-probe.md) — hand line\n"
-                     "- [elsewhere](../other.md) — not ours, kept\n")
+    index.write_text(
+        index.read_text() + "- [kit-new-probe](kit-new-probe.md) — hand line\n"
+        "- [elsewhere](../other.md) — not ours, kept\n"
+    )
     codes = {(f.code, Path(f.path).name) for f in render.check(fx.store)}
     assert ("index-hand-entry", "kit-new-probe.md") in codes
-    assert ("router-count", "ROUTER.md") in codes                 # console/kit (6) -> 7
+    assert ("router-count", "ROUTER.md") in codes  # console/kit (6) -> 7
     rc, _, _ = run(mem_cmd("render"), fx.env())
     assert rc == 0
     text = index.read_text()
@@ -208,8 +224,7 @@ def test_every_territory_is_on_the_map_and_every_memory_in_its_index(fx: Fixture
     (fx.store / "territories/home/attic").mkdir()
     (fx.store / "territories/home/attic/MEMORY.md").write_text("# home/attic\n\n## MEMORIES\n")
     rc, out, _ = run(mem_cmd("audit", "--json", "--scan", "store"), fx.env())
-    found = {(f["level"], f["code"], "/".join(f["path"].split("/")[-2:]))
-             for f in json.loads(out)}
+    found = {(f["level"], f["code"], "/".join(f["path"].split("/")[-2:])) for f in json.loads(out)}
     assert rc == 1
     assert ("error", "router-missing-territory", "attic/MEMORY.md") in found
     assert ("error", "router-unlisted", "kit/kit-unlisted-orphan.md") in found
@@ -217,10 +232,12 @@ def test_every_territory_is_on_the_map_and_every_memory_in_its_index(fx: Fixture
 
 def test_the_map_and_consumes_name_only_real_or_planned_territories(fx: Fixture):
     router = fx.store / "ROUTER.md"
-    router.write_text(router.read_text()
-                      + "- home/gone (3) : renamed away, line left behind.\n"
-                      + "- console/next, console/later : NOT YET WRITTEN.\n"
-                      + "  The plan.\n")
+    router.write_text(
+        router.read_text()
+        + "- home/gone (3) : renamed away, line left behind.\n"
+        + "- console/next, console/later : NOT YET WRITTEN.\n"
+        + "  The plan.\n"
+    )
     lab = fx.store / "territories/home/lab/MEMORY.md"
     # a glob is fine while it matches something
     refs = "console/kit, console/next, home/old, home/*, attic/*"
@@ -233,13 +250,16 @@ def test_the_map_and_consumes_name_only_real_or_planned_territories(fx: Fixture)
     assert ("info", "territory-ref-planned", "consumed_by:") in found
     unknown = [f.message.split(",")[0] for f in checked if f.code == "territory-ref-unknown"]
     assert unknown == ["consumed_by: home/old", "consumed_by: attic/*"]
-    assert not any(f.code == "router-unknown-territory" and "home/lab" in f.message
-                   for f in checked)
+    assert not any(
+        f.code == "router-unknown-territory" and "home/lab" in f.message for f in checked
+    )
 
 
 def test_router_entries_reads_lists_counts_and_continuations():
-    text = ("## home\n- home/a, home/B-c (2) : one.\n  more.\n- home/d : two.\n\n"
-            "## EXPORTS\n- [lab-policy] not an entry\n")
+    text = (
+        "## home\n- home/a, home/B-c (2) : one.\n  more.\n- home/d : two.\n\n"
+        "## EXPORTS\n- [lab-policy] not an entry\n"
+    )
     e = render.router_entries(text)
     assert sorted(e) == ["home/B-c", "home/a", "home/d"]
     assert e["home/a"].endswith("more.") and e["home/d"] == "- home/d : two."
@@ -247,12 +267,18 @@ def test_router_entries_reads_lists_counts_and_continuations():
 
 def test_index_entry_reads_both_forms_and_index_names_reads_lists():
     from claude_hybrid_memory.spec import index_entry, index_names
+
     assert index_entry("- [Title](a-b.md) — gloss") == ("a-b.md", "Title", "gloss")
     assert index_entry("- a-b: gloss: more") == ("a-b.md", "a-b", "gloss: more")
     assert index_entry("- Records: a b") is None
     assert index_entry("- **bold**: prose") is None
     assert index_names("- [T](x.md) — g\n- y: g\n- Records: r1 r2\n- Names: n1\n") == {
-        "x.md", "y.md", "r1.md", "r2.md", "n1.md"}
+        "x.md",
+        "y.md",
+        "r1.md",
+        "r2.md",
+        "n1.md",
+    }
 
 
 def crowd(fx: Fixture, n: int, desc_bytes: int = 150) -> list[Path]:
@@ -265,9 +291,10 @@ def crowd(fx: Fixture, n: int, desc_bytes: int = 150) -> list[Path]:
         g = ("Sync", "Bench work")[i % 2]
         desc = (f"Memory {i} " + "word " * 60)[:desc_bytes].strip()
         p = fx.store / KIT / f"kit-crowd-{i:03d}.md"
-        p.write_text(f"---\nname: kit-crowd-{i:03d}\ndescription: \"{desc}\"\n"
-                     f"group: \"{g}\"\n" + ("tier: record\n" if i % 7 == 0 else "")
-                     + "---\n\nBody.\n")
+        p.write_text(
+            f'---\nname: kit-crowd-{i:03d}\ndescription: "{desc}"\n'
+            f'group: "{g}"\n' + ("tier: record\n" if i % 7 == 0 else "") + "---\n\nBody.\n"
+        )
         out.append(p)
     return out
 
@@ -297,7 +324,11 @@ def test_the_ladder_is_mildest_first(fx: Fixture):
     assert steps[0].none and [s.desc for s in steps[:3]] == [160, 120, 80]
     # a line step is tried with full descriptions first, since cutting saves no lines
     assert [(s.records, s.desc) for s in steps[3:7]] == [
-        ("one", 160), ("one", 120), ("one", 80), ("none", 160)]
+        ("one", 160),
+        ("one", 120),
+        ("one", 80),
+        ("none", 160),
+    ]
     # groups collapse from the bottom of the index up: Other first, then groups: in reverse
     assert steps[9].names_only == (None,) and steps[12].names_only == (None, "Bench work")
     # a territory that fits is not degraded at all
@@ -306,7 +337,7 @@ def test_the_ladder_is_mildest_first(fx: Fixture):
 
 
 def test_a_long_description_is_a_refine_item(fx: Fixture):
-    p = crowd(fx, 2, 0)[1]                  # [0] is a record, which gets no description line
+    p = crowd(fx, 2, 0)[1]  # [0] is a record, which gets no description line
     p.write_text(p.read_text().replace('description: ""', 'description: "' + "x " * 120 + '"'))
     render.render(fx.store, "console/kit")
     [f] = [f for f in render.check(fx.store) if f.code == "description-long"]

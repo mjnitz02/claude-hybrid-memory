@@ -1,4 +1,5 @@
 """Findings and the report every command prints."""
+
 from __future__ import annotations
 
 import json

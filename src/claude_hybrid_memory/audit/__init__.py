@@ -3,6 +3,7 @@
 Each module is one concern. `run_all` is `mem audit`, in the order the report has always
 been assembled.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -23,9 +24,20 @@ from claude_hybrid_memory.findings import Finding
 from claude_hybrid_memory.store import Memory
 
 __all__ = [
-    "check_budget", "check_chains", "check_dup", "check_exports", "check_freshness", "check_links",
-    "check_relations", "check_router_drift", "check_secrets", "check_silos", "check_split",
-    "check_structure", "run_all", "superseded_paths",
+    "check_budget",
+    "check_chains",
+    "check_dup",
+    "check_exports",
+    "check_freshness",
+    "check_links",
+    "check_relations",
+    "check_router_drift",
+    "check_secrets",
+    "check_silos",
+    "check_split",
+    "check_structure",
+    "run_all",
+    "superseded_paths",
 ]
 
 
@@ -36,15 +48,24 @@ def superseded_paths(root: Path) -> frozenset:
     return frozenset(root / p for p in store_graph(root).superseded())
 
 
-def run_all(mems: list[Memory], routers: dict, root: Path, legacy: Path,
-            today: dt.date) -> list[Finding]:
+def run_all(
+    mems: list[Memory], routers: dict, root: Path, legacy: Path, today: dt.date
+) -> list[Finding]:
     from claude_hybrid_memory import render
 
     sup = superseded_paths(root)
-    return (check_structure(mems) + check_links(mems, routers, sup)
-            + check_router_drift(mems, routers, sup) + check_exports(root, routers)
-            + check_relations(mems) + check_chains(root, routers)
-            + check_freshness(mems, today, sup) + check_budget(root, mems)
-            + check_silos(legacy, root) + check_dup(mems)
-            + check_secrets(root, [m for m in mems if m.scope == "legacy"])
-            + check_split(mems, read_counts(root), root) + render.check(root))
+    return (
+        check_structure(mems)
+        + check_links(mems, routers, sup)
+        + check_router_drift(mems, routers, sup)
+        + check_exports(root, routers)
+        + check_relations(mems)
+        + check_chains(root, routers)
+        + check_freshness(mems, today, sup)
+        + check_budget(root, mems)
+        + check_silos(legacy, root)
+        + check_dup(mems)
+        + check_secrets(root, [m for m in mems if m.scope == "legacy"])
+        + check_split(mems, read_counts(root), root)
+        + render.check(root)
+    )

@@ -1,4 +1,5 @@
 """Legacy silos: resolving them to a working directory, and pointing them at a territory."""
+
 from __future__ import annotations
 
 import os
@@ -40,7 +41,7 @@ def silo_workdir(silo: str) -> Path | None:
         keys = {re.sub(r"-+", "-", encode(e.name)).strip("-"): e for e in entries}
         matched = None
         for take in range(len(tokens) - i, 0, -1):
-            hit = keys.get("-".join(tokens[i:i + take]))
+            hit = keys.get("-".join(tokens[i : i + take]))
             if hit is not None:
                 matched = (hit, take)
                 break
@@ -51,8 +52,9 @@ def silo_workdir(silo: str) -> Path | None:
     return cur
 
 
-def do_link(root: Path, legacy: Path, territory: str, target_dir: Path,
-            write: bool) -> list[Finding]:
+def do_link(
+    root: Path, legacy: Path, territory: str, target_dir: Path, write: bool
+) -> list[Finding]:
     """Point a repo's silo at a territory. Step 4 of the park/restore cycle.
 
     Parking a repo (pushing it to its remote and deleting the local checkout) leaves its
@@ -67,14 +69,26 @@ def do_link(root: Path, legacy: Path, territory: str, target_dir: Path,
     out: list[Finding] = []
     tpath = root / "territories" / territory
     if not (tpath / "MEMORY.md").is_file():
-        out.append(Finding(ERROR, "link-no-territory", territory,
-                           f"{tpath} has no MEMORY.md; create the territory first"))
+        out.append(
+            Finding(
+                ERROR,
+                "link-no-territory",
+                territory,
+                f"{tpath} has no MEMORY.md; create the territory first",
+            )
+        )
         return out
 
     target_dir = target_dir.resolve()
     if not target_dir.is_dir():
-        out.append(Finding(ERROR, "link-no-directory", str(target_dir),
-                           "not a directory on this disk; clone the repo before linking"))
+        out.append(
+            Finding(
+                ERROR,
+                "link-no-directory",
+                str(target_dir),
+                "not a directory on this disk; clone the repo before linking",
+            )
+        )
         return out
 
     silo = legacy / silo_name(str(target_dir))
@@ -88,17 +102,29 @@ def do_link(root: Path, legacy: Path, territory: str, target_dir: Path,
         if cur == tpath.resolve():
             out.append(Finding(INFO, "link-already", silo.name, f"already -> {territory}"))
         else:
-            out.append(Finding(WARN, "link-conflict", silo.name,
-                               f"already points at {cur}; unlink it deliberately first"))
+            out.append(
+                Finding(
+                    WARN,
+                    "link-conflict",
+                    silo.name,
+                    f"already points at {cur}; unlink it deliberately first",
+                )
+            )
         return out
 
     if md.is_dir():
         files = [f for f in md.glob("*.md") if f.name != "MEMORY.md"]
         if files:
-            out.append(Finding(ERROR, "link-silo-occupied", silo.name,
-                               f"holds {len(files)} unmigrated memory file(s); run "
-                               "the memory-migrate skill first -- linking over them would strand "
-                               "knowledge in a directory nothing reads"))
+            out.append(
+                Finding(
+                    ERROR,
+                    "link-silo-occupied",
+                    silo.name,
+                    f"holds {len(files)} unmigrated memory file(s); run "
+                    "the memory-migrate skill first -- linking over them would strand "
+                    "knowledge in a directory nothing reads",
+                )
+            )
             return out
 
     index = tpath / "MEMORY.md"
@@ -106,8 +132,14 @@ def do_link(root: Path, legacy: Path, territory: str, target_dir: Path,
     listed = has_member(index.read_text(encoding="utf-8", errors="replace"), name)
     if not write:
         also = "" if listed else f", and add `{name}` to its members:"
-        out.append(Finding(INFO, "link-would", silo.name,
-                           f"would point {md} -> {tpath}{also} (rerun with --write)"))
+        out.append(
+            Finding(
+                INFO,
+                "link-would",
+                silo.name,
+                f"would point {md} -> {tpath}{also} (rerun with --write)",
+            )
+        )
         return out
 
     silo.mkdir(parents=True, exist_ok=True)
@@ -121,13 +153,25 @@ def do_link(root: Path, legacy: Path, territory: str, target_dir: Path,
         text = index.read_text(encoding="utf-8", errors="replace")
         new = with_member(text, name)
         if new is None:
-            out.append(Finding(WARN, "link-members", str(index),
-                               f"no frontmatter to add `{name}` to; add it to members: by hand"))
+            out.append(
+                Finding(
+                    WARN,
+                    "link-members",
+                    str(index),
+                    f"no frontmatter to add `{name}` to; add it to members: by hand",
+                )
+            )
         else:
             index.write_text(new, encoding="utf-8")
-            out.append(Finding(INFO, "link-members", str(index),
-                               f"added `{name}: {NEW_MEMBER}` to members:; correct owner/mode "
-                               "if this repo is not your own active work"))
+            out.append(
+                Finding(
+                    INFO,
+                    "link-members",
+                    str(index),
+                    f"added `{name}: {NEW_MEMBER}` to members:; correct owner/mode "
+                    "if this repo is not your own active work",
+                )
+            )
     return out
 
 
@@ -148,7 +192,7 @@ def has_member(text: str, name: str) -> bool:
     span = _frontmatter_span(text)
     if span is None:
         return False
-    head = text[span[0]:span[1]]
+    head = text[span[0] : span[1]]
     m = re.search(r"^members:[^\n]*\n((?:[ \t]+[^\n]*\n)*)", head, re.M)
     return bool(m and re.search(rf"^[ \t]+{re.escape(name)}\s*:", m.group(1), re.M))
 
@@ -165,7 +209,7 @@ def with_member(text: str, name: str) -> str | None:
     line = f"  {name}: {NEW_MEMBER}\n"
     m = re.search(r"^members:[ \t]*(\{\})?[ \t]*\n((?:[ \t]+[^\n]*\n)*)", head, re.M)
     if m:
-        head = head[:m.start()] + "members:\n" + m.group(2) + line + head[m.end():]
+        head = head[: m.start()] + "members:\n" + m.group(2) + line + head[m.end() :]
     else:
         head = head + "members:\n" + line
     return text[:a] + head + text[b:]

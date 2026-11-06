@@ -19,6 +19,7 @@ anything is written.
 `undo` reverts a silo's commits (new commits, history kept) and puts its directory back.
 All store git goes through storegit.py.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -52,16 +53,16 @@ MODES = ("active", "parked")
 class Item:
     src: Path
     slug: str
-    entry: dict            # the plan's file entry
+    entry: dict  # the plan's file entry
 
 
 @dataclass
 class Landing:
     silo: str
     territory: str
-    entry: dict            # the plan's silo entry
+    entry: dict  # the plan's silo entry
     items: list[Item] = field(default_factory=list)
-    links: dict[str, str] = field(default_factory=dict)   # old slug -> final, this silo
+    links: dict[str, str] = field(default_factory=dict)  # old slug -> final, this silo
 
 
 def land_subject(silo: str, territory: str) -> str:
@@ -78,10 +79,10 @@ def applied(root: Path) -> dict[str, list[str]]:
     nothing to drift from what git says happened."""
     out: dict[str, list[str]] = {}
     seen: set[str] = set()
-    pending: dict[str, str] = {}          # silo -> its decisions commit, seen before landing
+    pending: dict[str, str] = {}  # silo -> its decisions commit, seen before landing
     for sha, subj in storegit.subjects(root):
         rev = subj.startswith('Revert "')
-        s = subj[len('Revert "'):-1] if rev else subj
+        s = subj[len('Revert "') : -1] if rev else subj
         if m := re.match(r"migrate: apply the plan's decisions for (\S+)$", s):
             if m.group(1) not in seen and not rev:
                 pending.setdefault(m.group(1), sha)
@@ -99,8 +100,9 @@ def archive_group(territory: str) -> str:
     return territory.replace("/", "-")
 
 
-def prepare(root: Path, plan: dict, inv: dict, only: list[str] | None = None
-            ) -> tuple[list[Landing], list[str]]:
+def prepare(
+    root: Path, plan: dict, inv: dict, only: list[str] | None = None
+) -> tuple[list[Landing], list[str]]:
     """Every silo still to land, with final slugs; problems that stop the run first."""
     errs = []
     if not P.is_approved(plan):
@@ -114,10 +116,18 @@ def prepare(root: Path, plan: dict, inv: dict, only: list[str] | None = None
     for s in plan["silos"]:
         if s["silo"] in done or (only and not any(x in s["silo"] for x in only)):
             continue
-        lands.append(Landing(s["silo"], s["territory"], s,
-                             [Item(paths[(s["silo"], f["file"])],
-                                   desired_slug(f["file"][:-3]), f)
-                              for f in s["files"] if (s["silo"], f["file"]) in paths]))
+        lands.append(
+            Landing(
+                s["silo"],
+                s["territory"],
+                s,
+                [
+                    Item(paths[(s["silo"], f["file"])], desired_slug(f["file"][:-3]), f)
+                    for f in s["files"]
+                    if (s["silo"], f["file"]) in paths
+                ],
+            )
+        )
     # slugs: everything already in the store, plus every file this run lands
     wanted: dict[str, int] = {}
     for la in lands:
@@ -142,8 +152,7 @@ def _rewrite_links(text: str, links: dict[str, str]) -> str:
     return text
 
 
-def normalize(text: str, slug: str, links: dict[str, str],
-              written: dt.date | None = None) -> str:
+def normalize(text: str, slug: str, links: dict[str, str], written: dt.date | None = None) -> str:
     """The file as it was, with only what `mem fix` would change anyway, plus
     `last_verified:` from `written` (when a session last wrote it) if it has none: verify-on-
     use needs every memory dated, and the day it was written is when its claims were last
@@ -169,12 +178,17 @@ def new_index(territory: str, silos: list[dict], inv: dict, today: str) -> str:
             mode = f"{{mode: {s['mode']}}}" if s["mode"] in MODES else "{}"
             members.append(f"  {r}: {mode}")
     subject = "; ".join(dict.fromkeys(s.get("subject", "") for s in silos if s.get("subject")))
-    return ("---\n" f"territory: {territory}\nconsumes: none\nconsumed_by: none\n"
-            + ("members:\n" + "\n".join(members) if members else "members: {}") + "\n---\n"
-            f"# {territory}\n\n{subject + '.' if subject else ''}\n\n"
-            f"Created {today} by `mem migrate apply` (docs/fast-adoption.md) from "
-            + ", ".join(f"`{s['silo']}`" for s in silos) + ". Landed as it was; the refine "
-            "pass improves it from here.\n\n## MEMORIES\n" + BEGIN_LINE + "\n" + END + "\n")
+    return (
+        "---\n"
+        f"territory: {territory}\nconsumes: none\nconsumed_by: none\n"
+        + ("members:\n" + "\n".join(members) if members else "members: {}")
+        + "\n---\n"
+        f"# {territory}\n\n{subject + '.' if subject else ''}\n\n"
+        f"Created {today} by `mem migrate apply` (docs/fast-adoption.md) from "
+        + ", ".join(f"`{s['silo']}`" for s in silos)
+        + ". Landed as it was; the refine "
+        "pass improves it from here.\n\n## MEMORIES\n" + BEGIN_LINE + "\n" + END + "\n"
+    )
 
 
 def router_line(root: Path, territory: str, subject: str) -> str | None:
@@ -224,11 +238,15 @@ def reindex(root: Path, territory: str, moved: frozenset[str] = frozenset()) -> 
     text = "\n".join(kept)
     listed = index_names(text)
     from claude_hybrid_memory.audit.relations import store_graph
-    superseded = store_graph(root).superseded()     # its successor holds the line
+
+    superseded = store_graph(root).superseded()  # its successor holds the line
     new = []
     for f in sorted(tdir.glob("*.md")):
-        if (f.name in ("MEMORY.md", "EXPORTS.md") or f.name in listed
-                or f"territories/{territory}/{f.name}" in superseded):
+        if (
+            f.name in ("MEMORY.md", "EXPORTS.md")
+            or f.name in listed
+            or f"territories/{territory}/{f.name}" in superseded
+        ):
             continue
         meta, _, _ = parse_frontmatter(f.read_text(encoding="utf-8"))
         new.append(entry_line(f.stem, one_line(meta.get("description"))))
@@ -269,13 +287,11 @@ def errors(root: Path, legacy_dir: Path | None) -> set[tuple[str, str]]:
     from claude_hybrid_memory import audit
 
     mems, routers = scan_store(root)
-    found = audit.run_all(mems, routers, root, legacy_dir or root / "no-legacy",
-                          dt.date.today())
+    found = audit.run_all(mems, routers, root, legacy_dir or root / "no-legacy", dt.date.today())
     return {(f.code, f.path) for f in found if f.level == "error"}
 
 
-def land(root: Path, la: Landing, plan: dict, inv: dict, legacy_dir: Path | None
-         ) -> dict:
+def land(root: Path, la: Landing, plan: dict, inv: dict, legacy_dir: Path | None) -> dict:
     """Land one silo. Returns its applied-log record; raises on a stop."""
     today = dt.date.today().isoformat()
     tdir = root / "territories" / la.territory
@@ -284,16 +300,18 @@ def land(root: Path, la: Landing, plan: dict, inv: dict, legacy_dir: Path | None
         if not (tdir / "MEMORY.md").is_file():
             tdir.mkdir(parents=True, exist_ok=True)
             group = [s for s in plan["silos"] if s["territory"] == la.territory]
-            (tdir / "MEMORY.md").write_text(new_index(la.territory, group, inv, today),
-                                            encoding="utf-8")
+            (tdir / "MEMORY.md").write_text(
+                new_index(la.territory, group, inv, today), encoding="utf-8"
+            )
             created.append(tdir / "MEMORY.md")
         for it in la.items:
             dest = tdir / f"{it.slug}.md"
             if dest.exists():
                 raise RuntimeError(f"{dest} exists")
             raw = it.src.read_text(encoding="utf-8", errors="replace")
-            dest.write_text(normalize(raw, it.slug, la.links, written_date(raw, it.src)),
-                            encoding="utf-8")
+            dest.write_text(
+                normalize(raw, it.slug, la.links, written_date(raw, it.src)), encoding="utf-8"
+            )
             created.append(dest)
         reindex(root, la.territory)
     except Exception:
@@ -309,9 +327,14 @@ def land(root: Path, la: Landing, plan: dict, inv: dict, legacy_dir: Path | None
         f = tdir / f"{it.slug}.md"
         e = it.entry
         if e.get("description") == "proposed":
-            f.write_text(set_field(f.read_text(encoding="utf-8"), "description",
-                                   json.dumps(e["proposed"], ensure_ascii=False)),
-                         encoding="utf-8")
+            f.write_text(
+                set_field(
+                    f.read_text(encoding="utf-8"),
+                    "description",
+                    json.dumps(e["proposed"], ensure_ascii=False),
+                ),
+                encoding="utf-8",
+            )
         if e["action"] == "archive":
             dest = root / "archive" / archive_group(la.territory) / f.name
             if dest.exists():
@@ -320,15 +343,19 @@ def land(root: Path, la: Landing, plan: dict, inv: dict, legacy_dir: Path | None
             f.replace(dest)
             moved.add(f.name)
             why = dest.parent / "WHY-ARCHIVED.md"
-            head = "" if why.is_file() else (
-                f"# Archived from {la.territory}\n\nNever loaded; kept as provenance.\n\n")
+            head = (
+                ""
+                if why.is_file()
+                else (f"# Archived from {la.territory}\n\nNever loaded; kept as provenance.\n\n")
+            )
             with why.open("a", encoding="utf-8") as fh:
-                fh.write(head + f"- `{f.name}` — {today}, `mem migrate apply` from {la.silo}: "
-                         f"{e.get('why', '')}\n")
+                fh.write(
+                    head + f"- `{f.name}` — {today}, `mem migrate apply` from {la.silo}: "
+                    f"{e.get('why', '')}\n"
+                )
             rel = f"archive/{archive_group(la.territory)}/{f.name}"
             n = _unlink(root, it.slug, rel)
-            notes.append(f"archived {f.name}" + (f", {n} link(s) now point at {rel}" if n
-                                                  else ""))
+            notes.append(f"archived {f.name}" + (f", {n} link(s) now point at {rel}" if n else ""))
         elif e["action"] == "relocate":
             to = root / "territories" / e["to"]
             if not (to / "MEMORY.md").is_file():
@@ -348,9 +375,13 @@ def land(root: Path, la: Landing, plan: dict, inv: dict, legacy_dir: Path | None
     if c2.status not in ("committed", "clean"):
         raise RuntimeError(f"decisions commit {c2.status}: {c2.detail}")
 
-    rec = {"territory": la.territory, "at": dt.datetime.now().isoformat(timespec="seconds"),
-           "commits": [c1.sha] + ([c2.sha] if c2.status == "committed" else []),
-           "files": len(la.items), "notes": notes}
+    rec = {
+        "territory": la.territory,
+        "at": dt.datetime.now().isoformat(timespec="seconds"),
+        "commits": [c1.sha] + ([c2.sha] if c2.status == "committed" else []),
+        "files": len(la.items),
+        "notes": notes,
+    }
     silo_dir = legacy_dir / la.silo / "memory" if legacy_dir else None
     if silo_dir and silo_dir.is_dir() and not silo_dir.is_symlink():
         pre = silo_dir.with_name("memory.premigration")
@@ -373,13 +404,26 @@ def _unlink(root: Path, slug: str, rel: str) -> int:
     return n
 
 
-def run(root: Path, plan: dict, inv: dict, legacy_dir: Path | None, only=None,
-        dry: bool = False, progress=None) -> tuple[list[dict], list[str]]:
+def run(
+    root: Path,
+    plan: dict,
+    inv: dict,
+    legacy_dir: Path | None,
+    only=None,
+    dry: bool = False,
+    progress=None,
+) -> tuple[list[dict], list[str]]:
     lands, errs = prepare(root, plan, inv, only)
     if errs or dry:
-        return [{"silo": la.silo, "territory": la.territory, "dry": True,
-                 "files": [(it.entry["file"], it.slug, it.entry["action"]) for it in la.items]}
-                for la in lands], errs
+        return [
+            {
+                "silo": la.silo,
+                "territory": la.territory,
+                "dry": True,
+                "files": [(it.entry["file"], it.slug, it.entry["action"]) for it in la.items],
+            }
+            for la in lands
+        ], errs
     snap = storegit.commit(root, "mem migrate apply", subject="before mem migrate apply")
     if snap.status not in ("committed", "clean"):
         return [], [f"safety commit {snap.status}: {snap.detail}"]
@@ -395,8 +439,10 @@ def run(root: Path, plan: dict, inv: dict, legacy_dir: Path | None, only=None,
             progress(la.silo, rec)
         new = errors(root, legacy_dir) - before
         if new:
-            return out, [f"after {la.silo}, new audit errors: "
-                         + "; ".join(f"{c} {p}" for c, p in sorted(new))]
+            return out, [
+                f"after {la.silo}, new audit errors: "
+                + "; ".join(f"{c} {p}" for c, p in sorted(new))
+            ]
     return out, []
 
 

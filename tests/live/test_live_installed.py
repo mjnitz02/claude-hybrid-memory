@@ -6,6 +6,7 @@ These run ~/.local/bin/mem, the binary settings.json calls, not the dev venv. Th
 catches an editable install left behind by a dependency change (docs/setup.md step 3):
 the hook swallows the ImportError and prints nothing, which no fixture test can see.
 """
+
 from __future__ import annotations
 
 import json
@@ -26,9 +27,19 @@ if not MEM.exists():
     pytest.skip("mem is not installed; see docs/setup.md step 3", allow_module_level=True)
 
 READ_ONLY = [
-    ["audit"], ["audit", "--json"], ["audit", "--scan", "legacy"], ["fix"], ["links"],
-    ["fresh"], ["budget", "--json"], ["drift"], ["dup"], ["status", "--json"],
-    ["log", "-n", "3"], ["render", "--check"], ["refine", "queue", "--limit", "3"],
+    ["audit"],
+    ["audit", "--json"],
+    ["audit", "--scan", "legacy"],
+    ["fix"],
+    ["links"],
+    ["fresh"],
+    ["budget", "--json"],
+    ["drift"],
+    ["dup"],
+    ["status", "--json"],
+    ["log", "-n", "3"],
+    ["render", "--check"],
+    ["refine", "queue", "--limit", "3"],
 ]
 
 
@@ -37,11 +48,15 @@ def test_cli_runs_on_real_store(args: list[str]):
     rc, out, err = run([str(MEM), *args], dict(os.environ))
     assert rc in (0, 1), err
     assert "Traceback" not in err
-    assert out or err.startswith("no memory files found")   # legacy, once every silo migrated
+    assert out or err.startswith("no memory files found")  # legacy, once every silo migrated
 
 
-CWDS = [REPO, Path.home() / "workspaces" / "console_tools", Path.home() / "workspaces",
-        Path("/tmp")]
+CWDS = [
+    REPO,
+    Path.home() / "workspaces" / "console_tools",
+    Path.home() / "workspaces",
+    Path("/tmp"),
+]
 
 
 @pytest.mark.parametrize("cwd", [c for c in CWDS if c.is_dir()], ids=str)

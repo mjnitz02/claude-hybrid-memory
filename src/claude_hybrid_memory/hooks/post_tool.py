@@ -31,6 +31,7 @@ store already reads the harness's nested `metadata:` (store.parse_frontmatter), 
 re-nests it on its next write anyway. Bash writes are only logged, since a command's write is a
 guess and a render run on a guess could land mid-edit.
 """
+
 from __future__ import annotations
 
 import os
@@ -42,12 +43,13 @@ STORE = Path(os.environ.get("CLAUDE_MEMORY_STORE", Path.home() / ".claude" / "me
 PROJECTS = Path(os.environ.get("CLAUDE_PROJECTS_DIR", Path.home() / ".claude" / "projects"))
 TOOLS = {"Read": "read", "Write": "write", "Edit": "write"}
 SKIP = {"events", ".cache", ".git"}
-MAX_BASH_EVENTS = 40     # a sweep over a whole territory is one call, not a flood
+MAX_BASH_EVENTS = 40  # a sweep over a whole territory is one call, not a flood
 
 
 def _maybe_memory(raw: str) -> bool:
-    return (str(STORE) in raw or ".claude/memory" in raw
-            or (str(PROJECTS) in raw and "/memory" in raw))
+    return (
+        str(STORE) in raw or ".claude/memory" in raw or (str(PROJECTS) in raw and "/memory" in raw)
+    )
 
 
 def main(t0: float | None = None) -> int:
@@ -79,12 +81,23 @@ def main(t0: float | None = None) -> int:
     if event == "write":
         hint = _after_write(store, str(rel), data.get("session_id", ""))
         _rerender(store, rel)
-    events.append(store, {"event": event, "path": str(rel), "tool": data["tool_name"],
-                          "session": data.get("session_id", ""), "cwd": data.get("cwd", ""),
-                          "ms": round((time.perf_counter() - t0) * 1000, 1)})
+    events.append(
+        store,
+        {
+            "event": event,
+            "path": str(rel),
+            "tool": data["tool_name"],
+            "session": data.get("session_id", ""),
+            "cwd": data.get("cwd", ""),
+            "ms": round((time.perf_counter() - t0) * 1000, 1),
+        },
+    )
     if hint:
-        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse",
-                                                 "additionalContext": hint}}))
+        print(
+            json.dumps(
+                {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": hint}}
+            )
+        )
     return 0
 
 
@@ -95,9 +108,17 @@ def _bash(data: dict, t0: float) -> int:
     cmd = (data.get("tool_input") or {}).get("command") or ""
     found = bash_events(cmd, data.get("cwd", ""), store)
     for event, rel in found[:MAX_BASH_EVENTS]:
-        events.append(store, {"event": event, "path": rel, "tool": "Bash",
-                              "session": data.get("session_id", ""), "cwd": data.get("cwd", ""),
-                              "ms": round((time.perf_counter() - t0) * 1000, 1)})
+        events.append(
+            store,
+            {
+                "event": event,
+                "path": rel,
+                "tool": "Bash",
+                "session": data.get("session_id", ""),
+                "cwd": data.get("cwd", ""),
+                "ms": round((time.perf_counter() - t0) * 1000, 1),
+            },
+        )
     return 0
 
 
@@ -136,8 +157,11 @@ def bash_events(cmd: str, cwd: str, store: Path) -> list[tuple[str, str]]:
                 files.append(f)
                 break
     quiet = re.sub(r"\d?>&?\s*/dev/null|\d?>&\d", "", cmd)
-    writes = re.search(r"\bsed\s+(?:-\w+\s+)*-i|>|\bwrite_text\b|\bwrite_bytes\b|\btee\b|"
-                       r"\bmv\b|\brm\b|\bcp\b|\btouch\b|open\([^)]*['\"][wa]", quiet)
+    writes = re.search(
+        r"\bsed\s+(?:-\w+\s+)*-i|>|\bwrite_text\b|\bwrite_bytes\b|\btee\b|"
+        r"\bmv\b|\brm\b|\bcp\b|\btouch\b|open\([^)]*['\"][wa]",
+        quiet,
+    )
     out: dict[str, str] = {}
     for f in files:
         rel = f.relative_to(store)
@@ -170,9 +194,11 @@ def _after_write(store: Path, rel: str, session: str) -> str:
     for n in near:
         lines.append(f"- `{n.slug}` ({n.container}, similarity {n.ratio:.2f}): {n.description}")
     new = rel.rsplit("/", 1)[-1].removesuffix(".md")
-    lines.append(f"If it replaces one of these, `mem supersede <old> {new}` (it relinks every "
-                 "[[old]] and drops the old index line; a hand-written `supersedes:` does "
-                 "neither); if it overlaps, consider merging instead. Advisory only.")
+    lines.append(
+        f"If it replaces one of these, `mem supersede <old> {new}` (it relinks every "
+        "[[old]] and drops the old index line; a hand-written `supersedes:` does "
+        "neither); if it overlaps, consider merging instead. Advisory only."
+    )
     return "\n".join(lines)
 
 
@@ -184,10 +210,11 @@ def _rerender(store: Path, rel: Path) -> None:
     territory = "/".join(rel.parts[1:-1])
     try:
         from claude_hybrid_memory import render
+
         index = store / "territories" / territory / "MEMORY.md"
         if render.markers(index.read_text(encoding="utf-8", errors="replace")):
             render.render(store, territory)
-    except Exception:          # a hook never breaks a session
+    except Exception:  # a hook never breaks a session
         pass
 
 
@@ -202,11 +229,13 @@ def _accretion_hint(store: Path, rel: str, session: str) -> str:
     markers = len(ACCRETION_RE.findall(text))
     if not markers or _written_this_session(store, rel, session):
         return ""
-    return (f"`{rel}` carries {markers} accretion marker(s) (read bottom-up, history below, "
-            "CORRECTION, SUPERSEDED): it is acting as a log. Since it is being edited anyway, "
-            "consider splitting it: rewrite it as the current STATE only, and move the dated "
-            "history into new `tier: record` memories that are written once and never edited. "
-            "Git keeps the original. Advisory only; skip it if this edit is not the moment.")
+    return (
+        f"`{rel}` carries {markers} accretion marker(s) (read bottom-up, history below, "
+        "CORRECTION, SUPERSEDED): it is acting as a log. Since it is being edited anyway, "
+        "consider splitting it: rewrite it as the current STATE only, and move the dated "
+        "history into new `tier: record` memories that are written once and never edited. "
+        "Git keeps the original. Advisory only; skip it if this edit is not the moment."
+    )
 
 
 def _written_this_session(store: Path, rel: str, session: str) -> bool:

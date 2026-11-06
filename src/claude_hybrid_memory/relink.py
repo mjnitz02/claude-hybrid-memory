@@ -15,6 +15,7 @@ Left alone: the old memory and the new one (the new memory naming what it replac
 deliberate), `archive/`, and the generated or historical files (ALWAYS.md is rendered from
 its sources; RETRO.md and events/ are logs).
 """
+
 from __future__ import annotations
 
 import re
@@ -31,11 +32,11 @@ PROTECTED_FILES = {"GATES.md", "MACHINE.md", "ROUTER.md"}
 
 @dataclass
 class Change:
-    path: str       # store-relative
+    path: str  # store-relative
     line: int
     before: str
     after: str
-    protected: bool = False     # always-loaded gate text: listed, never written
+    protected: bool = False  # always-loaded gate text: listed, never written
 
 
 def protected_lines(rel: Path, lines: list[str]) -> set[int]:
@@ -70,8 +71,13 @@ def live_files(root: Path):
         yield p, rel
 
 
-def _scan(root: Path, nodes: list[chains.Node], old: chains.Node, skip: tuple[str, ...],
-          target: str | None) -> list[tuple[Path, list[str], list[Change]]]:
+def _scan(
+    root: Path,
+    nodes: list[chains.Node],
+    old: chains.Node,
+    skip: tuple[str, ...],
+    target: str | None,
+) -> list[tuple[Path, list[str], list[Change]]]:
     """Every live line with a wikilink resolving to `old`, per file, and the line with
     those links renamed to `target` (unchanged when `target` is None)."""
     found = []
@@ -113,8 +119,9 @@ def backlinks(root: Path, nodes: list[chains.Node], node: chains.Node) -> list[C
     return [c for _, _, cs in _scan(root, nodes, node, (node.path,), None) for c in cs]
 
 
-def relink(root: Path, nodes: list[chains.Node], old: chains.Node, new: chains.Node,
-           write: bool = True) -> list[Change]:
+def relink(
+    root: Path, nodes: list[chains.Node], old: chains.Node, new: chains.Node, write: bool = True
+) -> list[Change]:
     """Rewrite each wikilink that resolves to `old` so it names `new`. The new name is the
     bare slug when that is unique in the store, else container/slug."""
     unique = len(chains.lookup(nodes, new.slug)) == 1

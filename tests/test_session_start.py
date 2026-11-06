@@ -56,15 +56,16 @@ def test_territory_for_symlinked_silo(fx: Fixture, monkeypatch):
 
 
 def test_retro_overdue():
-    assert session_start.retro_overdue("last_retrospective: 2000-01-01\n") > 30
+    assert (session_start.retro_overdue("last_retrospective: 2000-01-01\n") or 0) > 30
     assert session_start.retro_overdue("no date here") is None
 
 
 def test_territory_for_matches_harness_encoding(fx: Fixture, monkeypatch, tmp_path: Path):
     repo = (tmp_path / "iCloud~md~my vault@x_y").resolve()
     (repo / ".git").mkdir(parents=True)
-    silo = fx.projects / ("-" + "-".join(
-        re.sub(r"[^A-Za-z0-9]", "-", part) for part in repo.parts[1:]))
+    silo = fx.projects / (
+        "-" + "-".join(re.sub(r"[^A-Za-z0-9]", "-", part) for part in repo.parts[1:])
+    )
     silo.mkdir()
     (silo / "memory").symlink_to(fx.store / "territories" / "home" / "lab")
     monkeypatch.setattr(session_start, "PROJECTS", fx.projects)
@@ -77,8 +78,9 @@ def imports(fx: Fixture, tmp_path: Path) -> Path:
     return md
 
 
-def test_output_is_status_only_and_the_layer_goes_to_always_md(fx: Fixture, tmp_path: Path,
-                                                               monkeypatch):
+def test_output_is_status_only_and_the_layer_goes_to_always_md(
+    fx: Fixture, tmp_path: Path, monkeypatch
+):
     # 2026-10-23: a 24.7 KB injection reached the model as a 2 KB preview. The hook's output
     # now carries none of the layer, and the layer is whole in the file CLAUDE.md imports.
     monkeypatch.setattr(session_start, "PROJECTS", fx.projects)
@@ -89,8 +91,17 @@ def test_output_is_status_only_and_the_layer_goes_to_always_md(fx: Fixture, tmp_
     assert "READ-ONLY" not in out and len(out) < session_start.HOOK_OUTPUT_LIMIT
     always = (fx.store / "ALWAYS.md").read_text()
     assert always.startswith(session_start.ALWAYS_HEAD)
-    assert all(s in always for s in ("# MACHINE", "# GATES", "READ-ONLY", "STANDING DIRECTIVES",
-                                     "Every Python invocation", "# MEMORY ROUTER"))
+    assert all(
+        s in always
+        for s in (
+            "# MACHINE",
+            "# GATES",
+            "READ-ONLY",
+            "STANDING DIRECTIVES",
+            "Every Python invocation",
+            "# MEMORY ROUTER",
+        )
+    )
     assert "MEMORY STATUS" not in always
 
 

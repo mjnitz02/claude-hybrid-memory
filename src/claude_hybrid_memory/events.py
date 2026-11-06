@@ -10,6 +10,7 @@ lock is needed. Imported by the PostToolUse hook, so stdlib only.
 `ms` is the hook's own time from entering `mem` to this append. Interpreter start comes
 before it and is invisible from inside: ~10 ms, measured separately (setup.md step 3).
 """
+
 from __future__ import annotations
 
 import datetime as dt

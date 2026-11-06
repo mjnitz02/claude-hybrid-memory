@@ -3,6 +3,7 @@
 Everything here writes under `<store>/.cache/migrate/`, which is derived and gitignored:
 it can all be rebuilt from the silos, the store and the summarizer.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

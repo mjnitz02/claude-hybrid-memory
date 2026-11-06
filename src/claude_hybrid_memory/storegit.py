@@ -14,13 +14,14 @@ The SessionEnd hook calls `commit` with no one asking, which is the point: histo
 helps if it exists without anyone remembering to make it. A session that dies before its
 SessionEnd leaves its changes for the next commit, whoever makes it.
 """
+
 from __future__ import annotations
 
 import io
 import os
 import subprocess
 import tarfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 TIMEOUT = 20
@@ -28,8 +29,8 @@ TIMEOUT = 20
 
 @dataclass
 class Result:
-    status: str          # "committed" | "clean" | "skipped" | "failed"
-    detail: str = ""     # the subject when committed, else why not
+    status: str  # "committed" | "clean" | "skipped" | "failed"
+    detail: str = ""  # the subject when committed, else why not
     sha: str = ""
 
 
@@ -37,21 +38,41 @@ class Result:
 # objects. A git hook exports some of them (GIT_DIR, GIT_INDEX_FILE), and they outrank
 # `-C`, so `mem` run from inside another repo's hook would commit the store's files into
 # that repo. Dropping them keeps every call here on the store and nowhere else.
-REPO_ENV = {"GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CONFIG", "GIT_CONFIG_PARAMETERS",
-            "GIT_CONFIG_COUNT", "GIT_OBJECT_DIRECTORY", "GIT_DIR", "GIT_WORK_TREE",
-            "GIT_IMPLICIT_WORK_TREE", "GIT_GRAFT_FILE", "GIT_INDEX_FILE",
-            "GIT_NO_REPLACE_OBJECTS", "GIT_REPLACE_REF_BASE", "GIT_PREFIX", "GIT_SHALLOW_FILE",
-            "GIT_COMMON_DIR"}
+REPO_ENV = {
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_CONFIG",
+    "GIT_CONFIG_PARAMETERS",
+    "GIT_CONFIG_COUNT",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_IMPLICIT_WORK_TREE",
+    "GIT_GRAFT_FILE",
+    "GIT_INDEX_FILE",
+    "GIT_NO_REPLACE_OBJECTS",
+    "GIT_REPLACE_REF_BASE",
+    "GIT_PREFIX",
+    "GIT_SHALLOW_FILE",
+    "GIT_COMMON_DIR",
+}
 
 
 def _env() -> dict[str, str]:
-    return {**{k: v for k, v in os.environ.items() if k not in REPO_ENV},
-            "GIT_TERMINAL_PROMPT": "0"}
+    return {
+        **{k: v for k, v in os.environ.items() if k not in REPO_ENV},
+        "GIT_TERMINAL_PROMPT": "0",
+    }
 
 
 def _git(root: Path, *args: str, stdin: str | None = None) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", "-C", str(root), *args], input=stdin, capture_output=True,
-                          text=True, timeout=TIMEOUT, env=_env())
+    return subprocess.run(
+        ["git", "-C", str(root), *args],
+        input=stdin,
+        capture_output=True,
+        text=True,
+        timeout=TIMEOUT,
+        env=_env(),
+    )
 
 
 def is_repo(root: Path) -> bool:
@@ -71,8 +92,13 @@ def area(path: str) -> str:
     return parts[0] if len(parts) > 1 else path
 
 
-def message(changes: list[tuple[str, str]], added_lines: dict[str, int], trigger: str,
-            session: str = "", subject: str | None = None) -> str:
+def message(
+    changes: list[tuple[str, str]],
+    added_lines: dict[str, int],
+    trigger: str,
+    session: str = "",
+    subject: str | None = None,
+) -> str:
     """A generated commit message: what changed where, then every path.
 
     `changes` is (status letter, path) from `git diff --cached --name-status`; `added_lines`
@@ -138,8 +164,9 @@ def commit(root: Path, trigger: str, session: str = "", subject: str | None = No
 
 def passthrough(root: Path, *args: str) -> int:
     """Run a read-only git command on the store with its output going straight through."""
-    return subprocess.run(["git", "--no-pager", "-C", str(root), *args], timeout=60,
-                          env=_env()).returncode
+    return subprocess.run(
+        ["git", "--no-pager", "-C", str(root), *args], timeout=60, env=_env()
+    ).returncode
 
 
 def file_log(root: Path, path: str) -> list[list[str]] | None:
@@ -183,8 +210,9 @@ def root_commit(root: Path) -> str | None:
 def first_added(root: Path, path: str) -> tuple[str, str] | None:
     """(full sha, YYYY-MM-DD) of the commit that first added `path`, across renames; None
     when the file has no history yet."""
-    r = _git(root, "log", "--follow", "--diff-filter=A", "--date=short", "--format=%H %ad",
-             "--", path)
+    r = _git(
+        root, "log", "--follow", "--diff-filter=A", "--date=short", "--format=%H %ad", "--", path
+    )
     lines = r.stdout.split("\n") if r.returncode == 0 else []
     lines = [ln for ln in lines if ln.strip()]
     if not lines:
@@ -201,8 +229,12 @@ def resolve(root: Path, rev: str) -> str | None:
 
 def read_at(root: Path, rev: str, path: str) -> bytes | None:
     """A store-relative file as it was at `rev`, or None if it did not exist there."""
-    r = subprocess.run(["git", "-C", str(root), "show", f"{rev}:{path}"], capture_output=True,
-                       timeout=TIMEOUT, env=_env())
+    r = subprocess.run(
+        ["git", "-C", str(root), "show", f"{rev}:{path}"],
+        capture_output=True,
+        timeout=TIMEOUT,
+        env=_env(),
+    )
     return r.stdout if r.returncode == 0 else None
 
 
@@ -222,11 +254,11 @@ def files_at(root: Path, rev: str, paths: list[str]) -> list[str]:
 
 @dataclass
 class Restore:
-    status: str                      # "restored" | "failed"
+    status: str  # "restored" | "failed"
     detail: str = ""
-    changed: list[str] | None = None
-    unchanged: list[str] | None = None
-    snapshot: str = ""               # the safety commit taken first, if there was anything
+    changed: list[str] = field(default_factory=list)
+    unchanged: list[str] = field(default_factory=list)
+    snapshot: str = ""  # the safety commit taken first, if there was anything
 
 
 def restore(root: Path, paths: list[str], rev: str = "HEAD") -> Restore:
@@ -270,8 +302,12 @@ def restore(root: Path, paths: list[str], rev: str = "HEAD") -> Restore:
 def export(root: Path, rev: str, dest: Path) -> None:
     """Write the store's tree at `rev` into `dest`, outside the store; no checkout, no
     worktree, nothing in .git touched."""
-    r = subprocess.run(["git", "-C", str(root), "archive", "--format=tar", rev],
-                       capture_output=True, timeout=60, env=_env())
+    r = subprocess.run(
+        ["git", "-C", str(root), "archive", "--format=tar", rev],
+        capture_output=True,
+        timeout=60,
+        env=_env(),
+    )
     if r.returncode:
         raise RuntimeError(r.stderr.decode(errors="replace").strip())
     with tarfile.open(fileobj=io.BytesIO(r.stdout)) as t:
@@ -306,8 +342,10 @@ def ensure_ignore(root: Path) -> list[str]:
         f.write_text(GITIGNORE, encoding="utf-8")
     elif missing:
         text = f.read_text(encoding="utf-8")
-        f.write_text(text + ("" if text.endswith("\n") else "\n") + "\n".join(missing) + "\n",
-                     encoding="utf-8")
+        f.write_text(
+            text + ("" if text.endswith("\n") else "\n") + "\n".join(missing) + "\n",
+            encoding="utf-8",
+        )
     return missing
 
 
@@ -337,8 +375,10 @@ def init(root: Path, today: str) -> Result:
         subject = f"Baseline: store as of {today}, set up by mem install"
         c = _git(root, "commit", "-q", "--allow-empty", "-m", subject)
         if c.returncode:
-            return Result("failed", "initialized, but the baseline commit failed: "
-                          + (c.stderr or c.stdout).strip())
+            return Result(
+                "failed",
+                "initialized, but the baseline commit failed: " + (c.stderr or c.stdout).strip(),
+            )
         sha = _git(root, "rev-parse", "--short", "HEAD").stdout.strip()
         return Result("committed", subject, sha)
     except (OSError, subprocess.TimeoutExpired) as e:
@@ -357,12 +397,18 @@ def revert(root: Path, shas: list[str]) -> Result:
     if r.returncode:
         _git(root, "revert", "--abort")
         return Result("failed", (r.stderr or r.stdout).strip())
-    return Result("committed", f"reverted {len(shas)} commit(s)",
-                  _git(root, "rev-parse", "--short", "HEAD").stdout.strip())
+    return Result(
+        "committed",
+        f"reverted {len(shas)} commit(s)",
+        _git(root, "rev-parse", "--short", "HEAD").stdout.strip(),
+    )
 
 
 def subjects(root: Path) -> list[tuple[str, str]]:
     """(short sha, subject) of every store commit, newest first."""
     r = _git(root, "log", "--format=%h%x09%s")
-    return [tuple(ln.split("\t", 1)) for ln in r.stdout.splitlines() if "\t" in ln] \
-        if r.returncode == 0 else []
+    return (
+        [tuple(ln.split("\t", 1)) for ln in r.stdout.splitlines() if "\t" in ln]
+        if r.returncode == 0
+        else []
+    )
