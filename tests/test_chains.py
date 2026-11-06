@@ -68,7 +68,7 @@ def test_walk_goes_both_ways_and_shows_dead_ends():
     g = chains.build([n("t/a/v1.md", ["v0"]), n("t/a/v2.md", ["v1"]), n("t/a/v3.md", ["v2"])])
     back = [(d, x.slug if x else note) for d, x, note in chains.walk(g, "t/a/v3.md", "older")]
     assert back == [(1, "v2"), (2, "v1"), (3, "v0 (not found)")]
-    fwd = [(d, x.slug) for d, x, _ in chains.walk(g, "t/a/v1.md", "newer")]
+    fwd = [(d, x and x.slug) for d, x, _ in chains.walk(g, "t/a/v1.md", "newer")]
     assert fwd == [(1, "v2"), (2, "v3")]
 
 

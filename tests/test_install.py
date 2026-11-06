@@ -66,7 +66,8 @@ def legacy(home: Path, other: dict) -> Path:
                 "model": "opus",
                 "hooks": {
                     "PostToolUse": [
-                        # someone else's hook sharing a group with ours: theirs stays, with its matcher
+                        # someone else's hook sharing a group with ours:
+                        # theirs stays, with its matcher
                         {
                             "matcher": "Edit",
                             "hooks": [

@@ -105,6 +105,12 @@ def _territory(store: Path, t: str, head: str, body: str) -> None:
     (d / "MEMORY.md").write_text(f"---\nterritory: {t}\n{head}---\n# {t}\n\n{body}\n")
 
 
+def _guess(store: Path, repo: Path, all_t: list[str]) -> tuple[str, str, bool]:
+    got = guess_territory(store, repo, all_t)
+    assert got is not None, repo
+    return got
+
+
 def test_guess_territory_prefers_members_then_mentions(tmp_path: Path):
     store = tmp_path / "store"
     _territory(store, "console/tools", "", "The retrotink scaler. retrotink again.")
@@ -116,11 +122,11 @@ def test_guess_territory_prefers_members_then_mentions(tmp_path: Path):
     )
     _territory(store, "solo/other", "", "Unrelated.")
     all_t = ["console/tools", "home/lab", "solo/other"]
-    t, why, firm = guess_territory(store, tmp_path / "retrotink-flasher", all_t)
+    t, why, firm = _guess(store, tmp_path / "retrotink-flasher", all_t)
     assert t == "home/lab" and "members" in why and firm  # a parked repo, cloned back
-    t, why, firm = guess_territory(store, tmp_path / "retrotink", all_t[::2])
+    t, why, firm = _guess(store, tmp_path / "retrotink", all_t[::2])
     assert t == "console/tools" and "`retrotink` 2x" in why and firm  # the full name
-    t, why, firm = guess_territory(store, tmp_path / "retrotink-mk2", all_t[::2])
+    t, why, firm = _guess(store, tmp_path / "retrotink-mk2", all_t[::2])
     assert t == "console/tools" and "part of the name" in why and not firm
     assert guess_territory(store, tmp_path / "zzz", all_t) is None
 

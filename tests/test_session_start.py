@@ -56,7 +56,7 @@ def test_territory_for_symlinked_silo(fx: Fixture, monkeypatch):
 
 
 def test_retro_overdue():
-    assert session_start.retro_overdue("last_retrospective: 2000-01-01\n") > 30
+    assert (session_start.retro_overdue("last_retrospective: 2000-01-01\n") or 0) > 30
     assert session_start.retro_overdue("no date here") is None
 
 

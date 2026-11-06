@@ -1,11 +1,7 @@
 # Run by prek (https://prek.j178.dev/), a Rust drop-in for pre-commit that reads
 # this file unchanged. `task hooks` installs them; `task pre-commit` runs them over
-# everything. ruff and pytest are local hooks through uv, so they use the versions
-# in uv.lock.
-#
-# ruff format, ty and jscpd are tasks (`task lint-format`, `lint-typing`,
-# `lint-dupes`) but not hooks yet: they join here, and in CI, with the PR that
-# fixes what they currently find.
+# everything, and CI runs that through `task check`. The local hooks run through uv,
+# so ruff, ty, jscpd and pytest are the versions in uv.lock.
 default_install_hook_types: [pre-commit, pre-push]
 
 repos:
@@ -40,11 +36,33 @@ repos:
 
   - repo: local
     hooks:
+      # check --fix before format, as ruff recommends: a fix can leave code to reformat.
       - id: ruff
         name: ruff check
         entry: uv run ruff check --fix
         language: system
         types: [python]
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
+        language: system
+        types: [python]
+      # ty checks the whole project; a filename subset loses cross-module types.
+      # pyproject.toml and uv.lock change what it resolves, so they re-check too.
+      - id: ty
+        name: ty check
+        entry: uv run ty check
+        language: system
+        pass_filenames: false
+        files: (\.pyi?|^pyproject\.toml|^uv\.lock)$
+      # A clone of an unstaged file is still a clone, so it scans everything in
+      # scope (a few ms) rather than just what is staged.
+      - id: jscpd
+        name: jscpd copy-paste check
+        entry: uv run jscpd --no-tips --config .jscpd.json
+        language: system
+        pass_filenames: false
+        files: ^(src/|\.jscpd\.json$)
       - id: uv-lock
         name: uv.lock matches pyproject.toml
         entry: uv lock --check

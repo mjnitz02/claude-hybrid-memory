@@ -111,27 +111,32 @@ def test_fix_flattens_the_harness_metadata_block(fx: Fixture):
     `modified` survives only where there is no last_verified to stand in for it."""
     from claude_hybrid_memory.fix import flatten_harness
 
+    def flat(text: str, router: bool = False) -> tuple[str, list[str]]:
+        got = flatten_harness(text, router=router)
+        assert got is not None, text
+        return got
+
     text = (
         "---\nname: kit-h\ndescription: d\nmetadata:\n  node_type: memory\n"
         "  kind: territory\n  type: project\n  originSessionId: 0000\n"
         "  modified: 2026-08-13T23:58:04.986Z\n  description: older\n"
         "last_verified: 2026-09-11\nvolatility: slow\n---\n\nBody.\n"
     )
-    new, actions = flatten_harness(text)
+    new, actions = flat(text)
     assert new == (
         "---\nname: kit-h\ndescription: d\nkind: territory\n"
         "last_verified: 2026-09-11\nvolatility: slow\n---\n\nBody.\n"
     )
     assert "dropped description (already at top level)" in actions
     no_lv = text.replace("last_verified: 2026-09-11\n", "")
-    assert "modified: 2026-08-13T23:58:04.986Z\n" in flatten_harness(no_lv)[0]
+    assert "modified: 2026-08-13T23:58:04.986Z\n" in flat(no_lv)[0]
     # a router: nested maps dedent, the empty harness name goes, modified never stays
     router = (
         '---\nname: ""\nmetadata:\n  node_type: memory\n  territory: solo/x\n'
         "  members:\n    x:\n      mode: active\n  modified: 2026-10-24T12:59:07Z\n"
         "---\n\n# solo/x\n"
     )
-    new, _ = flatten_harness(router, router=True)
+    new, _ = flat(router, router=True)
     assert new == ("---\nterritory: solo/x\nmembers:\n  x:\n    mode: active\n---\n\n# solo/x\n")
     assert flatten_harness("---\nname: a\nkind: territory\n---\nB.\n") is None
 

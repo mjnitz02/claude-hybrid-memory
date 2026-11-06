@@ -21,6 +21,12 @@ def moved(fx: Fixture, old: str, new: str) -> list:
     return move.apply_territory(fx.store, fx.projects, mv)
 
 
+def planned(fx: Fixture, specs: list[str], dest: str) -> move.FileMove:
+    fm = move.plan_files(fx.store, specs, dest)
+    assert isinstance(fm, move.FileMove), fm
+    return fm
+
+
 @pytest.fixture
 def store(fx: Fixture) -> Fixture:
     # a cross-territory version-chain ref, which names the container
@@ -83,6 +89,7 @@ def test_a_grouped_entry_is_renamed_in_place_and_flagged(store: Fixture):
     r = fx.store / "ROUTER.md"
     r.write_text(r.read_text().replace("- home/lab (2) :", "- home/lab, home/attic :"))
     mv = move.plan_territory(fx.store, fx.projects, "home/lab", "yard/lab")
+    assert isinstance(mv, move.Move), mv
     assert "- yard/lab, home/attic :" in mv.edits[r]
     assert "mv-router-grouped" in {f.code for f in mv.notes}
 
@@ -102,6 +109,7 @@ def test_an_approved_plan_follows_and_stays_approved(store: Fixture):
     P.write(fx.store, P.approve(plan))
     moved(fx, "console/kit", "shop/kit")
     got = P.load(fx.store)
+    assert got is not None
     assert got["silos"][0]["territory"] == "shop/kit"
     assert got["approved"]["decisions"] == P.decisions(got)
 
@@ -152,7 +160,7 @@ def test_mv_carries_the_index_line_and_the_container_refs(store: Fixture):
     )
     git(fx.store, "add", "-A")
     git(fx.store, "commit", "-qm", "followup")
-    fm = move.plan_files(fx.store, ["lab-backup-plan"], "console/kit")
+    fm = planned(fx, ["lab-backup-plan"], "console/kit")
     out = move.apply_files(fx.store, fx.projects, fm)
     assert "mv-new-error" not in {f.code for f in out}, out
 
@@ -211,7 +219,7 @@ def test_mv_into_a_rendered_index_renders_it(store: Fixture):
     move.apply_files(
         fx.store,
         fx.projects,
-        move.plan_files(fx.store, ["home/lab/lab-backup-plan"], "console/kit"),
+        planned(fx, ["home/lab/lab-backup-plan"], "console/kit"),
     )
     text = (fx.store / "territories/console/kit/MEMORY.md").read_text()
     section = text[text.index("<!-- mem:render begin") :]
@@ -236,7 +244,7 @@ def test_mv_refuses_and_warns(store: Fixture):
     ):
         got = move.plan_files(fx.store, specs, dest)
         assert isinstance(got, list) and code in {f.code for f in got}, (specs, got)
-    fm = move.plan_files(fx.store, ["lab-ssh-read-only"], "console/kit")
+    fm = planned(fx, ["lab-ssh-read-only"], "console/kit")
     assert "mv-gate" in {f.code for f in fm.notes}
     rc, out, _ = run(
         mem_cmd(
@@ -296,7 +304,7 @@ def test_a_merge_archives_the_emptied_territory(store: Fixture):
         for p in sorted(lab.glob("*.md"))
         if p.name not in ("MEMORY.md", "EXPORTS.md")
     ]
-    move.apply_files(fx.store, fx.projects, move.plan_files(fx.store, slugs, "console/kit"))
+    move.apply_files(fx.store, fx.projects, planned(fx, slugs, "console/kit"))
     out = archived(fx, ["home/lab"], why="merged into console/kit")
     assert "mv-new-error" not in {f.code for f in out}, out
     assert (fx.store / "archive/home-lab/MEMORY.md").is_file()
@@ -336,6 +344,7 @@ def test_archive_refuses_and_warns(store: Fixture):
         got = move.plan_archive(fx.store, fx.projects, targets, why, group)
         assert isinstance(got, list) and code in {f.code for f in got}, (targets, got)
     ar = move.plan_archive(fx.store, fx.projects, ["lab-ssh-read-only"], "x", "lab-gates")
+    assert isinstance(ar, move.Archive), ar
     assert "mv-gate" in {f.code for f in ar.notes}
     rc, out, _ = run(
         mem_cmd(

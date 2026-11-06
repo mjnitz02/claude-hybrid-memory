@@ -84,7 +84,7 @@ def draft(root: Path, inv: dict, summaries: dict[str, dict], router: str) -> dic
         mode = ss.get("mode", "unknown")
         if s["workdir"] is None and mode not in ("dead", "parked"):
             mode = "parked"  # absence from this disk is not death (mode: parked)
-        entry = {
+        entry: dict = {
             "silo": s["silo"],
             "territory": t,
             "new": t not in have if t else None,

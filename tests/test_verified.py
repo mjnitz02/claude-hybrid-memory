@@ -52,12 +52,14 @@ def test_stamp_sets_a_top_level_field_and_reads_back():
         "\nBody with last_verified: in prose.\n"
     )
     out = verified.stamp(nested, D)
+    assert out is not None
     meta, body, problems = parse_frontmatter(out)
     assert not problems and str(meta["last_verified"]) == "2026-09-11"
     assert meta["metadata"] == {"type": "project", "modified": "x"}
     assert body.strip() == "Body with last_verified: in prose."  # the body is untouched
 
     again = verified.stamp(out, dt.date(2026, 11, 3))  # replaces, never doubles
+    assert again is not None
     assert again.count("last_verified:") == 2  # one field, one in prose
     assert str(parse_frontmatter(again)[0]["last_verified"]) == "2026-11-03"
 

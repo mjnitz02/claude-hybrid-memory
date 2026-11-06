@@ -60,7 +60,7 @@ class FileMove(Change):
 
 def _text(ch: Change, p: Path) -> str:
     """The text of `p` with this change's edits so far."""
-    return ch.edits.get(p) if p in ch.edits else p.read_text(encoding="utf-8")
+    return ch.edits[p] if p in ch.edits else p.read_text(encoding="utf-8")
 
 
 def _frontmatter_span(text: str) -> tuple[int, int]:
@@ -115,6 +115,17 @@ def _refs(mv: Move, tdir: Path, own: Path) -> None:
             mv.edits[p] = new
 
 
+def _entry_names(line: str) -> tuple[str, list[str]]:
+    """A ROUTER.md entry's names field as written, and the names in it; ("", []) when the
+    line is not an entry."""
+    from claude_hybrid_memory.render import ROUTER_ENTRY_RE
+
+    m = ROUTER_ENTRY_RE.match(line)
+    if not m:
+        return "", []
+    return m.group("names"), re.split(r",\s*", m.group("names"))
+
+
 def _router(mv: Move, router: Path) -> None:
     from claude_hybrid_memory.render import ROUTER_ENTRY_RE
 
@@ -123,11 +134,7 @@ def _router(mv: Move, router: Path) -> None:
     text = _text(mv, router)
     lines = text.split("\n")
     at = next(
-        (
-            i
-            for i, ln in enumerate(lines)
-            if (m := ROUTER_ENTRY_RE.match(ln)) and mv.old in re.split(r",\s*", m.group("names"))
-        ),
+        (i for i, ln in enumerate(lines) if mv.old in _entry_names(ln)[1]),
         None,
     )
     if at is None:
@@ -145,7 +152,7 @@ def _router(mv: Move, router: Path) -> None:
         end += 1
     block = lines[at:end]
     block[0] = _token(mv.old).sub(mv.new, block[0], count=1)
-    grouped = len(re.split(r",\s*", ROUTER_ENTRY_RE.match(lines[at]).group("names"))) > 1
+    grouped = len(_entry_names(lines[at])[1]) > 1
     area_old, area_new = mv.old.split("/", 1)[0], mv.new.split("/", 1)[0]
     if area_old == area_new or grouped:
         lines[at:end] = block
@@ -458,15 +465,7 @@ def plan_files(root: Path, specs: list[str], dest: str) -> FileMove | list[Findi
         pats.append(re.escape(old))
         for p in sorted(tdir.rglob("*.md")):
             text = _text(fm, p)
-            _, end = _frontmatter_span(text)
-            lines = text[:end].split("\n")
-            in_sup = False
-            for i, ln in enumerate(lines):
-                if key := re.match(r"^\s*([\w-]+):", ln):
-                    in_sup = key.group(1) == "supersedes"
-                if in_sup:
-                    lines[i] = tok.sub(new, ln)
-            if end and (edited := "\n".join(lines) + text[end:]) != text:
+            if (edited := _sub_supersedes(text, tok, new)) != text:
                 fm.edits[p] = edited
         index = (tdir / src / "MEMORY.md").read_text(encoding="utf-8")
         if not markers(index) and (m := entry_line_re(f.name).search(index)):
@@ -575,19 +574,15 @@ def _router_drop(ar: Archive, router: Path, name: str) -> None:
         return
     lines = _text(ar, router).split("\n")
     at = next(
-        (
-            i
-            for i, ln in enumerate(lines)
-            if (m := ROUTER_ENTRY_RE.match(ln)) and name in re.split(r",\s*", m.group("names"))
-        ),
+        (i for i, ln in enumerate(lines) if name in _entry_names(ln)[1]),
         None,
     )
     if at is None:
         return
-    names = re.split(r",\s*", ROUTER_ENTRY_RE.match(lines[at]).group("names"))
+    raw, names = _entry_names(lines[at])
     if len(names) > 1:
         lines[at] = lines[at].replace(
-            ROUTER_ENTRY_RE.match(lines[at]).group("names"),
+            raw,
             ", ".join(n for n in names if n != name),
             1,
         )
@@ -617,6 +612,22 @@ def _router_drop(ar: Archive, router: Path, name: str) -> None:
     ar.edits[router] = "\n".join(lines)
 
 
+def _sub_supersedes(text: str, pat: re.Pattern, repl) -> str:
+    """`text` with `pat` replaced by `repl` inside the frontmatter's `supersedes:` key only,
+    its inline value and any continuation lines. Unchanged when there is no frontmatter."""
+    _, end = _frontmatter_span(text)
+    if not end:
+        return text
+    lines = text[:end].split("\n")
+    in_sup = False
+    for i, ln in enumerate(lines):
+        if key := re.match(r"^\s*([\w-]+):", ln):
+            in_sup = key.group(1) == "supersedes"
+        if in_sup:
+            lines[i] = pat.sub(repl, ln)
+    return "\n".join(lines) + text[end:]
+
+
 def _retire_refs(ar: Archive, tdir: Path, leaving: set[Path]) -> None:
     """For every file staying behind: `[[slug]]` into an archived file becomes its archive
     path (as `migrate apply` does), and `container/slug` in `supersedes:` follows it."""
@@ -631,16 +642,7 @@ def _retire_refs(ar: Archive, tdir: Path, leaving: set[Path]) -> None:
         text = _text(ar, p)
         for slug, rel in gone.items():
             text = text.replace(f"[[{slug}]]", f"`{rel}`")
-        _, end = _frontmatter_span(text)
-        lines = text[:end].split("\n")
-        in_sup = False
-        for i, ln in enumerate(lines):
-            if key := re.match(r"^\s*([\w-]+):", ln):
-                in_sup = key.group(1) == "supersedes"
-            if in_sup:
-                lines[i] = sup_tok.sub(lambda m: sup[m.group(0)], ln)
-        if end:
-            text = "\n".join(lines) + text[end:]
+        text = _sub_supersedes(text, sup_tok, lambda m: sup[m.group(0)])
         if text != _text(ar, p):
             ar.edits[p] = text
 

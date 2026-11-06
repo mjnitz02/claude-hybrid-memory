@@ -62,7 +62,8 @@ def test_adopt_write_renders_and_keeps_the_hand_written_head(fx: Fixture):
     meta, _, problems = parse_frontmatter(text)
     assert meta["groups"] == ["Sync", "Bench work"] and not problems
     assert meta["consumes"] == "home/lab"
-    s, e = render.markers(text)
+    assert (span := render.markers(text))
+    s, e = span
     assert text[s:e] == (
         "Each name below is `<name>.md` beside this file.\n"
         "### Sync\n"

@@ -197,7 +197,8 @@ def _order(t: Territory) -> tuple[dict[str | None, list[Entry]], list[str | None
     for e in t.entries:
         by.setdefault(e.group, []).append(e)
     named = [g for g in by if g is not None]
-    order = [g for g in t.groups if g in by] + sorted(g for g in named if g not in t.groups)
+    order: list[str | None] = [g for g in t.groups if g in by]
+    order += sorted(g for g in named if g not in t.groups)
     if None in by:
         order.append(None)
     return by, order, bool(named)
@@ -324,9 +325,11 @@ def render_full(
     """`render`, plus how far it had to step down and the territory it read."""
     t = load(root, name, superseded)
     text = t.index.read_text(encoding="utf-8")
-    s, _ = markers(text)
     rest, _ = hand_entries(text, members(t.index))
-    _, e = markers(rest)
+    head, tail = markers(text), markers(rest)
+    if head is None or tail is None:
+        raise ValueError(f"{t.index} has no mem:render markers; it is not adopted")
+    s, e = head[0], tail[1]
     section, d = fit(t, text[:s], rest[e:])
     new = text[:s] + section + rest[e:]
     if write and new != text:

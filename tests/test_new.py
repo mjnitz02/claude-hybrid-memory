@@ -70,7 +70,8 @@ def test_new_re_renders_a_rendered_territory(fx: Fixture):
     assert rc == 0, err
     assert "indexed it in console/kit/MEMORY.md" in out
     idx = (fx.store / KIT / "MEMORY.md").read_text()
-    s, e = render.markers(idx)
+    assert (span := render.markers(idx))
+    s, e = span
     assert "kit-probe" in idx[s:e] and "kit-probe" not in idx[e:]
     assert "tier: record" in (fx.store / KIT / "kit-probe.md").read_text()
     assert [f for f in render.check(fx.store, ["console/kit"]) if f.code == "render-stale"] == []

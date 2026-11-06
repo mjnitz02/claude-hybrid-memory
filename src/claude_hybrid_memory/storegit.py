@@ -21,7 +21,7 @@ import io
 import os
 import subprocess
 import tarfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 TIMEOUT = 20
@@ -256,8 +256,8 @@ def files_at(root: Path, rev: str, paths: list[str]) -> list[str]:
 class Restore:
     status: str  # "restored" | "failed"
     detail: str = ""
-    changed: list[str] | None = None
-    unchanged: list[str] | None = None
+    changed: list[str] = field(default_factory=list)
+    unchanged: list[str] = field(default_factory=list)
     snapshot: str = ""  # the safety commit taken first, if there was anything
 
 

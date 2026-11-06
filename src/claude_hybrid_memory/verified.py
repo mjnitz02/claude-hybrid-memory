@@ -48,7 +48,9 @@ def written_date(text: str, path: Path) -> dt.date:
     file landing in the store was written whenever it was written, and stamping the landing
     day would make it look fresher than it is."""
     meta = parse_frontmatter(text)[0]
-    nested = meta.get("metadata") if isinstance(meta.get("metadata"), dict) else {}
+    nested = meta.get("metadata")
+    if not isinstance(nested, dict):
+        nested = {}
     for v in (meta.get("modified"), nested.get("modified")):
         m = re.match(r"(\d{4}-\d{2}-\d{2})", str(v or ""))
         if m:

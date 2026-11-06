@@ -1386,6 +1386,24 @@ def _show_text(a, text: str, p, container: str, slug: str, newer: list[str], con
     return 0
 
 
+def _resolve_at(store, rev: str):
+    """(store root, commit sha) for `--at REV`, or None after saying why on stderr."""
+    import os
+    from pathlib import Path
+
+    from claude_hybrid_memory import storegit
+
+    root = Path(os.path.realpath(store))
+    if not storegit.is_repo(root):
+        print(f"{root} is not a git repository (setup.md step 1b)", file=sys.stderr)
+        return None
+    sha = storegit.resolve(root, rev)
+    if not sha:
+        print(f"{rev!r} names no commit in the store", file=sys.stderr)
+        return None
+    return root, sha
+
+
 def _show_at(conn, a) -> int:
     """`mem show --at REV`: a memory, or any store file, as that commit had it. The spec
     resolves against today's memories first, then as a store-relative path, so a file
@@ -1395,14 +1413,10 @@ def _show_at(conn, a) -> int:
 
     from claude_hybrid_memory import cache, storegit
 
-    root = Path(os.path.realpath(a.root))
-    if not storegit.is_repo(root):
-        print(f"{root} is not a git repository (setup.md step 1b)", file=sys.stderr)
+    at = _resolve_at(a.root, a.at)
+    if at is None:
         return 2
-    sha = storegit.resolve(root, a.at)
-    if not sha:
-        print(f"{a.at!r} names no commit in the store", file=sys.stderr)
-        return 2
+    root, sha = at
     rows = cache.resolve(conn, a.spec)
     if len(rows) == 1:
         path, container, slug = rows[0]
@@ -1699,14 +1713,10 @@ def _run_at(a, argv: list[str]) -> int:
             file=sys.stderr,
         )
         return 2
-    root = Path(os.path.realpath(a.root))
-    if not storegit.is_repo(root):
-        print(f"{root} is not a git repository (setup.md step 1b)", file=sys.stderr)
+    at = _resolve_at(a.root, a.at)
+    if at is None:
         return 2
-    sha = storegit.resolve(root, a.at)
-    if not sha:
-        print(f"{a.at!r} names no commit in the store", file=sys.stderr)
-        return 2
+    root, sha = at
     with tempfile.TemporaryDirectory(prefix="mem-at-") as tmp:
         tmp = os.path.realpath(tmp)
         storegit.export(root, sha, Path(tmp))
@@ -1768,13 +1778,23 @@ def _refine(argv: list[str]) -> int:
     return 0
 
 
+def _move_flags(ap) -> None:
+    """The flags every plan-then-apply command shares: mv, mv-territory and archive."""
+    from pathlib import Path
+
+    from claude_hybrid_memory.store import LEGACY, STORE
+
+    ap.add_argument("--write", action="store_true", help="apply it (default: show the plan)")
+    ap.add_argument("--root", type=Path, default=STORE)
+    ap.add_argument("--legacy", type=Path, default=LEGACY)
+    ap.add_argument("--json", action="store_true")
+
+
 def _mv_territory(argv: list[str]) -> int:
     import argparse
-    from pathlib import Path
 
     from claude_hybrid_memory import move
     from claude_hybrid_memory.findings import report
-    from claude_hybrid_memory.store import LEGACY, STORE
 
     ap = argparse.ArgumentParser(
         prog="mem mv-territory",
@@ -1783,10 +1803,7 @@ def _mv_territory(argv: list[str]) -> int:
     )
     ap.add_argument("old")
     ap.add_argument("new")
-    ap.add_argument("--write", action="store_true", help="apply it (default: show the plan)")
-    ap.add_argument("--root", type=Path, default=STORE)
-    ap.add_argument("--legacy", type=Path, default=LEGACY)
-    ap.add_argument("--json", action="store_true")
+    _move_flags(ap)
     a = ap.parse_args(argv)
     mv = move.plan_territory(a.root, a.legacy, a.old, a.new)
     if isinstance(mv, list):
@@ -1798,11 +1815,9 @@ def _mv_territory(argv: list[str]) -> int:
 
 def _mv(argv: list[str]) -> int:
     import argparse
-    from pathlib import Path
 
     from claude_hybrid_memory import move
     from claude_hybrid_memory.findings import report
-    from claude_hybrid_memory.store import LEGACY, STORE
 
     ap = argparse.ArgumentParser(
         prog="mem mv",
@@ -1813,10 +1828,7 @@ def _mv(argv: list[str]) -> int:
         "memories", nargs="+", metavar="SLUG", help="slug, area/name/slug, or a path to the file"
     )
     ap.add_argument("territory")
-    ap.add_argument("--write", action="store_true", help="apply it (default: show the plan)")
-    ap.add_argument("--root", type=Path, default=STORE)
-    ap.add_argument("--legacy", type=Path, default=LEGACY)
-    ap.add_argument("--json", action="store_true")
+    _move_flags(ap)
     a = ap.parse_args(argv)
     fm = move.plan_files(a.root, a.memories, a.territory)
     if isinstance(fm, list):
@@ -1828,11 +1840,9 @@ def _mv(argv: list[str]) -> int:
 
 def _archive(argv: list[str]) -> int:
     import argparse
-    from pathlib import Path
 
     from claude_hybrid_memory import move
     from claude_hybrid_memory.findings import report
-    from claude_hybrid_memory.store import LEGACY, STORE
 
     ap = argparse.ArgumentParser(
         prog="mem archive",
@@ -1848,10 +1858,7 @@ def _archive(argv: list[str]) -> int:
     )
     ap.add_argument("--why", required=True, help="the reason, kept in WHY-ARCHIVED.md")
     ap.add_argument("--as", dest="group", help="archive group (default: area-name of the source)")
-    ap.add_argument("--write", action="store_true", help="apply it (default: show the plan)")
-    ap.add_argument("--root", type=Path, default=STORE)
-    ap.add_argument("--legacy", type=Path, default=LEGACY)
-    ap.add_argument("--json", action="store_true")
+    _move_flags(ap)
     a = ap.parse_args(argv)
     ar = move.plan_archive(a.root, a.legacy, a.targets, a.why, a.group)
     if isinstance(ar, list):

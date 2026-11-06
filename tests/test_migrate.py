@@ -339,16 +339,19 @@ def test_map_cli_keeps_edits_and_enforces_approval(silos: Fixture, fake: Path, t
     f = P.path(silos.store)
     assert f.read_text().startswith("# The territory map")
     plan = P.load(silos.store)
+    assert plan is not None
     plan["silos"][0]["files"][0]["proposed"] = "Matt's own wording."
     P.write(silos.store, plan)
     rc, out, _ = run(mem_cmd("migrate", "map", *base), env)  # no redraft over edits
+    plan = P.load(silos.store)
+    assert plan is not None
     assert (
-        "drafted" not in out
-        and P.load(silos.store)["silos"][0]["files"][0]["proposed"] == "Matt's own wording."
+        "drafted" not in out and plan["silos"][0]["files"][0]["proposed"] == "Matt's own wording."
     )
     rc, out, _ = run(mem_cmd("migrate", "map", "--approve", *base), env)
-    assert rc == 0 and "approved" in out and P.is_approved(P.load(silos.store))
     plan = P.load(silos.store)
+    assert plan is not None
+    assert rc == 0 and "approved" in out and P.is_approved(plan)
     plan["silos"][0]["territory"] = "fixture/elsewhere"
     P.write(silos.store, plan)
     rc, out, _ = run(mem_cmd("migrate", "map", *base), env)
@@ -470,6 +473,7 @@ def test_apply_refuses_an_unapproved_plan(landed: Fixture, fake: Path):
     from claude_hybrid_memory.migrate import plan as P
 
     plan = P.load(landed.store)
+    assert plan is not None
     plan["silos"][0]["files"][0]["action"] = "archive"
     P.write(landed.store, plan)
     rc, _, err = apply_cli(landed, fake, "apply")

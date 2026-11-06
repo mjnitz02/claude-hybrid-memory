@@ -189,7 +189,8 @@ def test_a_harness_write_into_a_rendered_territory_re_renders_it(fx: Fixture):
     assert post(fx, "Write", mem)[0] == 0
     idx = fx.store / "territories/console/kit/MEMORY.md"
     text = idx.read_text()
-    s, e = render.markers(text)
+    assert (span := render.markers(text))
+    s, e = span
     assert "- kit-miyoo-card: The kid's handheld: what's on it." in text[s:e]
     assert mem.read_text() == raw
     # the recipe's second step: a pointer hand-added inside the block
