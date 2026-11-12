@@ -5,7 +5,7 @@ description: Run a retrospective on the Claude memory store - mechanical audit p
 
 # memory-retro
 
-The self-verification pass. The frame Matt gave: sitting down and asking whether your
+The self-verification pass. The frame the user gave: sitting down and asking whether your
 thoughts are in order, whether you are forgetting things, and whether something should be
 optimized. Same activity, faster.
 
@@ -20,15 +20,15 @@ decides and what you decide. Then:
 
 `mem audit` ranks **split candidates** (files over 10 KB, weighted by accretion markers and
 by how often events show them read). For each of the top few, ask *why* it is that big
-and whether it should be separate memories; that is a question for Matt, not an edit to
+and whether it should be separate memories; that is a question for the user, not an edit to
 make unprompted. The answer is often a split into one state memory plus dated
 `tier: record` memories, the original kept by git (`docs/format-spec.md`, "Version
 chains"). Sometimes it is that the file is fine as one piece: then `mem no-split <slug> -m
-"<his reason>"`, which puts the decline on the file. Do not add a RETRO.md key for it. Files
+"<their reason>"`, which puts the decline on the file. Do not add a RETRO.md key for it. Files
 already declined that way are one `split-declined` INFO line: that line is not a question.
-A candidate that *grew past the ceiling* comes with his old reason; ask whether it still
+A candidate that *grew past the ceiling* comes with their old reason; ask whether it still
 holds. **`split-decline-legacy`** is a split declined in an earlier RETRO.md that never
-reached the file. Run the command its message gives (Matt already decided), and report how
+reached the file. Run the command its message gives (the user already decided), and report how
 many you migrated. `superseded-still-indexed` means a
 territory index still lists a memory a newer one replaced: drop that line (`mem supersede`
 does this itself since 2026-11-04, so a hit means the line was added by hand afterwards).
@@ -37,7 +37,7 @@ memory never read across months of events is a candidate for archive, with the s
 caveat as parked repos: absence of use is not proof of uselessness.
 
 `obsolete-field` findings are retired `verify:`/`expect:` recipe fields. They are not
-claims to check: hand Matt the count and the `mem fix --write` that strips them.
+claims to check: hand the user the count and the `mem fix --write` that strips them.
 
 **Do not verify memories in bulk.** Claims are checked when a session acts on them
 (verify-on-use, format-spec). The retro measures whether that is happening, per
@@ -52,7 +52,7 @@ section of `mem events stats`, *written while past window, no `mem verified` fro
 session*: each line is a session that edited a memory past its window (judged as of that
 session, not today) and never ran `mem verified` on it. Read it; do not redo the join by
 hand. Each hit is a missed check, not proof the edit was wrong; open the few `live` ones
-and say whether the claim held. Zero `verified` events across two retros goes to Matt as a
+and say whether the claim held. Zero `verified` events across two retros goes to the user as a
 finding about the directive.
 
 **The `tail` is not optional, and it is the one a retrospective skips.** The layer reaches a
@@ -102,11 +102,11 @@ which is what makes it survive past its second run.
 
 Do NOT build or run a transcript-mining detector over `~/.claude/history.jsonl` to answer
 it. Repeated file reads are also just normal work, so such a detector emits confident
-nonsense, and Matt has recorded that objection twice
+nonsense, and the user has recorded that objection twice
 (`feedback-no-manufactured-insight`, `feedback_approach`).
 
 Answer it from direct evidence instead: something re-derived that a memory should have
-supplied, or a correction from Matt on something previously established. If there is no
+supplied, or a correction from the user on something previously established. If there is no
 evidence, say so. `unknown` is a legitimate answer.
 
 Anything inferred rather than observed gets `confidence: inferred` and is labeled as
@@ -128,8 +128,8 @@ silences the hook's overdue line.
 
 **Before a question goes under Pending, look for its answer in the store.** Read the owning
 territory's `MEMORY.md` and search the territory for the subject. On 2026-11-03 the retro
-asked Matt whether the Character-Tools work had landed; `cards/clients` already recorded it
+asked the user whether the Character-Tools work had landed; `cards/clients` already recorded it
 as archived and obsolete. A question the store can answer is not Pending.
 
-Then report to Matt: what the tool found, what you judged, what you changed, and what you
+Then report to the user: what the tool found, what you judged, what you changed, and what you
 declined. Do not commit anything.

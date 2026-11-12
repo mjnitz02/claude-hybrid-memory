@@ -158,7 +158,7 @@ def test_supersede_relinks_bodies_and_lists_gate_prose(fx: Fixture):
     new = fx.store / "territories/home/lab/lab-ssh-policy.md"
     new.write_text(
         "---\nname: lab-ssh-policy\nkind: territory\nrole: gate\n"
-        "description: SSH to the lab box is read-only; hand Matt the change.\n"
+        "description: SSH to the lab box is read-only; hand the user the change.\n"
         "volatility: stable\nlast_verified: 2026-11-04\n---\n\n"
         "Replaces [[lab-ssh-read-only]].\n"
     )

@@ -11,7 +11,7 @@ It responds to an audit of Claude Code's per-project memory on a real machine (s
 2. A router, so a session knows *when* to reach for something instead of only *what exists*.
 3. Cross-repo reach, because one product can be one system spread over a dozen directories.
 4. Computable freshness, so a cold file can be told apart from a rotted one.
-5. Self-verification that fires on its own rather than when Matt remembers to ask.
+5. Self-verification that fires on its own rather than when the user remembers to ask.
 
 ## The governing constraint
 
@@ -38,7 +38,7 @@ produces better memories and fewer of them is a net loss.
 
 ## Machine scoping
 
-Matt runs Claude on two machines and keeps them independent. So:
+The maintainer runs Claude on two machines and keeps them independent. So:
 
 | Layer | Crosses machines? | Lives where |
 |---|---|---|
@@ -72,7 +72,7 @@ any machine-scoped calibration, so a memory never has to guess which box it is o
         aspect/                  # cuts across every layer of the chain
           dep-policy/
           ci/
-        mine/                    # Matt's own tooling. not part of the product chain.
+        mine/                    # the maintainer's own tooling. not part of the product chain.
           ops/
           pm/
           misc/

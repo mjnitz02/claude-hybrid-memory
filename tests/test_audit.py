@@ -246,7 +246,7 @@ def _big(t: Path, slug: str, kb: float, extra: str = "") -> Path:
 
 def test_splittable_no_holds_until_its_ceiling(fx: Fixture):
     """A declined split stays quiet under the ceiling `mem no-split` wrote, is counted on
-    one INFO line, and comes back with Matt's reason once the file grows past it. The
+    one INFO line, and comes back with the user's reason once the file grows past it. The
     real case: 7-8 of ~300 work-Mac files re-raised by every retro after being declined."""
     from collections import Counter
 
@@ -281,12 +281,12 @@ def test_a_retro_split_decline_asks_to_move_onto_the_file(fx: Fixture):
     p = _big(t, "kit-declined", 14)
     rel = "territories/console/kit/kit-declined.md"
     (fx.store / "RETRO.md").write_text(
-        f"# RETRO\n\n- `refine:split-candidate:{rel}` — one argument (Matt, 2026-11-04)\n"
+        f"# RETRO\n\n- `refine:split-candidate:{rel}` — one argument (the user, 2026-11-04)\n"
     )
     mems, _ = scanned(fx)
     f = [x for x in audit.check_split(mems, Counter(), fx.store) if x.path == str(p)]
     assert [x.code for x in f] == ["split-decline-legacy"]
-    assert f"mem no-split {rel} -m 'one argument (Matt, 2026-11-04)'" in f[0].message
+    assert f"mem no-split {rel} -m 'one argument (the user, 2026-11-04)'" in f[0].message
     _big(t, "kit-declined", 14, 'splittable: "no until 20 KB: one argument"\n')
     mems, _ = scanned(fx)
     assert not [x for x in audit.check_split(mems, Counter(), fx.store) if x.path == str(p)]

@@ -1,6 +1,6 @@
 # Fast adoption: land first, refine after
 
-Status: ACCEPTED, 2026-10-23, on Matt's direction. Stages 1 to 4 built and run on the
+Status: ACCEPTED, 2026-10-23, on the maintainer's direction. Stages 1 to 4 built and run on the
 first machine: every pending silo there is landed (§12). Stage 5's queue and skill are built
 (§8) and its exit is met: a 2026-11-03 session worked 32 items. Stage 4b (volatility) was
 added the same day, when verifying in advance was dropped for verify-on-use. Replaces the per-territory
@@ -22,9 +22,9 @@ does it most cheaply:
 |---|---|---|---|
 | 1. Inventory | `mem migrate inventory` (code) | the silos | one JSON record per file, no model |
 | 2. Summarize | a **Sonnet** summarizer, **one fresh process per file** | one file plus its directive | one small JSON summary per file, and one per silo index |
-| 3. Map | the main session, with Matt | only the stage 1 and 2 output | `plan.yaml`: every silo and file to a territory. **The one checkpoint.** |
+| 3. Map | the main session, with the maintainer | only the stage 1 and 2 output | `plan.yaml`: every silo and file to a territory. **The one checkpoint.** |
 | 4. Land | `mem migrate apply` (code) | the plan | files moved as they are, dated with the day each was last written, silos linked, indexes rendered, one store commit per silo |
-| 4b. Volatility | a **Sonnet** classifier, one fresh process per landed memory (`mem migrate volatility`) | one memory plus its directive | `volatility:` on every memory with no `status:` to imply one; Matt spot-checks a sample, then `--write` lands it in one commit |
+| 4b. Volatility | a **Sonnet** classifier, one fresh process per landed memory (`mem migrate volatility`) | one memory plus its directive | `volatility:` on every memory with no `status:` to imply one; the maintainer spot-checks a sample, then `--write` lands it in one commit |
 | 5. Refine | `mem audit` and the summaries, as a queue; `/memory-refine` works it | one queue item at a time | better descriptions, splits, compactions, relocations |
 
 Stages 1 to 4 get everything into the store fast and roughly right. Stage 5 makes it good,
@@ -34,7 +34,7 @@ original.
 
 ## 2. Why the summarizer is one process per file
 
-Matt's reasoning, 2026-10-23:
+The maintainer's reasoning, 2026-10-23:
 
 - **Context never grows.** The summarizer reads one file, writes its summary and exits. The
   thirtieth file costs what the first did.
@@ -44,7 +44,7 @@ Matt's reasoning, 2026-10-23:
   needs: no router, no standing directives, no global instructions. Fewer tokens, and more
   attention on the one task.
 
-**Sonnet, and no Haiku evaluation** (Matt, 2026-10-23). Summarizing and judging a
+**Sonnet, and no Haiku evaluation** (the maintainer, 2026-10-23). Summarizing and judging a
 description is well within Sonnet, so its output is unlikely to need repair or a second
 look. That reliability is itself the reason to use it: the saving Haiku might offer would
 be spent checking it, and Sonnet's cost here is already trivial on a subscription.
@@ -54,13 +54,12 @@ Opus sessions, each past 300,000 tokens of context, and several real-world hours
 reading markdown. Summarizing all 78 remaining files on this machine took **2 minutes and
 $1.64** (§12), and none of it entered the main session.
 
-The main session's part shrinks to reading compact tables and making decisions with
-Matt. It never reads a memory body during stages 1 to 4.
+The main session's part shrinks to reading compact tables and making decisions with the maintainer. It never reads a memory body during stages 1 to 4.
 
 ## 3. Decisions reversed
 
 These were the rules in `migration.md` and `skills/memory-migrate/SKILL.md`. Reversed by
-Matt, 2026-10-23.
+The maintainer, 2026-10-23.
 
 1. **"The judgment step does not automate."** It does not need to happen at migration.
    Landing a file as it is loses nothing: its text is in a commit either way. Judgment
@@ -77,11 +76,11 @@ Matt, 2026-10-23.
    and stage 4b gives it a volatility; a session checks a claim when it acts on it and the
    memory is past its window (format-spec, *Verification happens on use*).
 3. **"One territory per invocation."** The care that rule bought now comes from the map
-   checkpoint and from landing each silo in its own commit. Once Matt approves the map, all
+   checkpoint and from landing each silo in its own commit. Once the maintainer approves the map, all
    silos land in one run.
 
 What does **not** change: the silo invariant (§6), "never delete a silo", the format spec,
-and `GATES.md` / `standing/` promotions staying Matt-visible decisions.
+and `GATES.md` / `standing/` promotions staying user-visible decisions.
 
 ## 4. Stage 1: inventory
 
@@ -137,7 +136,7 @@ login these machines use, so it is not the plan. What still reaches the model (m
 §12): Claude Code's one-line preamble, the account email, and the environment block. About
 640 tokens, and no flag removes them without `--bare`.
 
-Headless processes driven by `mem`, not Agent-tool subagents inside a session: Matt's
+Headless processes driven by `mem`, not Agent-tool subagents inside a session: the maintainer's
 call, 2026-10-23. They are more robust and reproducible, and `--jobs` controls how many
 run in parallel.
 
@@ -167,7 +166,7 @@ Defined by `prompts/memory-summary.schema.json`; roughly:
       "confidence": "high | medium | low"
     }
 
-`index-only` is Matt's addition: the file says nothing its one-line conclusion does not, so
+`index-only` is the maintainer's addition: the file says nothing its one-line conclusion does not, so
 the refine pass may fold it into the index and archive the file. `verify` is the model's
 half of the recipe decision; it names the claim and the identifier, and never writes a
 recipe itself. (Since 2026-11-03 nothing consumes it: no queue item comes from it.)
@@ -179,7 +178,7 @@ vocabulary for `kind` and the meaning of each `shape`, and nothing else from thi
 
     mem migrate map [--rebuild] [--approve]   # <store>/migrate/plan.yaml, and the table
 
-Code builds a first plan from the summaries; the main session refines it with Matt, reading
+Code builds a first plan from the summaries; the main session refines it with the maintainer, reading
 only that table. Per silo:
 
     - silo: -Users-alice-workspaces-cbz-tagger
@@ -195,7 +194,7 @@ only that table. Per silo:
           why: "summarizer: obsolete, API retired 2026-06"
 
 `land` is the default for everything. `relocate` (to another territory) and `archive` come
-only from a summary flag or an inventory signal, and Matt sees each one. Promotions to
+only from a summary flag or an inventory signal, and the maintainer sees each one. Promotions to
 `standing/` or `GATES.md` are **not** done here: a `standing-candidate` or `gate-candidate`
 becomes a refine item, because those files are the always-loaded layer and cost every
 session.
@@ -205,13 +204,13 @@ or `missing`. Everywhere else the original stays, and the proposal waits in the 
 
 The four `silo-not-checked-out` silos land as `mode: parked` unless their summary says
 they are dead. Absence from this disk is not evidence (the offload cycle,
-`format-spec.md`, "`mode: parked`"). The 9 empty silo directories are listed for Matt's deletion
+`format-spec.md`, "`mode: parked`"). The 9 empty silo directories are listed for the maintainer's deletion
 decision, as direction.md Phase 6 already says, and are not touched.
 
-Once Matt approves the map, stage 4 runs on all of it.
+Once the maintainer approves the map, stage 4 runs on all of it.
 
 *Built 2026-10-23.* Where the plan lives and how approval works:
-- **`<store>/migrate/plan.yaml`, not `.cache/`.** Matt's edits are decisions, not derived
+- **`<store>/migrate/plan.yaml`, not `.cache/`.** The maintainer's edits are decisions, not derived
   data, so the store's own commits keep every version.
 - **`map` never redraws over an existing plan.** `--rebuild` redrafts and keeps the old one
   as `plan.prev.yaml`.
@@ -244,7 +243,7 @@ Code only, one silo at a time, each silo atomic:
    in `setup.md` step 5. Then `mem status` must show `silo-migrated` for it, or apply
    restores the silo and stops.
 6. `mem render` that territory, and `mem audit --scan store` must not report new errors. A
-   new error stops the run there, with the silo's commits left for Matt to look at.
+   new error stops the run there, with the silo's commits left for the maintainer to look at.
 
 All store git goes through `storegit.py`, like everything else. The invariant holds at
 every step: a silo is pending until step 5 swaps its directory in one rename, then
@@ -270,7 +269,7 @@ first.
   never adopted gains a line per new memory under `## MEMORIES`, and is otherwise left as
   written. A new territory is created already adopted.
 - **The router line.** A `[legacy]` line gets its count. A territory with no line gets one,
-  under its area's section. Prose that mentions a territory is left for Matt.
+  under its area's section. Prose that mentions a territory is left for the maintainer.
 
 ### Then: volatility (stage 4b, added 2026-11-03)
 
@@ -309,7 +308,7 @@ and writes. Replacing a memory goes through `mem supersede`, as direction.md Pha
 
 The queue lives in `.cache/migrate/queue.json`, rebuilt from audit plus summaries, so
 finishing an item and re-running `queue` drops it by derivation and there is no state to
-drift. An item Matt declines is recorded in `RETRO.md` with the reason, and suppressed by
+drift. An item the maintainer declines is recorded in `RETRO.md` with the reason, and suppressed by
 its key.
 
 **As built (2026-10-23), and where it departs from the above:**
@@ -383,7 +382,7 @@ few thousand tokens. *Measured on the real run (§12): $1.64, 575,070 tokens in,
 
 ## 12. Build order
 
-Matt's call that this runs ahead of Phase 5, as Phases 3 and 4 did. Nothing in it reads
+The maintainer's call that this runs ahead of Phase 5, as Phases 3 and 4 did. Nothing in it reads
 events, and its isolation (§5) keeps it out of Phase 2's measurements.
 
 1. **Spike.** Run the isolation flags by hand on one file and confirm: no SessionStart
@@ -408,8 +407,8 @@ events, and its isolation (§5) keeps it out of Phase 2's measurements.
    `territory_hint` is null unless the file is about another project (the first draft
    echoed the silo's own project). The tested directive and schema are in `prompts/`.
 2. **Inventory and summarize**, with the fake runner and tests. Then run on
-   one small silo (7 files) and Matt reads the summaries beside the files.
-   *Exit:* Matt judges the conclusions and flags right on that silo.
+   one small silo (7 files) and the maintainer reads the summaries beside the files.
+   *Exit:* the maintainer judges the conclusions and flags right on that silo.
 
    *Built 2026-10-23:* `mem migrate inventory | summarize | summaries`
    (`claude_hybrid_memory/migrate/`), with 8 tests against a fake summarizer (isolation flags,
@@ -427,13 +426,13 @@ events, and its isolation (§5) keeps it out of Phase 2's measurements.
      style, another's safety ethos) are flagged; so is a rule `standing/` already holds
      (use uv). Promotion is a refine item anyway, never automatic, so this costs nothing at
      landing.
-   - **`verify` is generous**: most live-looking files carry 2 or 3. In line with Matt's
+   - **`verify` is generous**: most live-looking files carry 2 or 3. In line with the maintainer's
      view that the need to verify is low, the queue ranks a claim only when the
      heuristic agrees, and treats the rest as a low tier.
    - **`description_verdict` was `names-subject` for most files**, as expected of
      auto-memory files that named a topic. Stage 4 replaces those with the conclusion.
 
-   *Stages 3 and 4 run 2026-10-23.* Matt approved the drafted map unchanged: 12 new
+   *Stages 3 and 4 run 2026-10-23.* The maintainer approved the drafted map unchanged: 12 new
    territories, 74 files to land and 4 to archive, 49 descriptions replaced. Apply landed all
    15 silos in 30 commits, in under a minute, with no new audit error. Afterwards:
    - `mem status` shows all 44 silos migrated and none pending, which is direction.md Phase 6's exit;
@@ -442,7 +441,7 @@ events, and its isolation (§5) keeps it out of Phase 2's measurements.
 
    Two colliding `user_profile.md` files were prefixed with their territory's leaf name,
    and links inside each silo followed. Archiving cbz-tagger's built spec rewrote 5 links into it.
-   For Matt to tidy by hand: the router's solo line still says "All [legacy]", and its
+   For the maintainer to tidy by hand: the router's solo line still says "All [legacy]", and its
    header still says "migrated: 9 of 19".
 
    *Stage 5 built 2026-10-23:* `mem refine queue`, `skills/memory-refine/SKILL.md`, and
@@ -460,7 +459,7 @@ events, and its isolation (§5) keeps it out of Phase 2's measurements.
 
 ## 13. Follow-ups, not now
 
-Matt, 2026-10-23: worth evaluating later, not blocking.
+The maintainer, 2026-10-23: worth evaluating later, not blocking.
 
 - **Summarizer over-reach.** `territory_hint` firing on sub-subjects, `standing-candidate`
   on project-specific rules, and a generous `verify` list may share one cause: Sonnet is
@@ -481,7 +480,7 @@ Matt, 2026-10-23: worth evaluating later, not blocking.
 - **Isolation leaks.** A global instruction or hook reaching the summarizer makes it less
   focused and costs tokens on every call. The spike measures it before anything is built.
 - **Relocation by heuristic misfiles.** Repo mentions are a signal, not a verdict: the map
-  shows each relocation for Matt, and `territory_hint` disagreement is a refine item.
+  shows each relocation for the maintainer, and `territory_hint` disagreement is a refine item.
 - **The queue becomes the new backlog nobody works.** Its length is the retrospective's
   number, so it is looked at monthly. Items that are mostly noise get their source deleted,
   per the rule in `overview.md` about checks that are mostly false positives.

@@ -1,6 +1,6 @@
 ---
 name: memory-restructure
-description: Merge two memory territories, split one in two, or dissolve one into others, by composing mem mv, mem mv-territory and mem archive. Use when Matt asks to merge, split, combine, break up, dissolve or reorganize territories, or when a retrospective finds a territory that is the wrong shape.
+description: Merge two memory territories, split one in two, or dissolve one into others, by composing mem mv, mem mv-territory and mem archive. Use when the user asks to merge, split, combine, break up, dissolve or reorganize territories, or when a retrospective finds a territory that is the wrong shape.
 ---
 
 # memory-restructure
@@ -25,7 +25,7 @@ Read the restructuring section of `docs/format-spec.md` (`mem mv-territory`, `me
 Note any existing errors. The commands report only errors they introduce, so you need the
 baseline to tell the two apart.
 
-**Show Matt the plan before any `--write`.** A reshape changes what every linked repo loads
+**Show the user the plan before any `--write`.** A reshape changes what every linked repo loads
 at session start. Bring: which memories move where, which silos get relinked, and what
 happens to each index head. Every command without `--write` is a dry run, so paste its
 output as part of the plan.
@@ -36,7 +36,7 @@ output as part of the plan.
   Edit or Write: the harness rewrites frontmatter on memory paths. That includes indexes.
 - **One command at a time, dry run first.** Each `--write` makes its own checkpoint commit,
   so each step can be reverted on its own.
-- **Archiving needs Matt's reason**, in his words, for `--why`. Do not write one for him.
+- **Archiving needs the user's reason**, in their words, for `--why`. Do not write one for them.
 - **A territory's head is prose.** Its intro, its GATES section and `EXPORTS.md` never move
   on their own. Merge them by hand, and say what you dropped and why.
 - **Undo** is `mem revert <checkpoint>` for the step, then `mem link`
@@ -57,8 +57,8 @@ B disappears. Its memories, members and repos all become A's.
 
 3. **Retire B's index:**
 
-       mem archive B --why "<Matt's reason>"
-       mem archive B --why "<Matt's reason>" --write
+       mem archive B --why "<the user's reason>"
+       mem archive B --why "<the user's reason>" --write
 
    This removes B's router entry, drops B from other territories' `consumes:`, and unlinks
    B's silos. The output lists each one.
@@ -98,15 +98,15 @@ C is new. Some of A's memories, and the repos they belong to, go there.
 
 A disappears and nothing replaces it. Each memory goes to an existing territory or retires.
 
-1. **Decide every memory's fate** and show Matt a table: slug, destination or "archive",
+1. **Decide every memory's fate** and show the user a table: slug, destination or "archive",
    and one line of why. Do this before running anything.
 2. **Move the keepers**, one `mem mv` per destination, dry run then `--write`. Move GATES
    text along with any gate memory.
 3. **Archive the rest with the territory.** Whatever is still in A goes in one call, index
    included:
 
-       mem archive A --why "<Matt's reason>"
-       mem archive A --why "<Matt's reason>" --write
+       mem archive A --why "<the user's reason>"
+       mem archive A --why "<the user's reason>" --write
 
    Do not archive the leftover memories on their own first. That claims the default
    `archive/<area>-<name>/` group, and the territory archive then refuses to reuse it.

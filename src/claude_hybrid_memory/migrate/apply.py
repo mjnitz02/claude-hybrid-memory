@@ -206,7 +206,7 @@ def router_line(root: Path, territory: str, subject: str) -> str | None:
             return None
         f.write_text(have.sub(rf"\1 ({n})", text, count=1), encoding="utf-8")
         return f"ROUTER.md: {territory} {m.group(2)} -> ({n})"
-    # A hand-written entry (`- t : ...`, or grouped `- a, t : ...`) is Matt's; never duplicate it.
+    # A hand-written entry (`- t : ...`, or grouped `- a, t : ...`) is the user's; never copy it.
     if re.search(rf"^- (?:[\w./-]+, )*{re.escape(territory)}(?=[\s,:]|$)", text, re.M):
         return None
     line = f"- {territory} ({n}) : {subject or territory}."
@@ -225,7 +225,7 @@ def router_line(root: Path, territory: str, subject: str) -> str | None:
 
 def reindex(root: Path, territory: str, moved: frozenset[str] = frozenset()) -> None:
     """Bring a territory's index up to date with its files. An adopted index is rendered.
-    A hand-written one is left as Matt wrote it, except that it gains a line for each
+    A hand-written one is left as the user wrote it, except that it gains a line for each
     memory it does not list, and loses the lines of `moved`: files this landing archived
     or relocated away."""
     tdir = root / "territories" / territory

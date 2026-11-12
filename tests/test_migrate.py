@@ -340,13 +340,14 @@ def test_map_cli_keeps_edits_and_enforces_approval(silos: Fixture, fake: Path, t
     assert f.read_text().startswith("# The territory map")
     plan = P.load(silos.store)
     assert plan is not None
-    plan["silos"][0]["files"][0]["proposed"] = "Matt's own wording."
+    plan["silos"][0]["files"][0]["proposed"] = "The user's own wording."
     P.write(silos.store, plan)
     rc, out, _ = run(mem_cmd("migrate", "map", *base), env)  # no redraft over edits
     plan = P.load(silos.store)
     assert plan is not None
     assert (
-        "drafted" not in out and plan["silos"][0]["files"][0]["proposed"] == "Matt's own wording."
+        "drafted" not in out
+        and plan["silos"][0]["files"][0]["proposed"] == "The user's own wording."
     )
     rc, out, _ = run(mem_cmd("migrate", "map", "--approve", *base), env)
     plan = P.load(silos.store)
@@ -545,7 +546,7 @@ def test_refine_queue_derives_and_drops(landed: Fixture, fake: Path):
 
     # a declined item is suppressed by its key in RETRO.md, and counted
     key = next(iter(items()))
-    (fx.store / "RETRO.md").write_text(f"- `refine:{key}` - Matt: fine as it is\n")
+    (fx.store / "RETRO.md").write_text(f"- `refine:{key}` - the user: fine as it is\n")
     q = queue.build(fx.store, fx.projects)
     assert key not in {i["key"] for i in q["items"]} and q["declined"] == 1
 

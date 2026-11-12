@@ -24,7 +24,7 @@ Then:
 
 Keep `/tmp/before.json`. It is what proves nothing was lost.
 
-If Matt did not name a territory, propose one from the migration doc's ordering and
+If the user did not name a territory, propose one from the migration doc's ordering and
 confirm before moving anything.
 
 ## The invariant, which is not negotiable

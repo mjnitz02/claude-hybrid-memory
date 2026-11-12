@@ -28,29 +28,29 @@ from the plugin's `bin/`):
 
 `mem install` (setup.md, "The short path") does steps 1, 1b and 3d and is idempotent, so it
 is also the repair for broken scaffolding. The plugin already carries the hooks and skills.
-Matt runs it, or it runs on his go-ahead, because it includes step 1b and, on a machine set
+The user runs it, or it runs on their go-ahead, because it includes step 1b and, on a machine set
 up before the plugin, removes the old `mem` hooks from `~/.claude/settings.json` and the old
-skill symlinks. In a checkout he works on, it is `task install` (`mem install --dev`)
+skill symlinks. In a checkout they work on, it is `task install` (`mem install --dev`)
 instead. It writes `~/.claude/rules/claude-hybrid-memory.md` (step 3d) and never edits
-`~/.claude/CLAUDE.md`. If it warns `install-imported-twice`, hand Matt the `# Memory` block
-to delete from his `CLAUDE.md`; do not edit it yourself. If it warns `install-no-plugin`,
+`~/.claude/CLAUDE.md`. If it warns `install-imported-twice`, hand the user the `# Memory` block
+to delete from their `CLAUDE.md`; do not edit it yourself. If it warns `install-no-plugin`,
 the plugin is not installed: say so and stop.
 
 ## Rules
 
 - **Steps 1 to 3 of the setup doc are safe. Step 5 is not.** Pointing a repo's memory
   directory at a territory changes where a session reads memory from. Do it for one
-  territory, confirm it works, then stop and let Matt use it for a day.
+  territory, confirm it works, then stop and let the user use it for a day.
 - **Never delete a legacy silo.** `mv` it to `memory.premigration`. That is the rollback,
   and it stays until a retrospective confirms nothing was lost.
 - **Trust the hook checks `mem install` runs.** A broken SessionStart hook degrades every
   future session, so an `install-check-*` error is a stop, not a warning.
 - **Never hand-edit `~/.claude/settings.json` hooks.** The plugin declares them; `mem
   install` only removes the pre-plugin `mem` entries, with a backup.
-- **Step 1b (`git init` of the store and its baseline commit) runs only on Matt's
+- **Step 1b (`git init` of the store and its baseline commit) runs only on the user's
   go-ahead.** After setup, store history goes only through `mem`; never run `git` on the
   store. Never add a remote to the store.
-- Commit nothing in any repo. Branches, commits and PRs are Matt's to make.
+- Commit nothing in any repo. Branches, commits and PRs are the user's to make.
 
 ## Machine identity
 

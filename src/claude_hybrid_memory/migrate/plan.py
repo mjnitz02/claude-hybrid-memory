@@ -1,7 +1,7 @@
 """Stage 3 (fast-adoption §6): the territory map, the one checkpoint.
 
-Code drafts the plan from the inventory and the summaries; Matt edits it and approves it.
-It lives at `<store>/migrate/plan.yaml`, not in `.cache/`: his edits are decisions, not
+Code drafts the plan from the inventory and the summaries; the user edits it and approves it.
+It lives at `<store>/migrate/plan.yaml`, not in `.cache/`: their edits are decisions, not
 derived data, so the store's own commits keep every version of it.
 
 Code, not the model, decides what it can check: whether a territory already exists,
@@ -62,7 +62,7 @@ def _norm(t: str | None) -> str | None:
 
 def draft(root: Path, inv: dict, summaries: dict[str, dict], router: str) -> dict:
     """A first plan. Every file lands, except what a summary or the inventory gives a
-    reason not to; every such reason is written beside it for Matt."""
+    reason not to; every such reason is written beside it for the user."""
     have = territories(root)
 
     def summary(key: str) -> dict:
@@ -223,7 +223,7 @@ def write(root: Path, plan: dict) -> Path:
 
 
 def table(plan: dict, inv: dict) -> list[str]:
-    """The map as Matt reads it: one block per territory, the exceptions under it."""
+    """The map as the user reads it: one block per territory, the exceptions under it."""
     by_t: dict[str, list[dict]] = {}
     for s in plan["silos"]:
         by_t.setdefault(s.get("territory") or "(none)", []).append(s)

@@ -17,7 +17,7 @@ STANDING_CAP = 20
 # the layer it renders into ALWAYS.md. Warning at ~83% of that says "you are approaching
 # real content loss", which stays actionable as the 13 un-migrated territories add their
 # EXPORTS to ROUTER.md.
-# Raised from a flat 4000 on 2026-09-11, with Matt's sign-off, for exactly that reason.
+# Raised from a flat 4000 on 2026-09-11, with the maintainer's sign-off, for exactly that reason.
 ALWAYS_LOADED_TOKEN_WARN = int(session_start.MAX_CHARS / 4 * 0.83)  # 6640
 # And the cliff itself. Past MAX_CHARS the hook is ALREADY dropping content, so this is not a
 # warning about the future -- it is a report of loss that has happened in every session since
