@@ -520,8 +520,19 @@ def test_refine_queue_derives_and_drops(landed: Fixture, fake: Path):
     assert ranks == sorted(ranks)
     assert next(iter(q)) == f"standing-candidate:{hr}"  # promotions lead
 
-    # working an item is what drops it
+    # a shape asks for a split, so a declined split (or a record) settles it too
     f = fx.store / dn
+    orig = f.read_text()
+    f.write_text(orig.replace("---\n", '---\nsplittable: "no until 20 KB: whole"\n', 1))
+    assert f"shape:{dn}" not in items()
+    f.write_text(orig.replace("---\n", "---\ntier: record\n", 1))
+    assert f"shape:{dn}" not in items()
+    f.write_text(orig)
+    # split declines moved onto the file: a RETRO key for one suppresses nothing
+    (fx.store / "RETRO.md").write_text(f"- `refine:split-candidate:{dn}` - whole\n")
+    assert queue.declined(fx.store) == set()
+
+    # working an item is what drops it
     f.write_text(f.read_text().replace("---\n\n", "---\n\nRewritten. ", 1))
     h = fx.store / hr
     h.write_text(h.read_text().replace("description: d", "description: A house rule"))

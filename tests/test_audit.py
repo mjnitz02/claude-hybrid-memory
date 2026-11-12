@@ -235,3 +235,58 @@ def test_upkeep_checks_skip_what_is_not_live(fx: Fixture):
         + audit.check_split(mems, Counter(), fx.store, sup)
         + audit.check_freshness(mems, TODAY, sup)
     )
+
+
+def _big(t: Path, slug: str, kb: float, extra: str = "") -> Path:
+    p = t / f"{slug}.md"
+    head = f"---\nname: {slug}\nkind: territory\ndescription: big\n{extra}---\n\n"
+    p.write_text(head + "y" * int(kb * 1024))
+    return p
+
+
+def test_splittable_no_holds_until_its_ceiling(fx: Fixture):
+    """A declined split stays quiet under the ceiling `mem no-split` wrote, is counted on
+    one INFO line, and comes back with Matt's reason once the file grows past it. The
+    real case: 7-8 of ~300 work-Mac files re-raised by every retro after being declined."""
+    from collections import Counter
+
+    from claude_hybrid_memory.audit.split import ceiling_for, field_value, no_split
+
+    assert (ceiling_for(15 * 1024), ceiling_for(21 * 1024), ceiling_for(20 * 1024)) == (20, 30, 30)
+    assert no_split({"splittable": False}) == (None, "")  # YAML's reading of a bare `no`
+    assert no_split({"splittable": "yes, by topic"}) is None
+    assert no_split({"splittable": field_value(15 * 1024, "one argument")}) == (20, "one argument")
+
+    t = fx.store / "territories/console/kit"
+    held = _big(t, "kit-held", 15, 'splittable: "no until 20 KB: one argument"\n')
+    over = _big(t, "kit-over", 22, 'splittable: "no until 20 KB: one argument"\n')
+    bare = _big(t, "kit-bare", 12, "splittable: no\n")
+    mems, _ = scanned(fx)
+    f = audit.check_split(mems, Counter(), fx.store)
+    by = {x.path: x for x in f if x.code == "split-candidate"}
+    assert str(held) not in by
+    assert "past the 20 KB ceiling" in by[str(over)].message
+    assert "'one argument'" in by[str(over)].message
+    assert "no ceiling" in by[str(bare)].message
+    info = [x for x in f if x.code == "split-declined"]
+    assert info and info[0].level == "info" and info[0].message.startswith("1 file(s)")
+
+
+def test_a_retro_split_decline_asks_to_move_onto_the_file(fx: Fixture):
+    """A `refine:split-candidate:` key in RETRO.md is reported with the exact command that
+    migrates it, then goes quiet once the file carries `splittable:`."""
+    from collections import Counter
+
+    t = fx.store / "territories/console/kit"
+    p = _big(t, "kit-declined", 14)
+    rel = "territories/console/kit/kit-declined.md"
+    (fx.store / "RETRO.md").write_text(
+        f"# RETRO\n\n- `refine:split-candidate:{rel}` — one argument (Matt, 2026-11-04)\n"
+    )
+    mems, _ = scanned(fx)
+    f = [x for x in audit.check_split(mems, Counter(), fx.store) if x.path == str(p)]
+    assert [x.code for x in f] == ["split-decline-legacy"]
+    assert f"mem no-split {rel} -m 'one argument (Matt, 2026-11-04)'" in f[0].message
+    _big(t, "kit-declined", 14, 'splittable: "no until 20 KB: one argument"\n')
+    mems, _ = scanned(fx)
+    assert not [x for x in audit.check_split(mems, Counter(), fx.store) if x.path == str(p)]

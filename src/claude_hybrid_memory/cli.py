@@ -13,6 +13,7 @@ Read
 Write
     mem new <slug> -d DESCRIPTION -v VOL|-s STATUS|--record [-g GROUP] [-t TERRITORY] < body
     mem verified <slug> -m WHAT-WAS-CHECKED      # the claim held; a drift is an Edit first
+    mem no-split <slug> -m MATTS-REASON          # a big file Matt says stays whole
     mem supersede <old> <new>                    # `mem new` <new> first; relinks [[old]]
     mem mv SLUG... TERRITORY [--write]
     mem mv-territory OLD NEW [--write]
@@ -319,7 +320,7 @@ AUDIT_COMMANDS = {
     "link": "Point this repo's silo at a territory, so its MEMORY.md auto-loads here.",
 }
 
-CACHE_COMMANDS = ("index", "find", "show", "history", "supersede", "verified")
+CACHE_COMMANDS = ("index", "find", "show", "history", "supersede", "verified", "no-split")
 GIT_COMMANDS = ("commit", "log", "diff", "restore", "revert")
 
 
@@ -1171,6 +1172,21 @@ def _cache(argv: list[str]) -> int:
             required=True,
             help="what was checked against the world, e.g. 'HEAD is 4211e13'",
         )
+    elif cmd == "no-split":
+        ap.description = (
+            "Record that Matt declined splitting this oversized memory. Writes "
+            '`splittable: "no until N KB: REASON"`, N being the next 10 KB step above '
+            "its size now. `mem audit` stops asking until the file grows past N KB, then "
+            "asks once more with this reason; run it again to raise the ceiling. "
+            "Only on Matt's say-so: a split being hard is not a reason."
+        )
+        ap.add_argument("spec", help="slug, territory/slug, or a store-relative path")
+        ap.add_argument(
+            "-m",
+            "--note",
+            required=True,
+            help="Matt's reason, e.g. 'one continuous argument; splitting loses the thread'",
+        )
     else:
         ap.add_argument(
             "spec",
@@ -1295,6 +1311,8 @@ def _cache(argv: list[str]) -> int:
         return _history(conn, a.root, path, a.json)
     if cmd == "verified":
         return _verified(conn, a.root, path, a.note)
+    if cmd == "no-split":
+        return _no_split(conn, a.root, path, a.note)
     p = a.root / path
     if cmd == "show":
         _log(a.root, "read", path, "mem show")
@@ -1702,6 +1720,63 @@ def _verified(conn, root, path: str, note: str) -> int:
     _log(root, "verified", path, "mem verified", note=note)
     cache.refresh(conn, root)
     print(f"{node.key}: last_verified {today}" + (f" (was {was})" if was else ""))
+    return 0
+
+
+def _no_split(conn, root, path: str, note: str) -> int:
+    """`mem no-split <slug> -m REASON`: Matt looked at a split candidate and said it stays
+    whole. Writes `splittable: "no until N KB: REASON"` (audit/split.py), logs a
+    `no-split` event, and never commits, like `mem verified`. Running it again replaces
+    the old reason and ceiling, which is how a file that grew past it is re-declined."""
+    import json
+
+    from claude_hybrid_memory import cache
+    from claude_hybrid_memory.audit.split import SPLIT_BYTES, field_value, no_split
+    from claude_hybrid_memory.render import set_field
+    from claude_hybrid_memory.store import parse_frontmatter
+
+    note = " ".join(note.split())
+    if not note:
+        print("-m is empty; give Matt's reason", file=sys.stderr)
+        return 2
+    g = cache.graph(conn)
+    node = g.nodes[path]
+    p = root / path
+    text = p.read_text(encoding="utf-8")
+    meta = parse_frontmatter(text)[0]
+    if (
+        node.area == "archive"
+        or str(meta.get("tier") or "") == "record"
+        or list(g.successors(path))
+    ):
+        print(
+            f"{node.key} is archived, superseded or a record; the audit never asks to "
+            "split those, so there is nothing to decline",
+            file=sys.stderr,
+        )
+        return 2
+    size = len(text.encode())
+    if size <= SPLIT_BYTES:
+        print(
+            f"{node.key} is {size / 1024:.1f} KB, under the {SPLIT_BYTES // 1024} KB the "
+            "audit asks about; nothing to decline",
+            file=sys.stderr,
+        )
+        return 2
+    value = field_value(size, note)
+    try:
+        new = set_field(text, "splittable", json.dumps(value, ensure_ascii=False))
+    except ValueError:
+        new = None
+    if new is None or parse_frontmatter(new)[0].get("splittable") != value:
+        print(f"{p}: frontmatter would not read back; fix it by hand", file=sys.stderr)
+        return 2
+    was = no_split(meta)
+    p.write_text(new, encoding="utf-8")
+    _log(root, "no-split", path, "mem no-split", note=note)
+    cache.refresh(conn, root)
+    old = f" (was until {was.ceiling_kb} KB)" if was and was.ceiling_kb else ""
+    print(f"{node.key}: splittable: {value}{old}")
     return 0
 
 

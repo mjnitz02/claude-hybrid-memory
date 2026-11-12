@@ -177,3 +177,34 @@ def test_verified_refuses_records_superseded_and_an_empty_note(fx: Fixture):
         rc, _, err = verified_cmd(fx, *args)
         assert rc == 2 and why in err, (args, err)
     assert "last_verified" not in (kit / "kit-a-record.md").read_text()
+
+
+def test_no_split_writes_a_ceiling_and_refuses_what_is_never_asked(fx: Fixture):
+    t = fx.store / "territories/console/kit"
+    p = t / "kit-long-argument.md"
+    p.write_text(
+        "---\nname: kit-long-argument\nkind: territory\ndescription: big\n---\n\n" + "y" * 15000
+    )
+    rc, out, err = run(
+        mem_cmd(
+            "no-split", "kit-long-argument", "-m", "one argument: keep it", "--root", str(fx.store)
+        ),
+        fx.env(),
+    )
+    assert rc == 0, err
+    meta = parse_frontmatter(p.read_text())[0]
+    assert meta["splittable"] == "no until 20 KB: one argument: keep it"
+    p.write_text(p.read_text() + "z" * 8000)  # grew to ~23 KB: re-declining raises it
+    rc, out, err = run(
+        mem_cmd("no-split", "kit-long-argument", "-m", "still one", "--root", str(fx.store)),
+        fx.env(),
+    )
+    assert rc == 0 and "until 30 KB" in out and "(was until 20 KB)" in out, out + err
+    assert parse_frontmatter(p.read_text())[0]["splittable"] == "no until 30 KB: still one"
+
+    small = fx.store / "territories/console/kit/kit-sync-design.md"
+    before = small.read_text()
+    rc, _, err = run(
+        mem_cmd("no-split", "kit-sync-design", "-m", "x", "--root", str(fx.store)), fx.env()
+    )
+    assert rc == 2 and "nothing to decline" in err and small.read_text() == before

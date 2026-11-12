@@ -23,7 +23,13 @@ by how often events show them read). For each of the top few, ask *why* it is th
 and whether it should be separate memories; that is a question for Matt, not an edit to
 make unprompted. The answer is often a split into one state memory plus dated
 `tier: record` memories, the original kept by git (`docs/format-spec.md`, "Version
-chains"). `superseded-still-indexed` means a
+chains"). Sometimes it is that the file is fine as one piece: then `mem no-split <slug> -m
+"<his reason>"`, which puts the decline on the file. Do not add a RETRO.md key for it. Files
+already declined that way are one `split-declined` INFO line: that line is not a question.
+A candidate that *grew past the ceiling* comes with his old reason; ask whether it still
+holds. **`split-decline-legacy`** is a split declined in an earlier RETRO.md that never
+reached the file. Run the command its message gives (Matt already decided), and report how
+many you migrated. `superseded-still-indexed` means a
 territory index still lists a memory a newer one replaced: drop that line (`mem supersede`
 does this itself since 2026-11-04, so a hit means the line was added by hand afterwards).
 `mem events stats` shows which memories sessions actually read; a
