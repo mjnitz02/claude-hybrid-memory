@@ -32,6 +32,7 @@ Exit codes: 0 clean, 1 findings at error level, 2 tool error.
 
     mem new <slug> -d DESC -v VOL|-s STATUS [-g GROUP] [-t TERRITORY] < body   # write a memory and index it
     mem verified <slug> -m WHAT-WAS-CHECKED   # a claim checked on use held: stamp today, log it
+    mem no-split <slug> -m MATTS-REASON      # Matt declined splitting it: `splittable: "no until N KB: …"`, N the next 10 KB step; the audit asks again past N
     mem find <words> [--territory T] [--all] [--superseded]   # prefix words, every word first; PAST WINDOW flagged
     mem show <slug> [--meta | --section H | --full] [--at REV]   # PAST WINDOW flagged; prints the path to Edit; --meta lists what links here
     mem show <territory>       # print a territory's MEMORY.md: the ROUTER's "PULL WHEN"

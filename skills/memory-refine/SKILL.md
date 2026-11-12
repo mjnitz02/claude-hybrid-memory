@@ -38,7 +38,7 @@ happens on use*).
 |---|---|---|
 | `standing-candidate`, `gate-candidate` | promote it, or link it to the directive that already covers it and supersede it; else Matt declines | "Is this rule true outside its one project? Quote the line that says so, or say it is project-specific. Name any of these standing directives it duplicates: <list standing/>" |
 | `description` | a description that states the conclusion | "Judge this description against this body. If it names a subject rather than stating the conclusion, write one line that does." |
-| `split-candidate`, `shape` | split into a short state memory plus records (format-spec, *state vs records*), or a rewrite that drops the diary | "Propose a split: one state memory (what is true now) and dated records. List each file's slug, description and which lines go where. Drop nothing." |
+| `split-candidate`, `shape` | split into a short state memory plus records (format-spec, *state vs records*), a rewrite that drops the diary, or Matt says it stays whole (`mem no-split`, below) | "Propose a split: one state memory (what is true now) and dated records. List each file's slug, description and which lines go where. Drop nothing." |
 | `possible-duplicate` | merge and supersede, or Matt declines | "Do these two say the same thing? If so, which is newer and more complete?" |
 | `index-only` | archive it, if its index line already says everything | none: read it |
 | `frontmatter-not-yaml` | quote the offending value | none: mechanical |
@@ -74,6 +74,21 @@ When Matt says an item is fine as it is, append to the newest section of
 
 The backticked `refine:<key>` is what suppresses it. Only Matt declines. You don't decline
 an item because it is hard.
+
+**A declined split is the exception: it goes on the file, not in RETRO.md.**
+
+    mem no-split <slug> -m "<his reason>"
+
+That writes `splittable: "no until N KB: <reason>"` and the audit stops asking until the file
+grows past N KB. A `split-candidate` whose message says it *grew past the ceiling* is the
+same question asked again with his old reason quoted: put that reason in front of him, and
+if it still holds, the same command raises the ceiling. "It is big" is not a reason to split
+and "splitting is fiddly" is not a reason to decline. The question is whether the parts would
+ever be read apart.
+
+`split-decline-legacy` is an old RETRO.md decline that never reached the file. Its message is
+the exact `mem no-split` command, with the reason already in it. Run it; no need to ask again,
+since Matt already decided. Leave the old RETRO.md line where it is, as history.
 
 ## Finish
 

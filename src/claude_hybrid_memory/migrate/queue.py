@@ -12,7 +12,10 @@ How each item drops:
   standing/gate-candidate,  the file is no longer at that path (promoted, moved, archived)
   territory-hint, index-only
 Every item also drops when its memory is superseded. One Matt declines is suppressed by
-writing its key, in backticks as `refine:<key>`, into RETRO.md with the reason.
+writing its key, in backticks as `refine:<key>`, into RETRO.md with the reason. Split
+declines are the exception: they live on the file as `splittable:` (`mem no-split`, see
+audit/split.py), so a `refine:split-candidate:` key no longer suppresses anything, and a
+`shape` item, which asks for the same split, skips a record or a file with `splittable: no`.
 
 Nothing queues a memory for verification. A claim is checked when a session is about to act
 on it and it is past its volatility window (verify-on-use, docs/direction.md); queueing every
@@ -33,6 +36,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from claude_hybrid_memory import storegit
+from claude_hybrid_memory.audit.split import no_split
 from claude_hybrid_memory.fix import desired_slug
 from claude_hybrid_memory.migrate import plan as P
 from claude_hybrid_memory.migrate import workdir
@@ -40,6 +44,7 @@ from claude_hybrid_memory.store import parse_frontmatter, scan_store
 
 AUDIT_CODES = (
     "split-candidate",
+    "split-decline-legacy",
     "possible-duplicate",
     "frontmatter-not-yaml",
     "superseded-still-indexed",
@@ -66,6 +71,7 @@ RANK = {
     "budget-high": 5,
     "budget-always-stale": 5,
     "split-candidate": 6,
+    "split-decline-legacy": 6,
     "shape": 7,
     "possible-duplicate": 8,
     "index-only": 10,
@@ -99,8 +105,16 @@ def path(root: Path) -> Path:
 
 
 def declined(root: Path) -> set[str]:
+    """Keys Matt declined in RETRO.md. Not split-candidate: that decline is `splittable:`
+    on the file now, and the audit turns an old key into `split-decline-legacy`."""
     f = root / "RETRO.md"
-    return set(DECLINED_RE.findall(f.read_text(encoding="utf-8"))) if f.is_file() else set()
+    if not f.is_file():
+        return set()
+    return {
+        k
+        for k in DECLINED_RE.findall(f.read_text(encoding="utf-8"))
+        if not k.startswith("split-candidate:")
+    }
 
 
 def _rel(root: Path, p: str | Path) -> str:
@@ -219,7 +233,8 @@ def _summary_items(root: Path, plan: dict, superseded: set[str]) -> list[Item]:
                 f"summary says {s['description_verdict']}; it read: {s['conclusion']}",
             )
         shapes = [x for x in s["shape"] if x in SHAPES]
-        if shapes and body == bbody:
+        settled = str(meta.get("tier") or "").strip() == "record" or no_split(meta)
+        if shapes and body == bbody and not settled:
             add("shape", ", ".join(shapes))
         if s["confidence"] == "low" and body == bbody:
             add("low-confidence", f"the summarizer was unsure; it read: {s['conclusion']}")

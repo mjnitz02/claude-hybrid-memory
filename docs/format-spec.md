@@ -73,7 +73,8 @@ Territory paths are `chain/*`, `utility/*`, `infra/*`, `mine/*`, `solo/*`, `refe
                     edited; see "Version chains" below.
     tier            state | record. omit for state. record = dated, written once, never edited.
     confidence      asserted | inferred. inferred = Claude's hypothesis, unconfirmed.
-    splittable      free-text hint
+    splittable      "no until N KB: <reason>", written by `mem no-split`. Matt declined a split;
+                    the audit is quiet until the file passes N KB. Anything else is a free hint.
     owner           self | colleague | employer | third-party
     mode            active | occasional-pr | reference | dead-upstream | scratch | parked
     origin_session  uuid
@@ -125,6 +126,15 @@ reverse-engineering notes, decision history) is dated, written once, marked
 memory it affects. A file that has accreted history ("read bottom-up", CORRECTION
 blocks) is split into one state memory plus records **when it is next touched**, never in
 a bulk pass; the PostToolUse hook says so once per session when such a file is edited.
+
+**Some files are big and fine.** Splitting saves tokens only when the parts are read apart;
+cutting one continuous argument in half costs more than it saves. When Matt says a split
+candidate stays whole, `mem no-split <slug> -m "<his reason>"` writes
+`splittable: "no until N KB: <reason>"`, with N the next 10 KB step above the file's size.
+The audit counts it on one INFO line until the file grows past N KB, then asks once more,
+quoting the reason. Re-running the command raises the ceiling. The decline lives on the file,
+not in RETRO.md, so it survives a move and no session has to cross-reference the log. A record
+needs no marking: the audit never asks to split one.
 
 ## `mode: parked`, and the offload cycle it exists for
 
