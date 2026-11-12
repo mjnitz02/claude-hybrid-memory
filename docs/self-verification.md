@@ -61,7 +61,10 @@ for it. Report three things:
   costs nothing until someone relies on it.
 - **One question, answered from evidence**: did a session act on a stale claim since the
   last retro? A correction from Matt, or a wrong turn traced to a memory, is the evidence.
-  "No evidence" is a legitimate answer.
+  So is `mem events stats`' stale-write section: an exact join of the store's own events,
+  listing each session that wrote a memory past its window (as the store's history held it
+  when that session began) with no `mem verified` from that session. It is a missed check,
+  not a wrong edit. "No evidence" is a legitimate answer when it is empty.
 
 **Zero `verified` events across two retros is the signal that the directive is not being
 followed**, which is a problem with the directive or its placement, not a reason to go back
