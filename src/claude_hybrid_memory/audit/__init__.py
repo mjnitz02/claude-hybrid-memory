@@ -55,7 +55,7 @@ def run_all(
 
     sup = superseded_paths(root)
     return (
-        check_structure(mems)
+        check_structure(mems, sup)
         + check_links(mems, routers, sup)
         + check_router_drift(mems, routers, sup)
         + check_exports(root, routers)
@@ -66,6 +66,6 @@ def run_all(
         + check_silos(legacy, root)
         + check_dup(mems)
         + check_secrets(root, [m for m in mems if m.scope == "legacy"])
-        + check_split(mems, read_counts(root), root)
+        + check_split(mems, read_counts(root), root, sup)
         + render.check(root)
     )

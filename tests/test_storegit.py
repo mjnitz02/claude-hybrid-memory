@@ -255,3 +255,47 @@ def test_only_storegit_runs_git():
         if '"git"' in f.read_text() and f.name != "storegit.py"
     ]
     assert offenders == []
+
+
+def test_events_stats_reports_stale_writes_per_session(fx: Fixture):
+    """A write to a memory past its window with no `mem verified` from that session is a miss,
+    judged as of the session's first touch; a later check by another session does not hide it."""
+    import datetime as dt
+
+    def mem(slug: str, verified: dt.date) -> str:
+        path = f"territories/home/lab/{slug}.md"
+        (fx.store / path).write_text(
+            f"---\nname: {slug}\nkind: territory\ndescription: X.\nvolatility: live\n"
+            f"last_verified: {verified}\n---\n\nBody.\n"
+        )
+        return path
+
+    day = dt.date.today() + dt.timedelta(days=2)
+    stale = mem("lab-stale", day - dt.timedelta(days=20))
+    fresh = mem("lab-fresh", day - dt.timedelta(days=3))
+    checked = mem("lab-checked", day - dt.timedelta(days=20))
+    init(fx.store)
+    rows = [
+        ("a", "read", stale, "10"),
+        ("a", "write", stale, "11"),
+        ("a", "write", fresh, "12"),
+        ("a", "write", "territories/home/lab/MEMORY.md", "13"),
+        ("b", "write", checked, "14"),
+        ("b", "verified", checked, "15"),
+        ("c", "verified", stale, "16"),
+    ]
+    (fx.store / "events").mkdir(exist_ok=True)
+    with (fx.store / f"events/{day:%Y-%m}.jsonl").open("a") as fh:
+        for session, kind, path, hh in rows:
+            ts = f"{day}T{hh}:00:00.000Z"
+            rec = {"ts": ts, "event": kind, "path": path, "session": session, "cwd": "/x/repo"}
+            fh.write(json.dumps(rec) + "\n")
+
+    code, out, _ = run(mem_cmd("events", "stats", "--json"), env=fx.env())
+    assert code == 0
+    sw = json.loads(out)["stale_writes"]
+    assert [(w["session"], w["path"]) for w in sw] == [("a", stale)]
+    assert sw[0]["age"] == 20 and sw[0]["verified_later"] == [str(day)]
+    code, out, _ = run(mem_cmd("events", "stats"), env=fx.env())
+    assert "no `mem verified` from that session: 1" in out
+    assert "session a in repo; checked later" in out

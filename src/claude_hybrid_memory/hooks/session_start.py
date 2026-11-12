@@ -159,26 +159,60 @@ def territory_for(cwd: Path, store: Path) -> tuple[str | None, list[str]]:
             probe = cwd
             break
         probe = probe.parent
+    for cand in (probe, cwd):
+        if t := silo_territory(cand, tdir):
+            return t, all_t
+    return None, all_t
+
+
+def silo_territory(cand: Path, tdir: Path) -> str | None:
+    """The territory `cand`'s own silo symlink points at, or None."""
     # The silo is named the harness's way (claude_hybrid_memory.harness). Encoding only "/ . _"
     # here once meant paths with "~", "@" or a space never found their territory.
-    tdir_r = tdir.resolve()
-    for cand in (probe, cwd):
-        link = PROJECTS / silo_name(str(cand)) / "memory"
-        try:
-            if link.is_symlink():
-                target = Path(os.path.realpath(link))
-                if tdir_r == target.parent or tdir_r in target.parents:
-                    return str(target.relative_to(tdir_r)), all_t
-                # The silo points into another store (the real one, when this is a
-                # scratch copy under --root): the same territory path, read here.
-                parts = target.parts
-                if "territories" in parts:
-                    rel = Path(*parts[len(parts) - parts[::-1].index("territories") :])
-                    if (tdir / rel / "MEMORY.md").is_file():
-                        return str(rel), all_t
-        except (OSError, ValueError):
-            continue
-    return None, all_t
+    link = PROJECTS / silo_name(str(cand)) / "memory"
+    try:
+        if not link.is_symlink():
+            return None
+        tdir_r = tdir.resolve()
+        target = Path(os.path.realpath(link))
+        if tdir_r == target.parent or tdir_r in target.parents:
+            return str(target.relative_to(tdir_r))
+        # The silo points into another store (the real one, when this is a
+        # scratch copy under --root): the same territory path, read here.
+        parts = target.parts
+        if "territories" in parts:
+            rel = Path(*parts[len(parts) - parts[::-1].index("territories") :])
+            if (tdir / rel / "MEMORY.md").is_file():
+                return str(rel)
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def member_checkouts(cwd: Path, tdir: Path, depth: int = 2, cap: int = 400) -> list[str]:
+    """Directories up to `depth` below `cwd` whose silo is linked to a territory: non-empty
+    means `cwd` is a parent of checkouts (~/workspaces), not a repo to link. An exact silo
+    check per child, since a parent's name turns up in every territory's paths and so wins
+    any text guess (retro 2026-11-12). Bounded by `cap` entries: this runs at session start."""
+    found: list[str] = []
+    level, seen = [cwd], 0
+    for _ in range(depth):
+        nxt = []
+        for d in level:
+            try:
+                kids = sorted(e for e in d.iterdir() if e.is_dir() and not e.name.startswith("."))
+            except OSError:
+                continue
+            for k in kids:
+                seen += 1
+                if seen > cap:
+                    return found
+                if silo_territory(k, tdir):
+                    found.append(str(k.relative_to(cwd)))
+                else:
+                    nxt.append(k)
+        level = nxt
+    return found
 
 
 def repo_root(cwd: Path) -> Path:
@@ -449,29 +483,41 @@ def output(store: Path, cwd: Path, claude_md: Path = CLAUDE_MD, write: bool = Tr
         )
     elif all_t:
         repo = repo_root(cwd)
-        guess = guess_territory(store, repo, all_t)
-        if guess and guess[2]:
-            pick = (
-                f"Best guess: **{guess[0]}** ({guess[1]}). If that is right, run "
-                f"`mem link --territory {guess[0]} --write` from {repo}"
-            )
-        elif guess:
-            pick = (
-                f"Possibly {guess[0]} ({guess[1]}), which is weak evidence: check "
-                "ROUTER.md, then `mem link --territory <territory> --write` from "
-                f"{repo}"
+        # Outside any repo, a directory holding linked checkouts is a parent, never a link target.
+        in_repo = repo != cwd or (cwd / ".git").exists()
+        members = [] if in_repo else member_checkouts(cwd, store / "territories")
+        if members:
+            shown = ", ".join(members[:5]) + (", ..." if len(members) > 5 else "")
+            notes.append(
+                f"**This directory is the parent of {len(members)} member checkouts** "
+                f"({shown}), not a repo, so no territory loads here and none should be "
+                f"linked. ({cwd}) Write memories from the repo they are about, or pass "
+                "`-t <territory>` to `mem new`."
             )
         else:
-            pick = (
-                "Pick its territory from ROUTER.md and run "
-                f"`mem link --territory <territory> --write` from {repo}"
+            guess = guess_territory(store, repo, all_t)
+            if guess and guess[2]:
+                pick = (
+                    f"Best guess: **{guess[0]}** ({guess[1]}). If that is right, run "
+                    f"`mem link --territory {guess[0]} --write` from {repo}"
+                )
+            elif guess:
+                pick = (
+                    f"Possibly {guess[0]} ({guess[1]}), which is weak evidence: check "
+                    "ROUTER.md, then `mem link --territory <territory> --write` from "
+                    f"{repo}"
+                )
+            else:
+                pick = (
+                    "Pick its territory from ROUTER.md and run "
+                    f"`mem link --territory <territory> --write` from {repo}"
+                )
+            notes.append(
+                f"**This directory maps to NO territory.** ({cwd}) Memory written "
+                "here will land in an unrouted per-directory silo, which is the "
+                f"problem the store exists to fix. {pick}; confirm with the user first if "
+                "unsure. Territories: " + ", ".join(all_t) + "."
             )
-        notes.append(
-            f"**This directory maps to NO territory.** ({cwd}) Memory written "
-            "here will land in an unrouted per-directory silo, which is the "
-            f"problem the store exists to fix. {pick}; confirm with the user first if "
-            "unsure. Territories: " + ", ".join(all_t) + "."
-        )
     overdue = retro_overdue(read(store / "ROUTER.md"))
     if overdue is not None:
         notes.append(

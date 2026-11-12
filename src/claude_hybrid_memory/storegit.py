@@ -227,6 +227,16 @@ def resolve(root: Path, rev: str) -> str | None:
     return r.stdout.strip() if r.returncode == 0 else None
 
 
+def rev_before(root: Path, ts: str) -> str | None:
+    """The last commit made before `ts` (an event timestamp), or None: the store as it stood
+    when a session began touching a file, since sessions commit at their end."""
+    try:
+        r = _git(root, "rev-list", "-1", f"--before={ts[:19]}Z", "HEAD")
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return r.stdout.strip() or None if r.returncode == 0 else None
+
+
 def read_at(root: Path, rev: str, path: str) -> bytes | None:
     """A store-relative file as it was at `rev`, or None if it did not exist there."""
     r = subprocess.run(

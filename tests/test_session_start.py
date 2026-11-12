@@ -164,3 +164,17 @@ def test_setup_gaps_point_at_memory_setup(fx: Fixture, tmp_path: Path):
     (fx.store / ".git").rmdir()
     out = session_start.output(fx.store, fx.elsewhere, md)
     assert "no history" in out and "`memory-setup` skill" in out
+
+
+def test_a_parent_of_member_checkouts_offers_no_link(fx: Fixture, tmp_path: Path, monkeypatch):
+    """~/workspaces holds every checkout, so its name is in every territory's paths and a text
+    guess picks whichever mentions it most (retro 2026-11-12). Say what it is instead."""
+    monkeypatch.setattr(session_start, "PROJECTS", fx.projects)
+    parent = fx.repo.parent
+    assert session_start.member_checkouts(parent, fx.store / "territories") == [fx.repo.name]
+    out = session_start.output(fx.store, parent, imports(fx, tmp_path))
+    assert "parent of 1 member checkouts" in out
+    assert "NO territory" not in out and "mem link" not in out
+    # an unrelated directory with no linked children still gets the normal hint
+    out = session_start.output(fx.store, fx.elsewhere, imports(fx, tmp_path))
+    assert "NO territory" in out

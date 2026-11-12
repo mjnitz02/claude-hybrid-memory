@@ -37,12 +37,17 @@ claims to check: hand Matt the count and the `mem fix --write` that strips them.
 (verify-on-use, format-spec). The retro measures whether that is happening, per
 `docs/self-verification.md`, *Verify-on-use: what the retro measures*:
 
-    mem events stats --since <last_retrospective>   # ends with the `mem verified` checks and notes
+    mem events stats --since <last_retrospective>   # `mem verified` checks, then stale writes
     mem audit --scan store | grep -c stale-live
 
 Report the `verified` count with a few of their notes, the `stale-live` count, and an
-evidence-based answer to "did a session act on a stale claim?". Zero `verified` events
-across two retros goes to Matt as a finding about the directive.
+evidence-based answer to "did a session act on a stale claim?". That answer is the last
+section of `mem events stats`, *written while past window, no `mem verified` from that
+session*: each line is a session that edited a memory past its window (judged as of that
+session, not today) and never ran `mem verified` on it. Read it; do not redo the join by
+hand. Each hit is a missed check, not proof the edit was wrong; open the few `live` ones
+and say whether the claim held. Zero `verified` events across two retros goes to Matt as a
+finding about the directive.
 
 **The `tail` is not optional, and it is the one a retrospective skips.** The layer reaches a
 session through `~/.claude/rules/claude-hybrid-memory.md`, which imports `ALWAYS.md`; the

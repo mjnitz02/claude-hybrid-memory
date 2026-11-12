@@ -1075,6 +1075,7 @@ def _events(argv: list[str]) -> int:
             for e in evs
             if e.get("event") == "verified"
         ],
+        "stale_writes": events.stale_writes(a.root, evs),
     }
     if a.json:
         print(json.dumps(out, indent=2))
@@ -1101,6 +1102,15 @@ def _events(argv: list[str]) -> int:
     print(f"checks on use (`mem verified`): {len(out['verified'])}")
     for v in out["verified"]:
         print(f"  {str(v['ts'])[:10]}  {v['path']}: {v['note']}")
+    sw = out["stale_writes"]
+    print(f"written while past window, no `mem verified` from that session: {len(sw)}")
+    for w in sw:
+        age = "never verified" if w["age"] is None else f"{w['age']}d > {w['limit']}d"
+        later = f"; checked later {', '.join(w['verified_later'])}" if w["verified_later"] else ""
+        print(
+            f"  {w['first'][:10]}  {w['path']}  ({w['volatility']}, {age}) "
+            f"session {w['session'][:8]} in {Path(str(w['cwd'] or '')).name or '?'}{later}"
+        )
     return 0
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from claude_hybrid_memory.audit.freshness import is_live
 from claude_hybrid_memory.findings import ERROR, INFO, WARN, Finding
 from claude_hybrid_memory.spec import (
     CONFIDENCES,
@@ -19,7 +20,7 @@ from claude_hybrid_memory.spec import (
 from claude_hybrid_memory.store import Memory
 
 
-def check_structure(mems: list[Memory]) -> list[Finding]:
+def check_structure(mems: list[Memory], superseded: frozenset = frozenset()) -> list[Finding]:
     out = []
     for m in mems:
         rel = str(m.path)
@@ -88,7 +89,7 @@ def check_structure(mems: list[Memory]) -> list[Finding]:
             out.append(Finding(WARN, "missing-kind", rel, "no `kind:`; assuming territory"))
         elif kind not in KINDS:
             out.append(Finding(INFO, "field-invalid", rel, f"kind {kind!r} not in {sorted(KINDS)}"))
-        if m.volatility is None and str(m.meta.get("tier") or "") != "record":
+        if m.volatility is None and is_live(m, superseded):
             # Not a defect: freshness defaults this to `slow`, which is a safe
             # middle. Left as INFO so 140 migrated legacy files do not drown the report
             # and train everyone to ignore the warn level.
