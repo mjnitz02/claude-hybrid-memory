@@ -13,7 +13,7 @@ Read
 Write
     mem new <slug> -d DESCRIPTION -v VOL|-s STATUS|--record [-g GROUP] [-t TERRITORY] < body
     mem verified <slug> -m WHAT-WAS-CHECKED      # the claim held; a drift is an Edit first
-    mem no-split <slug> -m MATTS-REASON          # a big file Matt says stays whole
+    mem no-split <slug> -m REASON          # a big file the user says stays whole
     mem supersede <old> <new>                    # `mem new` <new> first; relinks [[old]]
     mem mv SLUG... TERRITORY [--write]
     mem mv-territory OLD NEW [--write]
@@ -1174,18 +1174,18 @@ def _cache(argv: list[str]) -> int:
         )
     elif cmd == "no-split":
         ap.description = (
-            "Record that Matt declined splitting this oversized memory. Writes "
+            "Record that the user declined splitting this oversized memory. Writes "
             '`splittable: "no until N KB: REASON"`, N being the next 10 KB step above '
             "its size now. `mem audit` stops asking until the file grows past N KB, then "
             "asks once more with this reason; run it again to raise the ceiling. "
-            "Only on Matt's say-so: a split being hard is not a reason."
+            "Only on the user's say-so: a split being hard is not a reason."
         )
         ap.add_argument("spec", help="slug, territory/slug, or a store-relative path")
         ap.add_argument(
             "-m",
             "--note",
             required=True,
-            help="Matt's reason, e.g. 'one continuous argument; splitting loses the thread'",
+            help="The user's reason, e.g. 'one continuous argument; splitting loses the thread'",
         )
     else:
         ap.add_argument(
@@ -1724,7 +1724,7 @@ def _verified(conn, root, path: str, note: str) -> int:
 
 
 def _no_split(conn, root, path: str, note: str) -> int:
-    """`mem no-split <slug> -m REASON`: Matt looked at a split candidate and said it stays
+    """`mem no-split <slug> -m REASON`: the user looked at a split candidate and said it stays
     whole. Writes `splittable: "no until N KB: REASON"` (audit/split.py), logs a
     `no-split` event, and never commits, like `mem verified`. Running it again replaces
     the old reason and ceiling, which is how a file that grew past it is re-declined."""
@@ -1737,7 +1737,7 @@ def _no_split(conn, root, path: str, note: str) -> int:
 
     note = " ".join(note.split())
     if not note:
-        print("-m is empty; give Matt's reason", file=sys.stderr)
+        print("-m is empty; give the user's reason", file=sys.stderr)
         return 2
     g = cache.graph(conn)
     node = g.nodes[path]

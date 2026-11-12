@@ -67,7 +67,7 @@ RETRO_DUE_DAYS = 30
 #
 # 24,000 (2026-09-04) was an unexamined guess: `git log -S` puts it in the first commit of
 # this tool with no rationale recorded anywhere, chosen when zero territories had been
-# migrated. Raised to 32,000 on 2026-10-02 with Matt's sign-off, and the rationale is
+# migrated. Raised to 32,000 on 2026-10-02 with the maintainer's sign-off, and the rationale is
 # recorded here because the previous number's absence of one is half of why the layer could
 # sit 19% past it for three weeks:
 #

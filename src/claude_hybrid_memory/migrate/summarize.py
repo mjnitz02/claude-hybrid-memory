@@ -2,7 +2,7 @@
 
 Each process sees its directive, one input and nothing else that can be kept out (the
 spike's measured floor is about 640 tokens of preamble, account email and environment),
-so context never grows and no file can colour another's summary. Matt's call
+so context never grows and no file can colour another's summary. The user's call
 (2026-10-23): headless `claude -p` driven from here, not subagents inside a session, for
 robustness, reproducibility and control over how many run at once.
 

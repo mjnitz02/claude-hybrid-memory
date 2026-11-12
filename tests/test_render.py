@@ -29,7 +29,7 @@ def grouped(fx: Fixture) -> None:
         "- [Fodder corpus](kit-fodder-corpus.md) — HISTORICAL test corpus.\n"
         "- [Gone file](kit-gone-file.md) — listed, but deleted.\n"
         "- [Raw notes](kit_raw_notes.md) — SHIPPED raw notes from the bench.\n\n"
-        "Ask Matt before adding a group.\n"
+        "Ask the user before adding a group.\n"
     )
 
 
@@ -41,7 +41,7 @@ def test_adopt_dry_run_reports_and_writes_nothing(fx: Fixture):
     assert a.groups == ["Sync", "Bench work"]
     assert a.ghosts == ["kit-gone-file.md"]
     assert a.superseded == ["kit-sync-v1"]
-    assert a.prose == ["Ask Matt before adding a group."]
+    assert a.prose == ["Ask the user before adding a group."]
     assert sorted(a.unlisted) == ["kit-bad-recipe", "kit-unlisted-orphan"]
     by = {ln.slug: ln for ln in a.lines}
     # "the v1 notes are history" is judgment the description does not carry; "design" is

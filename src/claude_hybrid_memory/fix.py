@@ -230,7 +230,7 @@ def do_fix(mems: list[Memory], routers: dict, write: bool, stamp_today: bool) ->
             text = re.sub(r"^---\n", "---\nkind: territory\n", text, count=1)
             actions.append("kind: territory (spec default)")
 
-        # Descriptions already carry a status word by Matt's own CLAUDE.md convention
+        # Descriptions already carry a status word by a common CLAUDE.md convention
         # ("SHIPPED 2026-07-30, resume dropped, ..."). Lifting it into a field is reading
         # what is there, not guessing: volatility then derives from it.
         if not str(m.meta.get("status") or "").strip() and text.startswith("---"):

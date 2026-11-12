@@ -11,7 +11,7 @@ How each item drops:
   shape, low-confidence     the body differs from the one that landed
   standing/gate-candidate,  the file is no longer at that path (promoted, moved, archived)
   territory-hint, index-only
-Every item also drops when its memory is superseded. One Matt declines is suppressed by
+Every item also drops when its memory is superseded. One the user declines is suppressed by
 writing its key, in backticks as `refine:<key>`, into RETRO.md with the reason. Split
 declines are the exception: they live on the file as `splittable:` (`mem no-split`, see
 audit/split.py), so a `refine:split-candidate:` key no longer suppresses anything, and a
@@ -105,7 +105,7 @@ def path(root: Path) -> Path:
 
 
 def declined(root: Path) -> set[str]:
-    """Keys Matt declined in RETRO.md. Not split-candidate: that decline is `splittable:`
+    """Keys the user declined in RETRO.md. Not split-candidate: that decline is `splittable:`
     on the file now, and the audit turns an old key into `split-decline-legacy`."""
     f = root / "RETRO.md"
     if not f.is_file():

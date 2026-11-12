@@ -1,7 +1,7 @@
 # Direction: a hybrid store
 
 Status: PROPOSED, 2026-10-21. Nothing built. This document is for aligning on direction
-before any code exists; §16 lists the decisions that are Matt's to make.
+before any code exists; §16 lists the decisions that are the maintainer's to make.
 
 Revises `design.md`. Where the two disagree, this one wins once accepted, and
 `design.md` keeps its text as the record of why the first version was built the way it
@@ -272,7 +272,7 @@ makes it faster, and brings it in line with the uv directive.
 **Recommendation: Python.** Speed is not a reason to leave it. Its one real cost is
 per-invocation startup, which is 15–22 ms against a 50 ms budget, and the throughput work
 (index, query) is two orders of magnitude inside any limit this store will reach. Python is
-also the fastest of the four for Matt to maintain alone, which `simplest-adequate-solution`
+also the fastest of the four for one person to maintain alone, which `simplest-adequate-solution`
 says is the cost that actually matters.
 
 **The limitation, and the escape hatch.** Startup grows with every import, and a slow hook
@@ -401,7 +401,7 @@ Each phase has an exit criterion and a rollback. No phase starts until the previ
 exited.
 
 **Phase 0 — Foundations.**
-`git init` the store and take a baseline commit (Matt; see §16.1). Restructure the repo
+`git init` the store and take a baseline commit (the maintainer; see §16.1). Restructure the repo
 (§12); port `mem.py` and `session_start.py` into the package with parity tests. Switch the
 SessionStart hook from `/usr/bin/python3 tools/session_start.py` to `mem hook session-start`.
 Investigate one unknown: the 2.1.306 binary contains a walker over memory directories
@@ -412,7 +412,7 @@ building an index beside it.
 settings line.
 
 *Progress, 2026-10-21:*
-- [x] store `git init` + baseline (Matt); documented as `setup.md` step 1b.
+- [x] store `git init` + baseline (the maintainer); documented as `setup.md` step 1b.
 - [x] `src/claude_hybrid_memory/` + `tests/`; `mem.py` and `session_start.py` ported with no
   behavior change. Parity is byte-identical (stdout, stderr, exit code) against `tools/`
   on fixture stores (15 command forms, `fix --write` tree comparison, three hook cwds,
@@ -557,7 +557,7 @@ visible.
 *Exit:* chains resolve; `memory_history` (CLI form) shows both directions.
 *Rollback:* the field is inert without the cache.
 
-*Progress, 2026-10-21:* **built; started before Phase 2's exit, by Matt's call.** Phase 3
+*Progress, 2026-10-21:* **built; started before Phase 2's exit, by the maintainer's call.** Phase 3
 reads no event data, so waiting on two weeks of events bought it nothing; the rule above
 still holds for Phase 5, which does depend on them.
 - [x] `claude_hybrid_memory/chains.py`: one pure graph shared by the cache, the audit and the CLI.
@@ -601,7 +601,7 @@ within the harness's 200 lines / 25,000 bytes, every slug reachable through the 
 `mem find`; `mem render --check` clean.
 *Rollback:* `git revert` on that `MEMORY.md`.
 
-*Progress, 2026-10-22:* **built; `console/tools` adopted; exit met.** Started before Phase 2's exit, by Matt's call: nothing built here reads events.
+*Progress, 2026-10-22:* **built; `console/tools` adopted; exit met.** Started before Phase 2's exit, by the maintainer's call: nothing built here reads events.
 - [x] `claude_hybrid_memory/render.py`. The section between `<!-- mem:render begin/end -->` is a
   function of the markdown only: each memory's `description:` is its line, `group:` places
   it, and the territory's `groups:` frontmatter (one flow-list line, since every line counts
@@ -614,7 +614,7 @@ within the harness's 200 lines / 25,000 bytes, every slug reachable through the 
 - [x] `mem render [T]` re-renders adopted territories; `--check` (and `mem audit`) warns
   `render-stale` when the section differs from the memories. On every territory, rendered
   or not, it warns `memories-over-target` past 100 lines of `## MEMORIES` and errors
-  `memories-over-cap` past 150. The hand-written head is not budgeted (Matt, 2026-10-22). It
+  `memories-over-cap` past 150. The hand-written head is not budgeted (the maintainer, 2026-10-22). It
   errors `index-over-cap` past 200 lines / 25,000 bytes for the whole file, since that is
   the harness truncating. Today only `console/tools` warns, at 107 memory lines.
 - [x] The SessionEnd hook re-renders adopted territories before it commits, so a
@@ -627,13 +627,13 @@ within the harness's 200 lines / 25,000 bytes, every slug reachable through the 
   would drop, unlisted memories, and the projected line count. `--write` applies it:
   `group:` into each memory, `groups:` into MEMORY.md, the section replaced.
 - `console/tools` dry run: 88 memories in 9 groups, 189 lines rendered, MEMORIES at 100.
-  Matt approved the layout and slug order on 2026-10-22. **Index lines that say more than
+  The maintainer approved the layout and slug order on 2026-10-22. **Index lines that say more than
   the description are not a problem**: the description carries the meaning, and the detail
   is one read away. The dry run still lists them, for information only.
 - The first `--adopt --write` produced 26,768 bytes against the harness's 25,000, because
   descriptions run longer than the glosses they replace (15.9 KB in total, median 178
   bytes). It was rolled back with `mem restore`'s predecessor, raw git.
-- [x] Index lines cut at 160 bytes of description, at a word boundary, with "…" (Matt: an
+- [x] Index lines cut at 160 bytes of description, at a word boundary, with "…" (the maintainer: an
   index directs to its memory, it does not stand in for it). 180 left 33 bytes of slack;
   160 leaves about 1 KB. `index-near-cap` now warns past 24,000 bytes.
 - [x] `console/tools` adopted 2026-10-22: 189 lines, 23,940 bytes, MEMORIES at 100 lines,
@@ -652,7 +652,7 @@ checkpoint, land as-is, refine after) instead of `/memory-migrate` one territory
 The text below is the original plan; its exit criterion stands.
 The 15 silos and 91 files go through `/memory-migrate` as today, now backed by `mem migrate`,
 whose duplicate check runs each incoming file against the store, which is exactly where the
-old silos duplicate each other. The 9 empty silo directories go to Matt as an annotated list,
+old silos duplicate each other. The 9 empty silo directories go to the maintainer as an annotated list,
 per the deletion directive. `archive/` becomes searchable on request (`include_archive`) and
 is never rendered: retired, not lost.
 *Exit:* `mem status` shows no unreviewed silos.
@@ -666,7 +666,7 @@ territories). Separate store, separate git history, nothing shared but this repo
 
 Settled 2026-10-21 unless marked open.
 
-1. **The store gets an explicit git exception.** Matt's global rule (Claude touches git only
+1. **The store gets an explicit git exception.** The maintainer's global rule (Claude touches git only
    when asked) stays in force for every repo. The one carve-out: `mem` commits
    `~/.claude/memory/` itself, automatically, with generated messages, and never pushes,
    because the store has no remote. **Why:** history only helps if it exists without anyone
@@ -682,7 +682,7 @@ Settled 2026-10-21 unless marked open.
    *Extended 2026-10-22:* `mem restore`, `mem show --at` and `mem audit --at`, after a
    session reached for `git stash` to compare audits and roll back a render. The rule
    became: store git goes through `mem`, and a missing verb gets added, not worked around
-   (Matt). Stash itself was left out on purpose. It takes the whole tree, can conflict
+   (the maintainer). Stash itself was left out on purpose. It takes the whole tree, can conflict
    with a SessionEnd commit landing mid-stash, and hides changes if a session dies holding
    it. `restore` commits first and names its paths; `--at` reads a past tree without
    touching the working one.
@@ -704,7 +704,7 @@ Settled 2026-10-21 unless marked open.
 3. **Events are committed** with the store.
 4. **Description reconciliation is a one-off migration step, after which it disappears.**
    Today every memory carries two hand-written summaries: its `description` and its line in
-   the territory index, and they drift. Adoption merges them once, per territory, with Matt
+   the territory index, and they drift. Adoption merges them once, per territory, with the maintainer
    reviewing the diff. Afterwards the description is the only summary, the index line is
    rendered from it, and keeping them in sync is no longer a task. Writing a good
    description becomes the whole job at write time, which it nominally already is.
@@ -718,11 +718,11 @@ Settled 2026-10-21 unless marked open.
      never auto-loaded, and runs on an explicit ask or when a session needs it.
 6. **The store's gate is rewritten.** `territories/meta/claude-memory/MEMORY.md` now states
    the narrowed rule (content never crosses machines; local history allowed), applied on
-   Matt's explicit go-ahead after auto mode refused it unprompted. The git exception was in
+   The maintainer's explicit go-ahead after auto mode refused it unprompted. The git exception was in
    `~/.claude/CLAUDE.md` until 2026-11-03 (item 1).
 7. **Open (TBD): what eventually happens to superseded files.** Phase 3 leaves them in
    place, byte-identical, hidden from search by derivation; the old rule that they be
-   archived or marked HISTORICAL was dropped (2026-10-21, Matt agreed). Whether they should
+   archived or marked HISTORICAL was dropped (2026-10-21, the maintainer agreed). Whether they should
    later move to `archive/`, get pruned once git holds them, or stay put forever is a future
    optimization. Revisit once real chains exist and the count of superseded files is
    known; nothing depends on it before then.
@@ -731,7 +731,7 @@ Settled 2026-10-21 unless marked open.
    install is `claude plugin install hybrid-memory --marketplace
    mjnitz02/claude-hybrid-memory`. **Why:** the earlier rejection rested on marketplace
    distribution being unwanted, and the repo went public on 2026-10-23. The plugin also
-   removes the riskiest install step, rewriting `settings.json`. Settled with Matt:
+   removes the riskiest install step, rewriting `settings.json`. Settled with the maintainer:
    - **One install path.** The plugin carries hooks and skills; `mem install` keeps what a
      plugin cannot do (store, history, rules file) and removes the pre-plugin wiring once
      the plugin is present, never before. `make install` is the dev path: it symlinks the
@@ -746,7 +746,7 @@ Settled 2026-10-21 unless marked open.
    - **`agents/` became `prompts/`**, since a plugin loads `agents/` as subagents.
    - **CI checks the plugin files with pytest** (`tests/test_plugin.py`), not the Claude CLI.
 
-9. **Verify-on-use replaces verifying in advance** (2026-11-03, Matt; grilled to a shared
+9. **Verify-on-use replaces verifying in advance** (2026-11-03, the maintainer; grilled to a shared
    tree the same day). The refine queue had reached 185 items, 180 of them `unverified`: a
    field-presence check (no `status`, `last_verified` or `verify`) that only an expensive
    per-item truth check could clear. Ten-plus sessions on this machine and more on the work
@@ -766,7 +766,7 @@ Settled 2026-10-21 unless marked open.
      `mem verified` (held), a fix plus `mem verified` (drifted) or `mem supersede`
      (flipped). The rule is the `verify-on-use` standing directive.
    - The `unverified`, `verify` and `stale-live` queue items are gone. `verify:` recipes
-     stayed optional and ran under `--run` until **2026-11-04 (Matt), when execution was
+     stayed optional and ran under `--run` until **2026-11-04 (the maintainer), when execution was
      removed**: the day's retro found all 7 of its errors were prose `expect:` lines that
      could never match, the rewrites that silenced them left 4 checks unable to fail, and
      52 `tier: record` memories were double-reported as `stale` and `no-volatility`. The

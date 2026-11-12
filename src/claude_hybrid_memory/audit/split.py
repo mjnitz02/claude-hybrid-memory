@@ -4,9 +4,9 @@ There is no read gate, by decision (direction §16.2). A large file is a mainten
 a *why* behind it, so it surfaces here and in the retro rather than at read time.
 
 Sometimes the answer is that the file is fine at that size: splitting it would cut one
-argument in half. Matt records that with `mem no-split <slug> -m REASON`. The command writes
+argument in half. The user records that with `mem no-split <slug> -m REASON`. The command writes
 `splittable: "no until 20 KB: REASON"` into the file's frontmatter, with the ceiling set to
-the next 10 KB step above the file's size when he answered. The decision then lives on the
+the next 10 KB step above the file's size when they answered. The decision then lives on the
 file: it moves with `mem mv`, any session reading the file can see it, and the retro does not
 have to compare `mem audit` against RETRO.md. Under its ceiling the file is counted on one INFO
 line; past it, the question comes back once, with the old reason attached.
@@ -122,7 +122,7 @@ def check_split(
             held.append(size)
             continue
         if ns is None and rel in legacy:
-            reason = legacy[rel] or "<Matt's reason>"
+            reason = legacy[rel] or "<the user's reason>"
             out.append(
                 Finding(
                     WARN,
@@ -140,13 +140,13 @@ def check_split(
     for rank, (_, m, size, markers, n_reads, ns) in enumerate(big, 1):
         if ns and ns.ceiling_kb:
             why = (
-                f" Grew past the {ns.ceiling_kb} KB ceiling Matt set when he declined a "
+                f" Grew past the {ns.ceiling_kb} KB ceiling the user set when they declined a "
                 f"split: {ns.reason!r}. Ask again; if it still holds, `mem no-split` "
                 "raises the ceiling."
             )
         elif ns:
             why = (
-                " `splittable: no` has no ceiling, so it is not honoured: ask Matt, then "
+                " `splittable: no` has no ceiling, so it is not honoured: ask the user, then "
                 "`mem no-split` writes it with one."
             )
         else:

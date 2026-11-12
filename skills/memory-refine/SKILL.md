@@ -1,6 +1,6 @@
 ---
 name: memory-refine
-description: Work the memory store's refine queue (fast adoption stage 5) - better descriptions, splits, promotions and relocations, one queue item at a time. Use when Matt says "refine", "work the queue", or /memory-refine [N], or when the retrospective reports a long queue.
+description: Work the memory store's refine queue (fast adoption stage 5) - better descriptions, splits, promotions and relocations, one queue item at a time. Use when the user says "refine", "work the queue", or /memory-refine [N], or when the retrospective reports a long queue.
 ---
 
 # memory-refine
@@ -12,7 +12,7 @@ right. This makes it good, one small item at a time, with only that item in view
 ## Start
 
     mem refine queue                    # rebuild it; prints the head
-    mem refine queue --territory T      # when Matt names one
+    mem refine queue --territory T      # when the user names one
 
 The queue is `~/.claude/memory/.cache/migrate/queue.json`, already in work order. It is
 **derived**: an item drops when its cause is gone, so there is no done-list to update. To
@@ -36,16 +36,16 @@ happens on use*).
 
 | type | what dropping it takes | subagent directive |
 |---|---|---|
-| `standing-candidate`, `gate-candidate` | promote it, or link it to the directive that already covers it and supersede it; else Matt declines | "Is this rule true outside its one project? Quote the line that says so, or say it is project-specific. Name any of these standing directives it duplicates: <list standing/>" |
+| `standing-candidate`, `gate-candidate` | promote it, or link it to the directive that already covers it and supersede it; else the user declines | "Is this rule true outside its one project? Quote the line that says so, or say it is project-specific. Name any of these standing directives it duplicates: <list standing/>" |
 | `description` | a description that states the conclusion | "Judge this description against this body. If it names a subject rather than stating the conclusion, write one line that does." |
-| `split-candidate`, `shape` | split into a short state memory plus records (format-spec, *state vs records*), a rewrite that drops the diary, or Matt says it stays whole (`mem no-split`, below) | "Propose a split: one state memory (what is true now) and dated records. List each file's slug, description and which lines go where. Drop nothing." |
-| `possible-duplicate` | merge and supersede, or Matt declines | "Do these two say the same thing? If so, which is newer and more complete?" |
+| `split-candidate`, `shape` | split into a short state memory plus records (format-spec, *state vs records*), a rewrite that drops the diary, or the user says it stays whole (`mem no-split`, below) | "Propose a split: one state memory (what is true now) and dated records. List each file's slug, description and which lines go where. Drop nothing." |
+| `possible-duplicate` | merge and supersede, or the user declines | "Do these two say the same thing? If so, which is newer and more complete?" |
 | `index-only` | archive it, if its index line already says everything | none: read it |
 | `frontmatter-not-yaml` | quote the offending value | none: mechanical |
 | `low-confidence`, `territory-hint` | a read, then a fix or a decline | none: read it |
 | `description-long` | a description under 160 bytes that still states the conclusion | same as `description`, plus: "in at most 160 bytes" |
 | `index-degraded` | the full index back: shorten the longest descriptions, split records out of a crowded group, or propose restructuring the territory | none: `mem render --check T` names the steps it took; work the `description-long` items in that territory first |
-| `index-over-cap`, `memories-over-cap`, `memories-over-target` | a shorter hand-written head or MEMORIES section; restructuring goes to Matt (`/memory-restructure`) | none: read the index |
+| `index-over-cap`, `memories-over-cap`, `memories-over-target` | a shorter hand-written head or MEMORIES section; restructuring goes to the user (`/memory-restructure`) | none: read the index |
 | `field-invalid`, `missing-kind` | the value from the vocabulary in format-spec (a missing `group:` takes one of the territory's `groups:`) | none: mechanical |
 
 **The index budget is this skill's, and only this skill's.** Render fits every index under
@@ -54,12 +54,12 @@ nothing on other items needs trimming to make room. Do not shorten a description
 index is full: that is what `index-degraded` and `description-long` are for, and they want a
 better description, not a shorter one.
 
-## Ask Matt, don't act
+## Ask the user, don't act
 
 - **Any promotion to `standing/` or `GATES.md`.** Standing is capped, and a gate edit needs
-  Matt to name the file. Bring the candidate, the directive it would join or duplicate, and
+  the user to name the file. Bring the candidate, the directive it would join or duplicate, and
   a recommendation.
-- **Archiving or deleting.** Per the standing deletion rule, hand him the list with reasons.
+- **Archiving or deleting.** Per the standing deletion rule, hand them the list with reasons.
 - **A split of anything over ~10 KB.** Show the proposed files first.
 
 Everything else (descriptions, YAML quoting, `tier: record`), just do it and
@@ -67,28 +67,28 @@ report it.
 
 ## Declining
 
-When Matt says an item is fine as it is, append to the newest section of
+When the user says an item is fine as it is, append to the newest section of
 `~/.claude/memory/RETRO.md`, under **Declined, with reasons**:
 
-    - `refine:<key>` — <his reason>
+    - `refine:<key>` — <their reason>
 
-The backticked `refine:<key>` is what suppresses it. Only Matt declines. You don't decline
+The backticked `refine:<key>` is what suppresses it. Only the user declines. You don't decline
 an item because it is hard.
 
 **A declined split is the exception: it goes on the file, not in RETRO.md.**
 
-    mem no-split <slug> -m "<his reason>"
+    mem no-split <slug> -m "<their reason>"
 
 That writes `splittable: "no until N KB: <reason>"` and the audit stops asking until the file
 grows past N KB. A `split-candidate` whose message says it *grew past the ceiling* is the
-same question asked again with his old reason quoted: put that reason in front of him, and
+same question asked again with their old reason quoted: put that reason in front of them, and
 if it still holds, the same command raises the ceiling. "It is big" is not a reason to split
 and "splitting is fiddly" is not a reason to decline. The question is whether the parts would
 ever be read apart.
 
 `split-decline-legacy` is an old RETRO.md decline that never reached the file. Its message is
 the exact `mem no-split` command, with the reason already in it. Run it; no need to ask again,
-since Matt already decided. Leave the old RETRO.md line where it is, as history.
+since the user already decided. Leave the old RETRO.md line where it is, as history.
 
 ## Finish
 
@@ -96,4 +96,4 @@ since Matt already decided. Leave the old RETRO.md line where it is, as history.
     mem render && mem audit --scan store --refine
 
 No new audit errors. Report what was done per item, what was asked and is waiting on
-Matt, and the queue length before and after. The store commits itself at session end.
+the user, and the queue length before and after. The store commits itself at session end.

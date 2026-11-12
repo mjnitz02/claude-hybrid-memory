@@ -17,7 +17,7 @@ def check_relations(mems: list[Memory]) -> list[Finding]:
     for m in mems:
         ov = str(m.meta.get("overrides") or "").strip()
         if ov:
-            # CLAUDE.md is a real layer above standing/: Matt authors it, it loads every
+            # CLAUDE.md is a real layer above standing/: the user authors it, it loads every
             # session, and duplicating its rules into standing/ would be exactly the
             # copy-paste failure this store exists to end. So an exception may name it as
             # its parent authority, and resolution stops there.

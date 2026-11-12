@@ -1,12 +1,12 @@
 # Self-verification: the retrospective
 
-Run by `/memory-retro`. The human analogy Matt used is sitting down and asking: are my
+Run by `/memory-retro`. The human analogy the user used is sitting down and asking: are my
 thoughts in order, am I forgetting things, should I optimize something. That is the right
 frame. The difference is only speed.
 
 Default cadence: monthly. That is a guess, and the first few runs should calibrate it.
 `ROUTER.md` carries `last_retrospective:`, and the SessionStart hook prints one line when
-it is overdue. That line is the trigger, so the retrospective does not depend on Matt
+it is overdue. That line is the trigger, so the retrospective does not depend on the user
 remembering.
 
 ## The split: what the tool decides and what Claude decides
@@ -60,7 +60,7 @@ for it. Report three things:
   session is most likely to act on soon. Do not work the list; a memory past its window
   costs nothing until someone relies on it.
 - **One question, answered from evidence**: did a session act on a stale claim since the
-  last retro? A correction from Matt, or a wrong turn traced to a memory, is the evidence.
+  last retro? A correction from the user, or a wrong turn traced to a memory, is the evidence.
   So is `mem events stats`' stale-write section: an exact join of the store's own events,
   listing each session that wrote a memory past its window (as the store's history held it
   when that session began) with no `mem verified` from that session. It is a missed check,
@@ -83,7 +83,7 @@ work, and it would emit confident nonsense. So it is not the primary mechanism.
 either of these occurs, it is the signal:
 
 - Claude re-derives something a memory should have supplied.
-- Matt corrects Claude on something that was previously established.
+- The user corrects Claude on something that was previously established.
 
 `/memory-retro` asks the question directly while evidence is fresh: *what did I have to
 work out this session that a memory should have told me?* An honest answer to that beats
