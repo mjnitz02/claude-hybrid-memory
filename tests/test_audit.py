@@ -208,3 +208,30 @@ def test_a_superseded_memory_is_never_stale(fx: Fixture):
     hit = lambda f: [x for x in f if x.path == str(v1)]  # noqa: E731 - the store copy only
     assert hit(audit.check_freshness(mems, TODAY))
     assert not hit(audit.check_freshness(mems, TODAY, audit.superseded_paths(fx.store)))
+
+
+def test_upkeep_checks_skip_what_is_not_live(fx: Fixture):
+    """One predicate (`is_live`) for every upkeep check: a superseded original or a
+    `tier: record` gets no `no-volatility`, `stale` or `split-candidate`, since none of
+    them could ever be cleared (retro 2026-11-12: six `no-volatility` on superseded files)."""
+    from collections import Counter
+
+    v1 = fx.store / "territories/console/kit/kit-sync-v1.md"
+    v1.write_text(v1.read_text().replace("status: SHIPPED\n", "") + "z " * 6000)
+    rec = fx.store / "territories/console/kit/kit-2026-10-incident.md"
+    rec.write_text(
+        "---\nname: kit-2026-10-incident\nkind: territory\ndescription: dated\n"
+        "tier: record\n---\n\n" + "r " * 6000
+    )
+    mems, _ = scanned(fx)
+    sup = audit.superseded_paths(fx.store)
+    paths = {str(v1), str(rec)}
+    hit = lambda f: {x.code for x in f if x.path in paths}  # noqa: E731
+    assert {"no-volatility", "split-candidate"} <= hit(
+        audit.check_structure(mems) + audit.check_split(mems, Counter(), fx.store)
+    )
+    assert not hit(
+        audit.check_structure(mems, sup)
+        + audit.check_split(mems, Counter(), fx.store, sup)
+        + audit.check_freshness(mems, TODAY, sup)
+    )

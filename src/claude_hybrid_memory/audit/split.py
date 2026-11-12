@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections import Counter
 
+from claude_hybrid_memory.audit.freshness import is_live
 from claude_hybrid_memory.findings import INFO, WARN, Finding
 from claude_hybrid_memory.spec import ACCRETION_RE
 from claude_hybrid_memory.store import Memory
@@ -17,9 +18,16 @@ from claude_hybrid_memory.store import Memory
 SPLIT_BYTES = 10 * 1024
 
 
-def check_split(mems: list[Memory], reads: Counter, root) -> list[Finding]:
-    """Rank oversized territory files by size x (1 + accretion markers) x (1 + reads)."""
-    terr = [m for m in mems if m.scope == "store" and m.container != "standing"]
+def check_split(
+    mems: list[Memory], reads: Counter, root, superseded: frozenset = frozenset()
+) -> list[Finding]:
+    """Rank oversized territory files by size x (1 + accretion markers) x (1 + reads).
+    Only live memories (`is_live`): a superseded or record file is never split."""
+    terr = [
+        m
+        for m in mems
+        if m.scope == "store" and m.container != "standing" and is_live(m, superseded)
+    ]
     out = []
     accreted = [m for m in terr if ACCRETION_RE.search(m.raw)]
     if accreted:

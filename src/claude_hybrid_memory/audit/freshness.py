@@ -14,6 +14,15 @@ def age_phrase(age: int | None) -> str:
     return "never verified" if age is None else f"{age}d since last_verified"
 
 
+def is_live(m: Memory, superseded: frozenset = frozenset()) -> bool:
+    """Whether a memory is a claim someone keeps current, so upkeep checks (freshness,
+    volatility, splitting) apply to it. A superseded memory is never edited by design and a
+    `tier: record` is dated history, so a finding on either could never be cleared. The one
+    predicate every such check uses: they drifted apart when each decided for itself
+    (retros 2026-11-04b and 2026-11-12). `archive/` is not scanned, so needs no case here."""
+    return m.path not in superseded and str(m.meta.get("tier") or "").strip() != "record"
+
+
 class Due(NamedTuple):
     """A memory past its window: its volatility, age in days (None if never verified) and
     the window it is past."""
@@ -54,7 +63,7 @@ def check_freshness(
     a staleness finding on one could never be cleared."""
     out = []
     for m in mems:
-        if m.path in superseded:
+        if not is_live(m, superseded):
             continue
         due = past_window(m.meta, today)
         if due is None:
